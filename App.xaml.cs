@@ -12,6 +12,18 @@ public partial class App : Application
 
     protected override Window CreateWindow(IActivationState? activationState)
     {
-        return new Window(new NavigationPage(_homeView));
+        var testPage = new ContentPage
+        {
+            BackgroundColor = Colors.Red,
+            Content = new Label
+            {
+                Text = "MAUI IS WORKING",
+                FontSize = 32,
+                TextColor = Colors.White,
+                HorizontalOptions = LayoutOptions.Center,
+                VerticalOptions = LayoutOptions.Center
+            }
+        };
+        return new Window(testPage);
     }
 }

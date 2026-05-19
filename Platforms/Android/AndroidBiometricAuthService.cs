@@ -12,25 +12,37 @@ public class AndroidBiometricAuthService : IBiometricAuthService
 {
     public Task<bool> AuthenticateAsync(string reason, CancellationToken cancellationToken)
     {
+#if DEBUG
+        // Skip biometric auth entirely on debug builds (emulator support)
+        return Task.FromResult(true);
+#else
         try
         {
             var activity = Platform.CurrentActivity as FragmentActivity;
             if (activity is null)
             {
-                return Task.FromResult(true); // Fail open if no activity
+                return Task.FromResult(true);
             }
 
-            // Check if biometrics are available at all before trying
             var biometricManager = BiometricManager.From(activity);
-            var canAuthenticate = biometricManager.CanAuthenticate(
+
+            var canAuthStrong = biometricManager.CanAuthenticate(
                 BiometricManager.Authenticators.BiometricStrong
                 | BiometricManager.Authenticators.DeviceCredential);
 
-            if (canAuthenticate != BiometricManager.BiometricSuccess)
+            var canAuthWeak = biometricManager.CanAuthenticate(
+                BiometricManager.Authenticators.BiometricWeak
+                | BiometricManager.Authenticators.DeviceCredential);
+
+            if (canAuthStrong != BiometricManager.BiometricSuccess
+                && canAuthWeak != BiometricManager.BiometricSuccess)
             {
-                // No biometrics or device credential enrolled — skip auth
                 return Task.FromResult(true);
             }
+
+            var authenticators = canAuthStrong == BiometricManager.BiometricSuccess
+                ? BiometricManager.Authenticators.BiometricStrong | BiometricManager.Authenticators.DeviceCredential
+                : BiometricManager.Authenticators.BiometricWeak | BiometricManager.Authenticators.DeviceCredential;
 
             var executor = ContextCompat.GetMainExecutor(activity);
             if (executor is null)
@@ -44,9 +56,7 @@ public class AndroidBiometricAuthService : IBiometricAuthService
             var promptInfo = new BiometricPrompt.PromptInfo.Builder()
                 .SetTitle(AppStrings.BiometricPromptTitle)
                 .SetSubtitle(reason)
-                .SetAllowedAuthenticators(
-                    BiometricManager.Authenticators.BiometricStrong
-                    | BiometricManager.Authenticators.DeviceCredential)
+                .SetAllowedAuthenticators(authenticators)
                 .Build();
 
             prompt.Authenticate(promptInfo);
@@ -60,9 +70,9 @@ public class AndroidBiometricAuthService : IBiometricAuthService
         }
         catch (System.Exception)
         {
-            // If anything goes wrong with biometrics, fail open so app still loads
             return Task.FromResult(true);
         }
+#endif
     }
 
     private sealed class BiometricCallback : BiometricPrompt.AuthenticationCallback

@@ -6,8 +6,9 @@
              x:Class="AlarmaApp.Views.HomeView"
              x:DataType="controllers:HomeController"
              x:Name="HomePage"
-             Title="Alarma">
-    <ScrollView>
+             Title="Alarma"
+             BackgroundColor="White">
+    <ScrollView BackgroundColor="White">
         <VerticalStackLayout Spacing="20" Padding="24">
             <Label Text="Alarma" FontSize="32" FontAttributes="Bold" />
             <Label Text="Offline-first Android alarm and safety scaffold." FontSize="14" TextColor="#666666" />

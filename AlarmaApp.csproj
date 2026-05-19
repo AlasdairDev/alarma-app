@@ -15,6 +15,7 @@
     <AndroidMinSdkVersion>26</AndroidMinSdkVersion>
     <AndroidTargetSdkVersion>35</AndroidTargetSdkVersion>
     <EmbedAssembliesIntoApk>true</EmbedAssembliesIntoApk>
+    <UseInterpreter>true</UseInterpreter>
   </PropertyGroup>
 
   <ItemGroup>
