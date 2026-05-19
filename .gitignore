@@ -1,0 +1,26 @@
+# .NET build outputs
+bin/
+obj/
+
+# Visual Studio
+.vs/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# IDEs
+.idea/
+.vscode/
+
+# OS files
+.DS_Store
+
+# Android build artifacts
+*.apk
+*.aab
+*.keystore
+*.jks
+
+# Rider
+*.DotSettings.user

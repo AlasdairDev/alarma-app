@@ -1,0 +1,36 @@
+name: Android Release Build
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: "temurin"
+          java-version: "17"
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "9.0.x"
+      - name: Install MAUI Android workload
+        run: dotnet workload install maui-android
+      - name: Restore
+        run: dotnet restore
+      - name: Publish release APK
+        run: dotnet publish -f net9.0-android -c Release /p:AndroidPackageFormats=apk
+      - name: Upload release artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: alarma-release-apk
+          path: "**/bin/Release/**/publish/*.apk"
