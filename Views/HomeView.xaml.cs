@@ -8,9 +8,9 @@ public partial class HomeView : ContentPage
 
     public HomeView(HomeController controller)
     {
-        InitializeComponent();
         _controller = controller;
         BindingContext = _controller;
+        InitializeComponent();
         Appearing += OnAppearing;
     }
 
