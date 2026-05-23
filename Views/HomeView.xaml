@@ -1,30 +1,32 @@
 <?xml version="1.0" encoding="utf-8" ?>
 <ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
-             xmlns:controllers="clr-namespace:AlarmaApp.Controllers"
              xmlns:models="clr-namespace:AlarmaApp.Models"
              x:Class="AlarmaApp.Views.HomeView"
-             x:DataType="controllers:HomeController"
              x:Name="HomePage"
              Title="Alarma"
              BackgroundColor="White">
     <ScrollView BackgroundColor="White">
         <VerticalStackLayout Spacing="20" Padding="24">
+
             <Label Text="Alarma" FontSize="32" FontAttributes="Bold" />
             <Label Text="Offline-first Android alarm and safety scaffold." FontSize="14" TextColor="#666666" />
             <Label Text="{Binding StatusText}" FontSize="16" />
             <Label Text="{Binding ConnectivityText}" FontSize="14" />
             <Label Text="{Binding OnboardingStatusText}" FontSize="12" TextColor="#888888" />
 
-            <Frame BorderColor="#E0E0E0" Padding="16" IsVisible="{Binding ShowOnboardingPrompt}">
+            <!-- Onboarding prompt -->
+            <Border Stroke="#E0E0E0" StrokeThickness="1" StrokeShape="RoundRectangle 8" Padding="16"
+                    IsVisible="{Binding ShowOnboardingPrompt}" BackgroundColor="White">
                 <VerticalStackLayout Spacing="10">
                     <Label Text="Get started" FontAttributes="Bold" />
                     <Label Text="Add an emergency contact and confirm your alarm settings." FontSize="12" TextColor="#666666" />
                     <Button Text="Mark onboarding complete" Command="{Binding CompleteOnboardingCommand}" />
                 </VerticalStackLayout>
-            </Frame>
+            </Border>
 
-            <Frame BorderColor="#E0E0E0" Padding="16">
+            <!-- Alarm settings -->
+            <Border Stroke="#E0E0E0" StrokeThickness="1" StrokeShape="RoundRectangle 8" Padding="16" BackgroundColor="White">
                 <VerticalStackLayout Spacing="12">
                     <Label Text="Alarm settings" FontAttributes="Bold" />
                     <Label Text="Alarm sound" FontSize="12" TextColor="#666666" />
@@ -37,9 +39,10 @@
                     </HorizontalStackLayout>
                     <Button Text="Initialize Local Database" Command="{Binding InitializeCommand}" />
                 </VerticalStackLayout>
-            </Frame>
+            </Border>
 
-            <Frame BorderColor="#E0E0E0" Padding="16">
+            <!-- Destination search -->
+            <Border Stroke="#E0E0E0" StrokeThickness="1" StrokeShape="RoundRectangle 8" Padding="16" BackgroundColor="White">
                 <VerticalStackLayout Spacing="12">
                     <Label Text="Destination" FontAttributes="Bold" />
                     <Entry Placeholder="Destination search query" Text="{Binding DestinationQuery}" />
@@ -55,9 +58,10 @@
                            IsVisible="{Binding HasMapTile}" />
                     <Button Text="Open Google Maps Reroute" Command="{Binding OpenMapsCommand}" />
                 </VerticalStackLayout>
-            </Frame>
+            </Border>
 
-            <Frame BorderColor="#E0E0E0" Padding="16">
+            <!-- Trip tracking -->
+            <Border Stroke="#E0E0E0" StrokeThickness="1" StrokeShape="RoundRectangle 8" Padding="16" BackgroundColor="White">
                 <VerticalStackLayout Spacing="12">
                     <Label Text="Trip tracking" FontAttributes="Bold" />
                     <Label Text="{Binding TrackingStatusText}" FontSize="14" TextColor="#666666" />
@@ -68,9 +72,10 @@
                     </HorizontalStackLayout>
                     <Button Text="Send Test SOS SMS" Command="{Binding SendTestSmsCommand}" IsEnabled="{Binding CanSendSos}" />
                 </VerticalStackLayout>
-            </Frame>
+            </Border>
 
-            <Frame BorderColor="#E0E0E0" Padding="16">
+            <!-- Availability and device status -->
+            <Border Stroke="#E0E0E0" StrokeThickness="1" StrokeShape="RoundRectangle 8" Padding="16" BackgroundColor="White">
                 <VerticalStackLayout Spacing="12">
                     <Label Text="Availability &amp; device status" FontAttributes="Bold" />
                     <Label Text="{Binding AvailabilityStatusText}" FontSize="12" TextColor="#666666" />
@@ -80,9 +85,10 @@
                     <Label Text="{Binding BatteryOptimizationStatusText}" FontSize="12" TextColor="#666666" />
                     <Button Text="Allow battery optimization ignore" Command="{Binding RequestBatteryOptimizationCommand}" />
                 </VerticalStackLayout>
-            </Frame>
+            </Border>
 
-            <Frame BorderColor="#E0E0E0" Padding="16">
+            <!-- Emergency contacts -->
+            <Border Stroke="#E0E0E0" StrokeThickness="1" StrokeShape="RoundRectangle 8" Padding="16" BackgroundColor="White">
                 <VerticalStackLayout Spacing="12">
                     <Label Text="Emergency contacts" FontAttributes="Bold" />
                     <Entry Placeholder="Contact name" Text="{Binding NewContactName}" />
@@ -93,7 +99,7 @@
                             <Label Text="No emergency contacts saved yet." FontSize="12" TextColor="#888888" />
                         </CollectionView.EmptyView>
                         <CollectionView.ItemTemplate>
-                            <DataTemplate x:DataType="models:EmergencyContact">
+                            <DataTemplate>
                                 <VerticalStackLayout Spacing="6" Padding="8" BackgroundColor="#F7F7F7">
                                     <Label Text="{Binding Name}" FontAttributes="Bold" />
                                     <Label Text="{Binding PhoneNumber}" FontSize="12" TextColor="#666666" />
@@ -111,9 +117,10 @@
                         </CollectionView.ItemTemplate>
                     </CollectionView>
                 </VerticalStackLayout>
-            </Frame>
+            </Border>
 
-            <Frame BorderColor="#E0E0E0" Padding="16">
+            <!-- Saved routes -->
+            <Border Stroke="#E0E0E0" StrokeThickness="1" StrokeShape="RoundRectangle 8" Padding="16" BackgroundColor="White">
                 <VerticalStackLayout Spacing="12">
                     <Label Text="Saved routes (up to 5)" FontAttributes="Bold" />
                     <Entry Placeholder="Optional route name" Text="{Binding NewRouteName}" />
@@ -123,7 +130,7 @@
                             <Label Text="No saved routes yet." FontSize="12" TextColor="#888888" />
                         </CollectionView.EmptyView>
                         <CollectionView.ItemTemplate>
-                            <DataTemplate x:DataType="models:SavedRoute">
+                            <DataTemplate>
                                 <VerticalStackLayout Spacing="6" Padding="8" BackgroundColor="#F7F7F7">
                                     <Label Text="{Binding Name}" FontAttributes="Bold" />
                                     <Label Text="{Binding Notes}" FontSize="12" TextColor="#666666" />
@@ -140,9 +147,10 @@
                         </CollectionView.ItemTemplate>
                     </CollectionView>
                 </VerticalStackLayout>
-            </Frame>
+            </Border>
 
-            <Frame BorderColor="#E0E0E0" Padding="16">
+            <!-- Backup and export -->
+            <Border Stroke="#E0E0E0" StrokeThickness="1" StrokeShape="RoundRectangle 8" Padding="16" BackgroundColor="White">
                 <VerticalStackLayout Spacing="12">
                     <Label Text="Backup &amp; export" FontAttributes="Bold" />
                     <Label Text="{Binding LastBackupText}" FontSize="12" TextColor="#666666" />
@@ -152,9 +160,10 @@
                     </HorizontalStackLayout>
                     <Label Text="{Binding BackupStatusText}" FontSize="12" TextColor="#666666" />
                 </VerticalStackLayout>
-            </Frame>
+            </Border>
 
-            <Frame BorderColor="#E0E0E0" Padding="16">
+            <!-- Trip history -->
+            <Border Stroke="#E0E0E0" StrokeThickness="1" StrokeShape="RoundRectangle 8" Padding="16" BackgroundColor="White">
                 <VerticalStackLayout Spacing="12">
                     <Label Text="Trip history (last 20)" FontAttributes="Bold" />
                     <CollectionView ItemsSource="{Binding TripHistoryEntries}">
@@ -172,9 +181,10 @@
                         </CollectionView.ItemTemplate>
                     </CollectionView>
                 </VerticalStackLayout>
-            </Frame>
+            </Border>
 
             <Label Text="{Binding LastActionText}" FontSize="12" TextColor="#888888" />
+
         </VerticalStackLayout>
     </ScrollView>
 </ContentPage>

@@ -20,9 +20,9 @@
   <uses-feature android:name="android.hardware.telephony" android:required="false" />
 
   <application
-          android:allowBackup="false"
-          android:label="Alarma"
-          android:hardwareAccelerated="true"
-          android:usesCleartextTraffic="false">
+      android:allowBackup="false"
+      android:label="Alarma"
+      android:hardwareAccelerated="true"
+      android:usesCleartextTraffic="false">
   </application>
 </manifest>
