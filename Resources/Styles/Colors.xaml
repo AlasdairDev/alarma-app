@@ -1,9 +1,25 @@
 <?xml version="1.0" encoding="UTF-8" ?>
 <ResourceDictionary xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
                     xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml">
-    <Color x:Key="Primary">#1B1F3B</Color>
-    <Color x:Key="PrimaryDark">#12162B</Color>
-    <Color x:Key="Secondary">#FF6B35</Color>
-    <Color x:Key="Background">#F5F6FA</Color>
+    <Color x:Key="AppBgDeep">#1A0F35</Color>
+    <Color x:Key="AppBg">#2D1B4E</Color>
+    <Color x:Key="AppCard">#3D2B5E</Color>
+    <Color x:Key="AppInput">#4A3570</Color>
+    <Color x:Key="AppBorder">#5A4580</Color>
+    <Color x:Key="AppPurple">#7B3FA0</Color>
+    <Color x:Key="AppPurpleLight">#9B6FBF</Color>
+    <Color x:Key="AppPurplePill">#6B4598</Color>
+    <Color x:Key="AppWhite">#FFFFFF</Color>
+    <Color x:Key="AppTextSec">#C8B8E8</Color>
+    <Color x:Key="AppTextMuted">#8A7AAE</Color>
+    <Color x:Key="AppAlarmRed">#FF3B30</Color>
+    <Color x:Key="AppAlarmRedDark">#CC1A0F</Color>
+    <Color x:Key="AppAlarmOrange">#FF9500</Color>
+    <Color x:Key="AppGreen">#4CD964</Color>
+    <!-- Legacy aliases so existing code keeps compiling -->
+    <Color x:Key="Primary">#2D1B4E</Color>
+    <Color x:Key="PrimaryDark">#1A0F35</Color>
+    <Color x:Key="Secondary">#7B3FA0</Color>
+    <Color x:Key="Background">#2D1B4E</Color>
     <Color x:Key="OnPrimary">#FFFFFF</Color>
 </ResourceDictionary>

@@ -1,190 +1,174 @@
 <?xml version="1.0" encoding="utf-8" ?>
 <ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
-             xmlns:models="clr-namespace:AlarmaApp.Models"
              x:Class="AlarmaApp.Views.HomeView"
              x:Name="HomePage"
-             Title="Alarma"
-             BackgroundColor="White">
-    <ScrollView BackgroundColor="White">
-        <VerticalStackLayout Spacing="20" Padding="24">
+             Shell.NavBarIsVisible="False"
+             BackgroundColor="#2D1B4E">
 
-            <Label Text="Alarma" FontSize="32" FontAttributes="Bold" />
-            <Label Text="Offline-first Android alarm and safety scaffold." FontSize="14" TextColor="#666666" />
-            <Label Text="{Binding StatusText}" FontSize="16" />
-            <Label Text="{Binding ConnectivityText}" FontSize="14" />
-            <Label Text="{Binding OnboardingStatusText}" FontSize="12" TextColor="#888888" />
+    <Grid RowDefinitions="Auto,*">
 
-            <!-- Onboarding prompt -->
-            <Border Stroke="#E0E0E0" StrokeThickness="1" StrokeShape="RoundRectangle 8" Padding="16"
-                    IsVisible="{Binding ShowOnboardingPrompt}" BackgroundColor="White">
-                <VerticalStackLayout Spacing="10">
-                    <Label Text="Get started" FontAttributes="Bold" />
-                    <Label Text="Add an emergency contact and confirm your alarm settings." FontSize="12" TextColor="#666666" />
-                    <Button Text="Mark onboarding complete" Command="{Binding CompleteOnboardingCommand}" />
-                </VerticalStackLayout>
+        <!-- Dark purple header -->
+        <VerticalStackLayout Grid.Row="0"
+                             BackgroundColor="#2D1B4E"
+                             Padding="24,48,24,20">
+            <Label Text="{Binding Greeting}"
+                   FontSize="18"
+                   TextColor="#C8B8E8" />
+            <Label Text="Where are you headed?"
+                   FontSize="26"
+                   FontAttributes="Bold"
+                   TextColor="White"
+                   Margin="0,2,0,16" />
+
+            <!-- Search pill — tappable, navigates to SearchView -->
+            <Border BackgroundColor="White"
+                    StrokeShape="RoundRectangle 28"
+                    Stroke="Transparent"
+                    Padding="16,13">
+                <Grid ColumnDefinitions="Auto,*">
+                    <Label Grid.Column="0"
+                           Text="&#128269;"
+                           FontSize="16"
+                           TextColor="#888888"
+                           VerticalOptions="Center" />
+                    <Label Grid.Column="1"
+                           Text="{Binding DestinationSummaryText}"
+                           TextColor="#888888"
+                           FontSize="14"
+                           Margin="10,0,0,0"
+                           VerticalOptions="Center"
+                           LineBreakMode="TailTruncation" />
+                </Grid>
+                <Border.GestureRecognizers>
+                    <TapGestureRecognizer Tapped="OnSearchTapped" />
+                </Border.GestureRecognizers>
+            </Border>
+        </VerticalStackLayout>
+
+        <!-- Map fills the rest -->
+        <WebView x:Name="MapWebView"
+                 Grid.Row="1"
+                 Source="{Binding MapHtmlSource}"
+                 HorizontalOptions="Fill"
+                 VerticalOptions="Fill" />
+
+        <!-- Bottom overlays stacked above tab bar — FAB is first so it floats above cards -->
+        <VerticalStackLayout Grid.Row="1"
+                             VerticalOptions="End"
+                             HorizontalOptions="Fill"
+                             Spacing="8"
+                             Margin="0,0,0,16">
+
+            <!-- Location FAB — floats right, above the card stack -->
+            <Button HorizontalOptions="End"
+                    Text="&#9685;"
+                    FontSize="18"
+                    WidthRequest="52"
+                    HeightRequest="52"
+                    CornerRadius="26"
+                    BackgroundColor="White"
+                    TextColor="#2D1B4E"
+                    Margin="0,0,20,0"
+                    Padding="0"
+                    Command="{Binding CenterOnUserCommand}" />
+
+            <!-- View Active Trip pill (when tracking) -->
+            <Border IsVisible="{Binding IsTracking}"
+                    BackgroundColor="#7B3FA0"
+                    Stroke="Transparent"
+                    StrokeShape="RoundRectangle 28"
+                    Padding="24,14"
+                    HorizontalOptions="Center">
+                <Label Text="&#128205;  View Active Trip"
+                       TextColor="White"
+                       FontSize="15"
+                       FontAttributes="Bold"
+                       HorizontalOptions="Center" />
+                <Border.GestureRecognizers>
+                    <TapGestureRecognizer Tapped="OnViewActiveTripTapped" />
+                </Border.GestureRecognizers>
             </Border>
 
-            <!-- Alarm settings -->
-            <Border Stroke="#E0E0E0" StrokeThickness="1" StrokeShape="RoundRectangle 8" Padding="16" BackgroundColor="White">
+            <!-- Earphones connected banner -->
+            <Border IsVisible="{Binding IsEarphonesConnected}"
+                    BackgroundColor="#3D2B5E"
+                    Stroke="Transparent"
+                    StrokeShape="RoundRectangle 20"
+                    Padding="20,10"
+                    HorizontalOptions="Center">
+                <Label Text="&#127911;  Earphones connected"
+                       TextColor="#C8B8E8"
+                       FontSize="13"
+                       HorizontalOptions="Center" />
+            </Border>
+
+            <!-- Start Trip card — shown when destination set and not yet tracking -->
+            <Border IsVisible="{Binding HasDestination}"
+                    BackgroundColor="#EE1A0F35"
+                    StrokeShape="RoundRectangle 16"
+                    Stroke="Transparent"
+                    Margin="16,0"
+                    Padding="20,16">
                 <VerticalStackLayout Spacing="12">
-                    <Label Text="Alarm settings" FontAttributes="Bold" />
-                    <Label Text="Alarm sound" FontSize="12" TextColor="#666666" />
-                    <Picker ItemsSource="{Binding AlarmSoundOptions}" SelectedItem="{Binding AlarmSound}" />
-                    <Label Text="{Binding AlarmLeadMinutes, StringFormat='Alarm lead time: {0:F0} minutes'}" FontSize="12" />
-                    <Stepper Minimum="1" Maximum="60" Increment="1" Value="{Binding AlarmLeadMinutes}" />
-                    <HorizontalStackLayout Spacing="12">
-                        <Label Text="Vibration-only mode" VerticalOptions="Center" />
-                        <Switch IsToggled="{Binding VibrationOnly}" />
-                    </HorizontalStackLayout>
-                    <Button Text="Initialize Local Database" Command="{Binding InitializeCommand}" />
+                    <Grid ColumnDefinitions="*,Auto">
+                        <Label Grid.Column="0"
+                               Text="{Binding DestinationSummaryText}"
+                               FontSize="14"
+                               FontAttributes="Bold"
+                               TextColor="White"
+                               LineBreakMode="TailTruncation"
+                               VerticalOptions="Center" />
+                        <Label Grid.Column="1"
+                               Text="&#11088;"
+                               FontSize="18"
+                               TextColor="#9B6FBF"
+                               VerticalOptions="Center"
+                               Margin="8,0,0,0">
+                            <Label.GestureRecognizers>
+                                <TapGestureRecognizer Command="{Binding SaveDestinationCommand}" />
+                            </Label.GestureRecognizers>
+                        </Label>
+                    </Grid>
+                    <Grid ColumnDefinitions="*,Auto"
+                          ColumnSpacing="12">
+                        <Picker Grid.Column="0"
+                                ItemsSource="{Binding VehicleTypeOptions}"
+                                SelectedItem="{Binding VehicleType}"
+                                TextColor="White"
+                                FontSize="14"
+                                BackgroundColor="#4A3570"
+                                Title="Vehicle type" />
+                        <Button Grid.Column="1"
+                                Text="Start Trip"
+                                FontSize="14"
+                                BackgroundColor="#7B3FA0"
+                                TextColor="White"
+                                CornerRadius="20"
+                                Padding="20,10"
+                                IsVisible="{Binding IsNotTracking}"
+                                Command="{Binding StartTrackingCommand}" />
+                    </Grid>
                 </VerticalStackLayout>
             </Border>
-
-            <!-- Destination search -->
-            <Border Stroke="#E0E0E0" StrokeThickness="1" StrokeShape="RoundRectangle 8" Padding="16" BackgroundColor="White">
-                <VerticalStackLayout Spacing="12">
-                    <Label Text="Destination" FontAttributes="Bold" />
-                    <Entry Placeholder="Destination search query" Text="{Binding DestinationQuery}" />
-                    <HorizontalStackLayout Spacing="12">
-                        <Button Text="Search Destination" Command="{Binding SearchDestinationCommand}" />
-                        <Button Text="Save Route" Command="{Binding SaveDestinationCommand}" IsEnabled="{Binding CanSaveRoute}" />
-                    </HorizontalStackLayout>
-                    <Label Text="{Binding DestinationSummaryText}" FontSize="12" TextColor="#666666" />
-                    <Image Source="{Binding MapTileSource}"
-                           HeightRequest="180"
-                           WidthRequest="180"
-                           Aspect="AspectFill"
-                           IsVisible="{Binding HasMapTile}" />
-                    <Button Text="Open Google Maps Reroute" Command="{Binding OpenMapsCommand}" />
-                </VerticalStackLayout>
-            </Border>
-
-            <!-- Trip tracking -->
-            <Border Stroke="#E0E0E0" StrokeThickness="1" StrokeShape="RoundRectangle 8" Padding="16" BackgroundColor="White">
-                <VerticalStackLayout Spacing="12">
-                    <Label Text="Trip tracking" FontAttributes="Bold" />
-                    <Label Text="{Binding TrackingStatusText}" FontSize="14" TextColor="#666666" />
-                    <Label Text="{Binding DistanceToDestinationText}" FontSize="12" TextColor="#666666" />
-                    <HorizontalStackLayout Spacing="12">
-                        <Button Text="Start Trip Tracking" Command="{Binding StartTrackingCommand}" IsEnabled="{Binding IsNotTracking}" />
-                        <Button Text="Stop Trip Tracking" Command="{Binding StopTrackingCommand}" IsEnabled="{Binding IsTracking}" />
-                    </HorizontalStackLayout>
-                    <Button Text="Send Test SOS SMS" Command="{Binding SendTestSmsCommand}" IsEnabled="{Binding CanSendSos}" />
-                </VerticalStackLayout>
-            </Border>
-
-            <!-- Availability and device status -->
-            <Border Stroke="#E0E0E0" StrokeThickness="1" StrokeShape="RoundRectangle 8" Padding="16" BackgroundColor="White">
-                <VerticalStackLayout Spacing="12">
-                    <Label Text="Availability &amp; device status" FontAttributes="Bold" />
-                    <Label Text="{Binding AvailabilityStatusText}" FontSize="12" TextColor="#666666" />
-                    <Button Text="Refresh availability" Command="{Binding RefreshAvailabilityCommand}" />
-                    <Label Text="{Binding EarphoneStatusText}" FontSize="12" TextColor="#666666" />
-                    <Button Text="Check earphone connection" Command="{Binding RefreshEarphoneStatusCommand}" />
-                    <Label Text="{Binding BatteryOptimizationStatusText}" FontSize="12" TextColor="#666666" />
-                    <Button Text="Allow battery optimization ignore" Command="{Binding RequestBatteryOptimizationCommand}" />
-                </VerticalStackLayout>
-            </Border>
-
-            <!-- Emergency contacts -->
-            <Border Stroke="#E0E0E0" StrokeThickness="1" StrokeShape="RoundRectangle 8" Padding="16" BackgroundColor="White">
-                <VerticalStackLayout Spacing="12">
-                    <Label Text="Emergency contacts" FontAttributes="Bold" />
-                    <Entry Placeholder="Contact name" Text="{Binding NewContactName}" />
-                    <Entry Placeholder="Phone number" Text="{Binding NewContactNumber}" Keyboard="Telephone" />
-                    <Button Text="Add contact" Command="{Binding AddEmergencyContactCommand}" />
-                    <CollectionView ItemsSource="{Binding EmergencyContacts}">
-                        <CollectionView.EmptyView>
-                            <Label Text="No emergency contacts saved yet." FontSize="12" TextColor="#888888" />
-                        </CollectionView.EmptyView>
-                        <CollectionView.ItemTemplate>
-                            <DataTemplate>
-                                <VerticalStackLayout Spacing="6" Padding="8" BackgroundColor="#F7F7F7">
-                                    <Label Text="{Binding Name}" FontAttributes="Bold" />
-                                    <Label Text="{Binding PhoneNumber}" FontSize="12" TextColor="#666666" />
-                                    <Label Text="Primary contact" FontSize="12" TextColor="#1B1F3B" IsVisible="{Binding IsPrimary}" />
-                                    <HorizontalStackLayout Spacing="12">
-                                        <Button Text="Set Primary"
-                                                Command="{Binding BindingContext.SetPrimaryContactCommand, Source={x:Reference HomePage}}"
-                                                CommandParameter="{Binding .}" />
-                                        <Button Text="Remove"
-                                                Command="{Binding BindingContext.RemoveEmergencyContactCommand, Source={x:Reference HomePage}}"
-                                                CommandParameter="{Binding .}" />
-                                    </HorizontalStackLayout>
-                                </VerticalStackLayout>
-                            </DataTemplate>
-                        </CollectionView.ItemTemplate>
-                    </CollectionView>
-                </VerticalStackLayout>
-            </Border>
-
-            <!-- Saved routes -->
-            <Border Stroke="#E0E0E0" StrokeThickness="1" StrokeShape="RoundRectangle 8" Padding="16" BackgroundColor="White">
-                <VerticalStackLayout Spacing="12">
-                    <Label Text="Saved routes (up to 5)" FontAttributes="Bold" />
-                    <Entry Placeholder="Optional route name" Text="{Binding NewRouteName}" />
-                    <Button Text="Save last destination" Command="{Binding SaveDestinationCommand}" IsEnabled="{Binding CanSaveRoute}" />
-                    <CollectionView ItemsSource="{Binding SavedRoutes}">
-                        <CollectionView.EmptyView>
-                            <Label Text="No saved routes yet." FontSize="12" TextColor="#888888" />
-                        </CollectionView.EmptyView>
-                        <CollectionView.ItemTemplate>
-                            <DataTemplate>
-                                <VerticalStackLayout Spacing="6" Padding="8" BackgroundColor="#F7F7F7">
-                                    <Label Text="{Binding Name}" FontAttributes="Bold" />
-                                    <Label Text="{Binding Notes}" FontSize="12" TextColor="#666666" />
-                                    <HorizontalStackLayout Spacing="12">
-                                        <Button Text="Use"
-                                                Command="{Binding BindingContext.ApplySavedRouteCommand, Source={x:Reference HomePage}}"
-                                                CommandParameter="{Binding .}" />
-                                        <Button Text="Remove"
-                                                Command="{Binding BindingContext.RemoveSavedRouteCommand, Source={x:Reference HomePage}}"
-                                                CommandParameter="{Binding .}" />
-                                    </HorizontalStackLayout>
-                                </VerticalStackLayout>
-                            </DataTemplate>
-                        </CollectionView.ItemTemplate>
-                    </CollectionView>
-                </VerticalStackLayout>
-            </Border>
-
-            <!-- Backup and export -->
-            <Border Stroke="#E0E0E0" StrokeThickness="1" StrokeShape="RoundRectangle 8" Padding="16" BackgroundColor="White">
-                <VerticalStackLayout Spacing="12">
-                    <Label Text="Backup &amp; export" FontAttributes="Bold" />
-                    <Label Text="{Binding LastBackupText}" FontSize="12" TextColor="#666666" />
-                    <HorizontalStackLayout Spacing="12">
-                        <Button Text="Export backup" Command="{Binding ExportBackupCommand}" />
-                        <Button Text="Restore latest" Command="{Binding RestoreBackupCommand}" IsEnabled="{Binding HasBackupAvailable}" />
-                    </HorizontalStackLayout>
-                    <Label Text="{Binding BackupStatusText}" FontSize="12" TextColor="#666666" />
-                </VerticalStackLayout>
-            </Border>
-
-            <!-- Trip history -->
-            <Border Stroke="#E0E0E0" StrokeThickness="1" StrokeShape="RoundRectangle 8" Padding="16" BackgroundColor="White">
-                <VerticalStackLayout Spacing="12">
-                    <Label Text="Trip history (last 20)" FontAttributes="Bold" />
-                    <CollectionView ItemsSource="{Binding TripHistoryEntries}">
-                        <CollectionView.EmptyView>
-                            <Label Text="No trip history yet." FontSize="12" TextColor="#888888" />
-                        </CollectionView.EmptyView>
-                        <CollectionView.ItemTemplate>
-                            <DataTemplate x:DataType="models:TripHistory">
-                                <VerticalStackLayout Spacing="4" Padding="8" BackgroundColor="#F7F7F7">
-                                    <Label Text="{Binding DestinationName}" FontAttributes="Bold" />
-                                    <Label Text="{Binding StartedAt, StringFormat='Started {0:g}'}" FontSize="12" TextColor="#666666" />
-                                    <Label Text="{Binding Summary}" FontSize="12" TextColor="#666666" />
-                                </VerticalStackLayout>
-                            </DataTemplate>
-                        </CollectionView.ItemTemplate>
-                    </CollectionView>
-                </VerticalStackLayout>
-            </Border>
-
-            <Label Text="{Binding LastActionText}" FontSize="12" TextColor="#888888" />
 
         </VerticalStackLayout>
-    </ScrollView>
+
+        <!-- Offline banner at top of map -->
+        <Border Grid.Row="1"
+                IsVisible="{Binding IsOffline}"
+                BackgroundColor="#4A3570"
+                Stroke="Transparent"
+                StrokeShape="RoundRectangle 8"
+                Padding="16,8"
+                HorizontalOptions="Center"
+                VerticalOptions="Start"
+                Margin="16,12">
+            <Label Text="{Binding ConnectivityText}"
+                   TextColor="#C8B8E8"
+                   FontSize="12"
+                   HorizontalOptions="Center" />
+        </Border>
+
+    </Grid>
 </ContentPage>

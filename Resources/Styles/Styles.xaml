@@ -1,12 +1,44 @@
 <?xml version="1.0" encoding="UTF-8" ?>
-<ResourceDictionary xmlns="http://schemas.microsoft.com/dotnet/2021/maui">
-    <Style TargetType="Label">
-        <Setter Property="TextColor" Value="{StaticResource Primary}" />
+<ResourceDictionary xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml">
+    <Style TargetType="ContentPage" ApplyToDerivedTypes="True">
+        <Setter Property="BackgroundColor" Value="{StaticResource AppBg}" />
     </Style>
-
+    <Style TargetType="Label">
+        <Setter Property="TextColor" Value="{StaticResource AppWhite}" />
+    </Style>
     <Style TargetType="Button">
-        <Setter Property="BackgroundColor" Value="{StaticResource Secondary}" />
-        <Setter Property="TextColor" Value="{StaticResource OnPrimary}" />
-        <Setter Property="CornerRadius" Value="12" />
+        <Setter Property="BackgroundColor" Value="{StaticResource AppPurple}" />
+        <Setter Property="TextColor" Value="{StaticResource AppWhite}" />
+        <Setter Property="CornerRadius" Value="24" />
+        <Setter Property="FontAttributes" Value="Bold" />
+        <Setter Property="Padding" Value="20,12" />
+    </Style>
+    <Style TargetType="Entry">
+        <Setter Property="TextColor" Value="{StaticResource AppWhite}" />
+        <Setter Property="PlaceholderColor" Value="{StaticResource AppTextMuted}" />
+        <Setter Property="BackgroundColor" Value="Transparent" />
+    </Style>
+    <Style x:Key="SectionHeader" TargetType="Label">
+        <Setter Property="TextColor" Value="{StaticResource AppTextMuted}" />
+        <Setter Property="FontSize" Value="11" />
+        <Setter Property="FontAttributes" Value="Bold" />
+        <Setter Property="Margin" Value="0,16,0,4" />
+    </Style>
+    <Style x:Key="CardBorder" TargetType="Border">
+        <Setter Property="BackgroundColor" Value="{StaticResource AppCard}" />
+        <Setter Property="Stroke" Value="Transparent" />
+        <Setter Property="StrokeShape" Value="RoundRectangle 12" />
+        <Setter Property="Padding" Value="16" />
+    </Style>
+    <Style x:Key="PillButton" TargetType="Button">
+        <Setter Property="BackgroundColor" Value="{StaticResource AppPurplePill}" />
+        <Setter Property="TextColor" Value="{StaticResource AppWhite}" />
+        <Setter Property="CornerRadius" Value="24" />
+        <Setter Property="FontAttributes" Value="Bold" />
+        <Setter Property="Padding" Value="24,14" />
+    </Style>
+    <Style x:Key="SettingsRow" TargetType="Grid">
+        <Setter Property="Padding" Value="0,14" />
     </Style>
 </ResourceDictionary>

@@ -2,16 +2,16 @@ namespace AlarmaApp;
 
 public partial class App : Application
 {
-    private readonly Views.HomeView _homeView;
+    private readonly AppShell _shell;
 
-    public App(Views.HomeView homeView)
+    public App(AppShell shell)
     {
-        _homeView = homeView;
+        _shell = shell;
         InitializeComponent();
     }
 
     protected override Window CreateWindow(IActivationState? activationState)
     {
-        return new Window(_homeView);
+        return new Window(_shell);
     }
 }
