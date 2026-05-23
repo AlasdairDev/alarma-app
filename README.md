@@ -1,6 +1,6 @@
-# Alarma — Android Safety Alarm App (.NET MAUI)
+# Alarma — Adaptive Anti-Oversleep Destination Alarm and Emergency Safety System
 
-Alarma is an **offline-first** Android safety app that tracks your commute via GPS and fires a multi-stage alarm when you are approaching, arriving at, or overshooting your destination. All user data is stored exclusively on-device to comply with RA 10173 (Data Privacy Act of the Philippines).
+Alarma is an **offline-first** Android safety app built for Metro Manila jeepney, UV Express, and city bus commuters. It tracks your commute via GPS, fires a multi-stage escalating alarm as you approach your stop, detects overshoot, and provides emergency safety tools. All user data is stored exclusively on-device in compliance with RA 10173 (Data Privacy Act of the Philippines).
 
 ---
 
@@ -22,8 +22,9 @@ Alarma is an **offline-first** Android safety app that tracks your commute via G
 | Framework | .NET MAUI (.NET 9) |
 | Language | C# |
 | Architecture | MVC |
-| Local DB | `sqlite-net-pcl` — trip history, saved routes, emergency contacts, behavioral profiles |
-| Key-value store | MAUI `Preferences` API — alarm sound, lead time, onboarding status |
+| Local DB | `sqlite-net-pcl` — trip history, saved routes, emergency contacts |
+| Key-value store | MAUI `Preferences` API — alarm settings, vehicle type, vibration, onboarding state |
+| Map rendering | Leaflet.js + CartoDB dark tiles in a MAUI `WebView` |
 | Build tooling | `UseInterpreter=true` for faster debug iteration on Android |
 
 ---
@@ -34,48 +35,81 @@ Alarma makes **no outbound requests to a proprietary backend**. The only network
 
 | Integration | Purpose |
 |---|---|
-| **Nominatim API** (HTTPS GET) | Text-based destination geocoding before a trip begins. Requires internet. |
-| **OpenStreetMap tile server** | Downloads a single map tile thumbnail during destination setup. Requires internet. |
-| **Google Maps Intent** | Launches the installed Google Maps app for rerouting on overshoot. No API key needed. |
+| **Photon API** (photon.komoot.io) | Primary geocoding — Elasticsearch-backed, fuzzy matching, location-biased to Metro Manila. No API key. |
+| **Nominatim API** (nominatim.openstreetmap.org) | Fallback geocoding when Photon returns fewer than 3 results. No API key. |
+| **Philippine alias expansion** | Client-side dictionary expands abbreviations (BGC, MOA, NAIA, CDO, MRT, etc.) before querying. |
+| **CartoDB tile server via Leaflet.js** | Renders interactive OpenStreetMap in a MAUI WebView. Requires internet. |
+| **Google Maps Intent** | Launches the installed Google Maps app for rerouting on overshoot. No API key. |
 | **Android `LocationManager`** | Continuous background GPS tracking via a foreground `Service`. Works offline. |
-| **Android `SmsManager`** | Sends emergency SOS messages with GPS coordinates over cellular. No internet needed. |
+| **Android `SmsManager`** | Sends emergency SOS messages with GPS coordinates and a Google Maps link over cellular. No internet needed. |
 | **`AudioManager` + `NotificationManager`** | Fires multi-stage alarms, overrides silent/DND mode when critical. |
 | **`Vibrator`** | Vibration-only alarm stages for users who disable ringtones. |
-| **`BiometricPrompt`** | PIN or biometric unlock when the app launches (release builds only). |
+| **`BiometricPrompt`** | PIN or biometric unlock on app launch (release builds). |
 | **`ConnectivityManager`** | Checks network availability before destination search and tile download. |
 | **`PowerManager`** | Requests battery-optimization exemption to keep the foreground service alive. |
+| **`AudioManager.GetDevices()`** | Detects wired and Bluetooth earphone connections. |
 
 ---
 
 ## Feature set
 
-| Feature | Status |
-|---|---|
-| GPS-based real-time location tracking | Implemented |
-| Background foreground location service | Implemented |
-| Multi-stage alarm system (3 stages) | Implemented |
-| Adaptive alarm trigger distance (speed-based) | Implemented |
-| Automatic alarm volume escalation per stage | Implemented |
-| Vibration-only mode | Implemented |
-| Alarm sound selection (Default / Alarm / Notification / Ringtone) | Implemented |
-| DND and silent mode override for critical alarms | Implemented |
-| Overshoot detection | Implemented |
-| Route deviation detection | Implemented |
-| Google Maps rerouting on overshoot | Implemented |
-| Emergency SOS via native SMS (no internet required) | Implemented |
-| Emergency contact management (SQLite) | Implemented |
-| Saved favorite routes (up to 5, SQLite) | Implemented |
-| Travel history dashboard (last 20 trips, SQLite) | Implemented |
-| Destination search via Nominatim API | Implemented |
-| OpenStreetMap tile display | Implemented |
-| Offline-first operation | Implemented |
-| Load availability notification (online ↔ offline transition) | Implemented |
-| PIN or biometric authentication (BiometricPrompt, release builds) | Implemented |
-| In-app JSON backup and restore | Implemented |
-| Battery optimization exemption request | Implemented |
-| Earphone connection detection | Implemented |
+| Feature | Status | Notes |
+|---|---|---|
+| GPS-based real-time location tracking | ✅ | Haversine distance, adaptive speed calculation |
+| Background foreground location service | ✅ | Persistent notification, survives screen-off |
+| Multi-stage alarm system (3 stages) | ✅ | Stage 1 → Stage 2 → Emergency full-screen |
+| Adaptive alarm trigger distance | ✅ | Speed × lead time, vehicle-type minimum distances |
+| Vehicle type selection | ✅ | Jeepney (300 m min), UV Express (500 m), City Bus (400 m) |
+| Alarm volume escalation per stage | ✅ | Via `AudioManager` alarm channel priority |
+| Vibration intensity (Low / Medium / High) | ✅ | Stored in Preferences |
+| Vibration-only mode | ✅ | Suppresses ringtone |
+| Alarm sound selection (5 options) | ✅ | Default / Alarm / Chime / Notification / Ringtone |
+| Alarm snooze (max 3, then escalates) | ✅ | Auto-escalates to Stage 3 after 3 snoozes |
+| DND and silent mode override | ✅ | Stage 2 + Stage 3 use alarm channel priority |
+| Overshoot detection | ✅ | Consecutive distance monitoring past stop |
+| Route deviation detection | ✅ | Alerts when moving away from destination |
+| Google Maps rerouting on overshoot | ✅ | Android Intent with pre-filled destination coordinates |
+| Destination search — dual-source geocoding | ✅ | Photon (primary, fuzzy) + Nominatim (fallback) |
+| Philippine abbreviation expansion | ✅ | BGC, MOA, NAIA, CDO, MRT, EDSA, Greenbelt, etc. |
+| Place-type subtitles in search results | ✅ | Hospital, Fast Food, University, Barangay, Street, etc. |
+| As-you-type search with 800 ms debounce | ✅ | Spinner shown during search |
+| Map destination pin with popup | ✅ | Map pans to selection at zoom 15 after picking a result |
+| Live user location dot on map | ✅ | Blue circle updated every 5 s while tracking |
+| Center-on-me FAB | ✅ | Tapping the circle button pans map to current GPS position |
+| Emergency SOS — 2-second hold activation | ✅ | Prevents accidental sends |
+| SOS sends to all emergency contacts simultaneously | ✅ | All saved contacts, not just primary |
+| SOS message includes GPS + Google Maps link | ✅ | `https://maps.google.com/?q=LAT,LON` in SMS body |
+| SOS rate limiter | ✅ | 30-second cooldown between sends |
+| Emergency contact management (up to 3) | ✅ | Philippine number format validated (09X / +639X) |
+| Saved favorite routes (up to 5) | ✅ | Route name 2–30 characters; tap to apply, star to remove |
+| Save destination shortcut | ✅ | Star icon in the destination card on the Home screen |
+| Travel history dashboard (last 20 trips) | ✅ | Start time, destination, duration, distance, overshoot badge |
+| Trip history badges | ✅ | Alarm stage reached, km traveled, duration, Missed Stop |
+| Onboarding tutorial (4 slides) | ✅ | Shown on first launch; swipe or tap to advance |
+| PIN or biometric authentication | ✅ | `BiometricPrompt` on launch (release builds) |
+| In-app AES-GCM encrypted backup and restore | ✅ | Exports to local device storage |
+| Battery optimization exemption request | ✅ | Prevents OS from killing the GPS service |
+| Earphone connection detection | ✅ | Wired and Bluetooth via `AudioManager.GetDevices()` |
+| Offline-first operation | ✅ | GPS, alarms, SOS, saved routes all work without internet |
+| Load availability notification | ✅ | Online ↔ offline transition banner |
 
-> **Note on biometric auth:** The `BiometricPrompt` flow is active in **release builds only**. Debug builds bypass authentication automatically so the app can run on emulators that have no enrolled biometrics.
+---
+
+## Navigation structure
+
+```
+Shell (TabBar)
+├── History       — trip history with Departure → Destination cards, distance/duration/overshoot badges
+├── Favorites     — saved routes for one-tap trip starts; star tap on Home destination card saves here
+├── Home          — map, destination search, Start Trip card, live user dot, center-on-me FAB
+├── Emergency     — SOS press-and-hold button; sends SMS to all emergency contacts
+└── Settings      — alarm sound, battery optimisation, backup/restore
+
+Modal routes (push navigation)
+├── search        — full-screen destination search with Photon + Nominatim autocomplete
+├── alarmstage    — full-screen alarm stage UI (dismiss / snooze)
+└── onboarding    — first-launch 4-slide tutorial (swipeable)
+```
 
 ---
 
@@ -84,25 +118,31 @@ Alarma makes **no outbound requests to a proprietary backend**. The only network
 ```
 AlarmaApp/
 ├── Controllers/
-│   └── HomeController.cs          # Business logic, INotifyPropertyChanged, all ICommand bindings
+│   └── HomeController.cs          # All business logic, INotifyPropertyChanged, ICommand bindings
 ├── Models/
 │   ├── AlarmStage.cs              # Stage1 / Stage2 / Stage3 enum
-│   ├── BackupPayload.cs           # JSON backup schema
-│   ├── BehavioralProfile.cs       # Saved alarm preset (name, lead time, sound)
+│   ├── BackupPayload.cs           # AES-GCM encrypted backup schema
+│   ├── BehavioralProfile.cs       # Adaptive profile model (reaction time, snooze frequency)
 │   ├── EmergencyContact.cs        # Name, phone number, IsPrimary flag
 │   ├── LocationSnapshot.cs        # Lat/lon, accuracy, timestamp
 │   ├── SavedRoute.cs              # Destination name, coordinates
-│   └── TripHistory.cs             # Start/end time, distance, overshoot flag, summary
+│   └── TripHistory.cs             # Start/end time, distance, overshoot, alarm stage, snooze count
 ├── Views/
-│   └── HomeView.xaml(.cs)         # Single-page compiled-binding MAUI view
+│   ├── HomeView.xaml(.cs)         # Map, search pill, Start Trip card, location FAB
+│   ├── SearchView.xaml(.cs)       # Full-screen search with debounced autocomplete
+│   ├── AlarmStageView.xaml(.cs)   # Full-screen alarm dismiss/snooze UI
+│   ├── EmergencyView.xaml(.cs)    # SOS hold-to-activate button
+│   ├── FavoritesView.xaml(.cs)    # Saved routes list
+│   ├── HistoryView.xaml(.cs)      # Trip history cards
+│   ├── SettingsView.xaml(.cs)     # Alarm, backup, permissions settings
+│   └── OnboardingView.xaml(.cs)   # 4-slide first-launch tutorial
 ├── Services/
-│   ├── BackupService.cs           # Export and restore JSON backup
+│   ├── BackupService.cs           # AES-GCM export and restore
 │   ├── DatabaseService.cs         # SQLite CRUD via sqlite-net-pcl
-│   ├── GeocodingService.cs        # Nominatim HTTPS search
-│   ├── OpenStreetMapTileService.cs# OSM tile URI generator (Web Mercator)
+│   ├── GeocodingService.cs        # Photon (primary) + Nominatim (fallback) with PH alias expansion
 │   ├── PermissionsService.cs      # Runtime permission helpers
 │   ├── PreferencesService.cs      # MAUI Preferences wrapper
-│   └── Interfaces/                # Service contracts (ISmsService, ILocationService, …)
+│   └── Interfaces/                # ISmsService, ILocationService, IAlarmAudioService, etc.
 ├── Platforms/Android/
 │   ├── AndroidAlarmAudioService.cs        # AudioManager, volume, ringtone, vibration
 │   ├── AndroidAlarmNotificationService.cs # NotificationManager channel + alerts
@@ -112,12 +152,14 @@ AlarmaApp/
 │   ├── AndroidEarphoneService.cs          # AudioManager.GetDevices() wired + BT detection
 │   ├── AndroidGoogleMapsLauncher.cs       # google.navigation: intent + geo: fallback
 │   ├── AndroidLocationService.cs          # Wraps LocationTrackingService foreground service
-│   ├── AndroidSmsService.cs               # SmsManager direct SMS
+│   ├── AndroidSmsService.cs               # SmsManager direct SMS (re-validates PH number format)
 │   ├── LocationTrackingService.cs         # Android Service + ILocationListener, GPS+Network
 │   ├── MainActivity.cs
+│   ├── MainApplication.cs
 │   └── AndroidManifest.xml
+├── AppShell.xaml(.cs)             # TabBar + modal route registration
 └── Resources/
-    ├── Strings/AppStrings.cs      # BiometricPromptTitle, BiometricPromptCancel
+    ├── Images/                    # Onboarding slide illustrations (tutorial1–4.png)
     └── Styles/                    # Colors.xaml, Styles.xaml
 ```
 
@@ -179,7 +221,13 @@ dotnet publish -f net9.0-android -c Release
 ## Privacy
 
 No data leaves the device except:
-- Destination text queries sent to the Nominatim public API over HTTPS.
-- Map tile image requests sent to OpenStreetMap tile servers over HTTPS.
+- Destination text queries sent to Photon (photon.komoot.io) and Nominatim (nominatim.openstreetmap.org) over HTTPS.
+- Map tile image requests sent to CartoDB/OpenStreetMap tile servers over HTTPS.
 
-Emergency SMS messages are sent over the cellular network directly from `SmsManager` — they do not pass through any Alarma server.
+Emergency SOS messages are sent directly from Android `SmsManager` over the cellular network — they do not pass through any Alarma server. All GPS coordinates, emergency contacts, trip history, and behavioral data are stored exclusively on the user's device in a local SQLite database encrypted at the application layer, in compliance with RA 10173 (Data Privacy Act of the Philippines).
+
+---
+
+## Capstone project
+
+Alarma is a PUP (Polytechnic University of the Philippines) BSIT 3-4 capstone project by Keith Justin S. Ababao, Kyla J. Barbin, Roje Alasdair T. Evangelista, and Pauline R. Lacanilaο.

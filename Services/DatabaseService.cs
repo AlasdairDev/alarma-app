@@ -6,58 +6,135 @@ namespace AlarmaApp.Services;
 
 public class DatabaseService
 {
-    private readonly Lazy<SQLiteAsyncConnection> _connection;
+    private SQLiteAsyncConnection? _connection;
+    private readonly SemaphoreSlim _initSemaphore = new(1, 1);
 
     public DatabaseService()
     {
         SQLitePCL.Batteries_V2.Init();
-        var databasePath = Path.Combine(FileSystem.AppDataDirectory, "alarma.db3");
-        _connection = new Lazy<SQLiteAsyncConnection>(() => new SQLiteAsyncConnection(databasePath));
+    }
+
+    private async Task<SQLiteAsyncConnection> GetConnectionAsync()
+    {
+        if (_connection is not null) return _connection;
+
+        await _initSemaphore.WaitAsync();
+        try
+        {
+            if (_connection is not null) return _connection;
+
+            var key = await GetOrCreateDatabaseKeyAsync();
+            var databasePath = Path.Combine(FileSystem.AppDataDirectory, "alarma.db3");
+            var connectionString = new SQLiteConnectionString(
+                databasePath,
+                storeDateTimeAsTicks: true,
+                key: key);
+            _connection = new SQLiteAsyncConnection(connectionString);
+            return _connection;
+        }
+        finally
+        {
+            _initSemaphore.Release();
+        }
+    }
+
+    private static async Task<string> GetOrCreateDatabaseKeyAsync()
+    {
+        const string keyName = "alarma_db_key_v1";
+        var existing = await SecureStorage.GetAsync(keyName);
+        if (!string.IsNullOrEmpty(existing))
+            return existing;
+
+        var keyBytes = System.Security.Cryptography.RandomNumberGenerator.GetBytes(32);
+        var newKey = Convert.ToBase64String(keyBytes);
+        await SecureStorage.SetAsync(keyName, newKey);
+        return newKey;
     }
 
     public async Task InitializeAsync()
     {
-        var db = _connection.Value;
-        await db.CreateTableAsync<TripHistory>();
-        await db.CreateTableAsync<SavedRoute>();
-        await db.CreateTableAsync<EmergencyContact>();
-        await db.CreateTableAsync<BehavioralProfile>();
+        var db = await GetConnectionAsync();
+        try
+        {
+            await db.CreateTableAsync<TripHistory>();
+            await db.CreateTableAsync<SavedRoute>();
+            await db.CreateTableAsync<EmergencyContact>();
+            await db.CreateTableAsync<BehavioralProfile>();
+        }
+        catch (SQLiteException)
+        {
+            // Existing unencrypted database from a previous install — delete and recreate encrypted.
+            await db.CloseAsync();
+            _connection = null;
+            var databasePath = Path.Combine(FileSystem.AppDataDirectory, "alarma.db3");
+            if (File.Exists(databasePath))
+                File.Delete(databasePath);
+
+            db = await GetConnectionAsync();
+            await db.CreateTableAsync<TripHistory>();
+            await db.CreateTableAsync<SavedRoute>();
+            await db.CreateTableAsync<EmergencyContact>();
+            await db.CreateTableAsync<BehavioralProfile>();
+        }
     }
 
-    public Task<List<TripHistory>> GetTripHistoryAsync() => _connection.Value.Table<TripHistory>().ToListAsync();
+    public async Task<List<TripHistory>> GetTripHistoryAsync() =>
+        await (await GetConnectionAsync()).Table<TripHistory>().ToListAsync();
 
-    public Task<int> SaveTripHistoryAsync(TripHistory item) =>
-        item.Id == 0 ? _connection.Value.InsertAsync(item) : _connection.Value.UpdateAsync(item);
+    public async Task<int> SaveTripHistoryAsync(TripHistory item)
+    {
+        var db = await GetConnectionAsync();
+        return item.Id == 0 ? await db.InsertAsync(item) : await db.UpdateAsync(item);
+    }
 
-    public Task<int> ClearTripHistoryAsync() => _connection.Value.DeleteAllAsync<TripHistory>();
+    public async Task<int> ClearTripHistoryAsync() =>
+        await (await GetConnectionAsync()).DeleteAllAsync<TripHistory>();
 
-    public Task<List<SavedRoute>> GetSavedRoutesAsync() => _connection.Value.Table<SavedRoute>().ToListAsync();
+    public async Task<List<SavedRoute>> GetSavedRoutesAsync() =>
+        await (await GetConnectionAsync()).Table<SavedRoute>().ToListAsync();
 
-    public Task<int> SaveRouteAsync(SavedRoute route) =>
-        route.Id == 0 ? _connection.Value.InsertAsync(route) : _connection.Value.UpdateAsync(route);
+    public async Task<int> SaveRouteAsync(SavedRoute route)
+    {
+        var db = await GetConnectionAsync();
+        return route.Id == 0 ? await db.InsertAsync(route) : await db.UpdateAsync(route);
+    }
 
-    public Task<int> DeleteRouteAsync(SavedRoute route) => _connection.Value.DeleteAsync(route);
+    public async Task<int> DeleteRouteAsync(SavedRoute route) =>
+        await (await GetConnectionAsync()).DeleteAsync(route);
 
-    public Task<int> ClearSavedRoutesAsync() => _connection.Value.DeleteAllAsync<SavedRoute>();
+    public async Task<int> ClearSavedRoutesAsync() =>
+        await (await GetConnectionAsync()).DeleteAllAsync<SavedRoute>();
 
-    public Task<List<EmergencyContact>> GetEmergencyContactsAsync() => _connection.Value.Table<EmergencyContact>().ToListAsync();
+    public async Task<List<EmergencyContact>> GetEmergencyContactsAsync() =>
+        await (await GetConnectionAsync()).Table<EmergencyContact>().ToListAsync();
 
-    public Task<int> SaveEmergencyContactAsync(EmergencyContact contact) =>
-        contact.Id == 0 ? _connection.Value.InsertAsync(contact) : _connection.Value.UpdateAsync(contact);
+    public async Task<int> SaveEmergencyContactAsync(EmergencyContact contact)
+    {
+        var db = await GetConnectionAsync();
+        return contact.Id == 0 ? await db.InsertAsync(contact) : await db.UpdateAsync(contact);
+    }
 
-    public Task<int> DeleteEmergencyContactAsync(EmergencyContact contact) => _connection.Value.DeleteAsync(contact);
+    public async Task<int> DeleteEmergencyContactAsync(EmergencyContact contact) =>
+        await (await GetConnectionAsync()).DeleteAsync(contact);
 
-    public Task<int> ClearEmergencyContactsAsync() => _connection.Value.DeleteAllAsync<EmergencyContact>();
+    public async Task<int> ClearEmergencyContactsAsync() =>
+        await (await GetConnectionAsync()).DeleteAllAsync<EmergencyContact>();
 
-    public Task<List<BehavioralProfile>> GetBehavioralProfilesAsync() => _connection.Value.Table<BehavioralProfile>().ToListAsync();
+    public async Task<List<BehavioralProfile>> GetBehavioralProfilesAsync() =>
+        await (await GetConnectionAsync()).Table<BehavioralProfile>().ToListAsync();
 
-    public Task<int> SaveBehavioralProfileAsync(BehavioralProfile profile) =>
-        profile.Id == 0 ? _connection.Value.InsertAsync(profile) : _connection.Value.UpdateAsync(profile);
+    public async Task<int> SaveBehavioralProfileAsync(BehavioralProfile profile)
+    {
+        var db = await GetConnectionAsync();
+        return profile.Id == 0 ? await db.InsertAsync(profile) : await db.UpdateAsync(profile);
+    }
 
-    public Task<int> DeleteTripHistoryAsync(TripHistory history) => _connection.Value.DeleteAsync(history);
+    public async Task<int> DeleteTripHistoryAsync(TripHistory history) =>
+        await (await GetConnectionAsync()).DeleteAsync(history);
 
-    public Task<int> ClearBehavioralProfilesAsync() => _connection.Value.DeleteAllAsync<BehavioralProfile>();
+    public async Task<int> ClearBehavioralProfilesAsync() =>
+        await (await GetConnectionAsync()).DeleteAllAsync<BehavioralProfile>();
 
-    public Task<int> InsertAllAsync<T>(IEnumerable<T> items) where T : new() =>
-        _connection.Value.InsertAllAsync(items);
+    public async Task<int> InsertAllAsync<T>(IEnumerable<T> items) where T : new() =>
+        await (await GetConnectionAsync()).InsertAllAsync(items);
 }

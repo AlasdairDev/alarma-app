@@ -57,19 +57,24 @@ public class AndroidAlarmAudioService : IAlarmAudioService
 
         if (vibrationOnly)
         {
-            audioManager.RingerMode = RingerMode.Vibrate;
+            if (stage >= AlarmStage.Stage2)
+                audioManager.RingerMode = RingerMode.Vibrate;
         }
-        else
+        else if (stage >= AlarmStage.Stage2)
         {
             audioManager.RingerMode = RingerMode.Normal;
             var maxVolume = audioManager.GetStreamMaxVolume(AndroidStream.Alarm);
             var targetVolume = GetStageVolume(stage, maxVolume);
             audioManager.SetStreamVolume(AndroidStream.Alarm, targetVolume, VolumeNotificationFlags.ShowUi);
-        }
 
-        if (notificationManager?.IsNotificationPolicyAccessGranted == true)
+            if (notificationManager?.IsNotificationPolicyAccessGranted == true)
+                notificationManager.SetInterruptionFilter(InterruptionFilter.All);
+        }
+        else
         {
-            notificationManager.SetInterruptionFilter(InterruptionFilter.All);
+            var maxVolume = audioManager.GetStreamMaxVolume(AndroidStream.Alarm);
+            var targetVolume = GetStageVolume(stage, maxVolume);
+            audioManager.SetStreamVolume(AndroidStream.Alarm, targetVolume, VolumeNotificationFlags.ShowUi);
         }
 
         TriggerVibration(stage);

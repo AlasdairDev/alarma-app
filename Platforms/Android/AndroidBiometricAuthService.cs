@@ -12,15 +12,11 @@ public class AndroidBiometricAuthService : IBiometricAuthService
 {
     public Task<bool> AuthenticateAsync(string reason, CancellationToken cancellationToken)
     {
-#if DEBUG
-        // Skip biometric prompt on debug builds — emulators typically have no enrolled biometrics.
-        return Task.FromResult(true);
-#else
         try
         {
             var activity = Platform.CurrentActivity as FragmentActivity;
             if (activity is null)
-                return Task.FromResult(true);
+                return Task.FromResult(false);
 
             var biometricManager = BiometricManager.From(activity);
 
@@ -32,11 +28,11 @@ public class AndroidBiometricAuthService : IBiometricAuthService
                 BiometricManager.Authenticators.BiometricWeak
                 | BiometricManager.Authenticators.DeviceCredential);
 
-            // If neither strong nor weak auth is available, allow through (no enrolled credentials).
+            // Block access when no credentials are enrolled — do not allow through on unsecured devices.
             if (canAuthStrong != BiometricManager.BiometricSuccess
                 && canAuthWeak != BiometricManager.BiometricSuccess)
             {
-                return Task.FromResult(true);
+                return Task.FromResult(false);
             }
 
             // Prefer strong (fingerprint/face with Class 3) over weak, both with PIN/pattern fallback.
@@ -46,7 +42,7 @@ public class AndroidBiometricAuthService : IBiometricAuthService
 
             var executor = ContextCompat.GetMainExecutor(activity);
             if (executor is null)
-                return Task.FromResult(true);
+                return Task.FromResult(false);
 
             var tcs = new TaskCompletionSource<bool>();
             var callback = new BiometricCallback(tcs);
@@ -68,11 +64,10 @@ public class AndroidBiometricAuthService : IBiometricAuthService
 
             return tcs.Task;
         }
-        catch (Exception)
+        catch (System.Exception)
         {
-            return Task.FromResult(true);
+            return Task.FromResult(false);
         }
-#endif
     }
 
     private sealed class BiometricCallback : BiometricPrompt.AuthenticationCallback

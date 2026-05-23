@@ -22,4 +22,28 @@ public class TripHistory
     public bool OvershootDetected { get; set; }
 
     public string? Summary { get; set; }
+
+    public int MaxAlarmStageReached { get; set; }
+
+    public int SnoozeCount { get; set; }
+
+    public bool HasAlarmStage => MaxAlarmStageReached > 0;
+
+    public string AlarmStageBadgeText => MaxAlarmStageReached > 0
+        ? $"Alarm: Stage {MaxAlarmStageReached}"
+        : string.Empty;
+
+    public string DistanceKmText => DistanceMeters >= 1000
+        ? $"{DistanceMeters / 1000:F1} km"
+        : $"{DistanceMeters:F0} m";
+
+    public string DurationText
+    {
+        get
+        {
+            if (!EndedAt.HasValue) return "In progress";
+            var minutes = (EndedAt.Value - StartedAt).TotalMinutes;
+            return minutes < 1 ? "< 1 min" : $"{minutes:F0} min";
+        }
+    }
 }

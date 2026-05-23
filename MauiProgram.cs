@@ -11,17 +11,28 @@ public static class MauiProgram
     public static MauiApp CreateMauiApp()
     {
         var builder = MauiApp.CreateBuilder();
-        builder
-            .UseMauiApp<App>();
+        builder.UseMauiApp<App>();
 
         builder.Services.AddSingleton<DatabaseService>();
         builder.Services.AddSingleton<PreferencesService>();
         builder.Services.AddSingleton<BackupService>();
         builder.Services.AddSingleton<PermissionsService>();
         builder.Services.AddSingleton<GeocodingService>();
-        builder.Services.AddSingleton<OpenStreetMapTileService>();
         builder.Services.AddSingleton<HomeController>();
+
+        builder.Services.AddSingleton<AppShell>();
+
+        // Tab views — singletons so state is preserved across tab switches
         builder.Services.AddSingleton<Views.HomeView>();
+        builder.Services.AddSingleton<Views.HistoryView>();
+        builder.Services.AddSingleton<Views.FavoritesView>();
+        builder.Services.AddSingleton<Views.EmergencyView>();
+        builder.Services.AddSingleton<Views.SettingsView>();
+
+        // Navigation views — transient, new instance per navigation
+        builder.Services.AddTransient<Views.SearchView>();
+        builder.Services.AddTransient<Views.AlarmStageView>();
+        builder.Services.AddTransient<Views.OnboardingView>();
 
 #if ANDROID
         builder.Services.AddSingleton<ILocationService, AndroidLocationService>();
