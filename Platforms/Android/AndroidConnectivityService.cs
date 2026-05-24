@@ -22,6 +22,7 @@ public class AndroidConnectivityService : IConnectivityService
         }
 
         var capabilities = manager.GetNetworkCapabilities(network);
-        return capabilities?.HasCapability(NetCapability.Internet) == true;
+        return capabilities?.HasCapability(NetCapability.Internet) == true
+            && capabilities.HasCapability(NetCapability.Validated);
     }
 }

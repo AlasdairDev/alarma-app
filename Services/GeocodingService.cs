@@ -156,6 +156,7 @@ public class GeocodingService
             }
             return results;
         }
+        catch (OperationCanceledException) { throw; }
         catch { return []; }
     }
 
@@ -215,6 +216,7 @@ public class GeocodingService
             }
             return results;
         }
+        catch (OperationCanceledException) { throw; }
         catch { return []; }
     }
 

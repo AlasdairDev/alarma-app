@@ -124,8 +124,11 @@ public class HomeController : INotifyPropertyChanged
     private const int MaxContactNameLength = 50;
     private const int MaxDisplayNameLength = 200;
 
+    private string _authStatusText = string.Empty;
+
     private DateTime _lastMapLocationUpdate = DateTime.MinValue;
     private static readonly TimeSpan MapLocationUpdateInterval = TimeSpan.FromSeconds(5);
+    private CancellationTokenSource? _searchCts;
 
     public event PropertyChangedEventHandler? PropertyChanged;
     public event EventHandler<AlarmStage>? AlarmStageActivated;
@@ -170,11 +173,14 @@ public class HomeController : INotifyPropertyChanged
             if (SetProperty(ref _isTracking, value))
             {
                 OnPropertyChanged(nameof(IsNotTracking));
+                OnPropertyChanged(nameof(ShowStartTripCard));
             }
         }
     }
 
     public bool IsNotTracking => !IsTracking;
+
+    public bool ShowStartTripCard => HasDestination && !IsTracking;
 
     public string TrackingStatusText
     {
@@ -227,7 +233,7 @@ public class HomeController : INotifyPropertyChanged
     }
 
     public bool IsEarphonesConnected =>
-        _earphoneStatusText.Contains("connected:", StringComparison.OrdinalIgnoreCase);
+        _earphoneStatusText.StartsWith("Earphones connected:", StringComparison.OrdinalIgnoreCase);
 
     public string Greeting => DateTime.Now.Hour switch
     {
@@ -265,6 +271,12 @@ public class HomeController : INotifyPropertyChanged
     public bool IsStage3Active => CurrentAlarmStage == AlarmStage.Stage3;
     public bool IsStage1Active => CurrentAlarmStage == AlarmStage.Stage1;
     public bool IsStage1Or2Active => CurrentAlarmStage == AlarmStage.Stage1 || CurrentAlarmStage == AlarmStage.Stage2;
+
+    public string AuthStatusText
+    {
+        get => _authStatusText;
+        private set => SetProperty(ref _authStatusText, value);
+    }
 
     public string BackupStatusText
     {
@@ -399,6 +411,8 @@ public class HomeController : INotifyPropertyChanged
 
     public bool HasEmergencyContacts => _emergencyContacts.Count > 0;
 
+    public bool HasNoEmergencyContacts => !HasEmergencyContacts;
+
     public bool HasSavedRoutes => _savedRoutes.Count > 0;
 
     public bool HasTripHistory => _tripHistoryEntries.Count > 0;
@@ -451,6 +465,8 @@ public class HomeController : INotifyPropertyChanged
     public ICommand DismissAlarmCommand { get; }
     public ICommand SnoozeAlarmCommand { get; }
     public ICommand CenterOnUserCommand { get; }
+    public ICommand OpenBiometricEnrollmentCommand { get; }
+    public ICommand OpenChangePinCommand { get; }
 
     public HomeController(
         DatabaseService databaseService,
@@ -530,11 +546,14 @@ public class HomeController : INotifyPropertyChanged
         });
         SnoozeAlarmCommand = new Command(async () => await SnoozeAlarmAsync());
         CenterOnUserCommand = new Command(async () => await CenterOnUserAsync());
+        OpenBiometricEnrollmentCommand = new Command(OpenBiometricEnrollment);
+        OpenChangePinCommand = new Command(OpenChangePin);
 
         _locationService.LocationUpdated += OnLocationUpdated;
         _emergencyContacts.CollectionChanged += (_, _) =>
         {
             OnPropertyChanged(nameof(HasEmergencyContacts));
+            OnPropertyChanged(nameof(HasNoEmergencyContacts));
             OnPropertyChanged(nameof(CanSendSos));
             OnPropertyChanged(nameof(SosHoldPrompt));
         };
@@ -565,6 +584,7 @@ public class HomeController : INotifyPropertyChanged
                 return;
             }
 
+#if !DEBUG
             StatusText = "Authenticating...";
             using var authTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
             bool authenticated;
@@ -584,6 +604,7 @@ public class HomeController : INotifyPropertyChanged
                 StatusText = "Authentication required to continue.";
                 return;
             }
+#endif
 
             _hasInitialized = true;
             StatusText = "Ready to configure an offline-first trip.";
@@ -592,6 +613,7 @@ public class HomeController : INotifyPropertyChanged
             UpdateBatteryOptimizationStatus();
             UpdateEarphoneStatus();
             UpdateBackupStatus();
+            UpdateAuthStatus();
             await InitializeDatabaseAsync();
             TrackingStatusText = "Tracking inactive.";
         }
@@ -666,6 +688,82 @@ public class HomeController : INotifyPropertyChanged
 
         LastBackupText = $"Last backup: {_preferencesService.LastBackupUtc.Value.LocalDateTime:g}";
         OnPropertyChanged(nameof(HasBackupAvailable));
+    }
+
+    public void UpdateAuthStatus()
+    {
+#if ANDROID
+        try
+        {
+            var activity = Microsoft.Maui.ApplicationModel.Platform.CurrentActivity
+                as AndroidX.Fragment.App.FragmentActivity;
+            if (activity is null)
+            {
+                AuthStatusText = "Authentication status unavailable.";
+                return;
+            }
+            var mgr = AndroidX.Biometric.BiometricManager.From(activity);
+            bool deviceCredentialSupported =
+                Android.OS.Build.VERSION.SdkInt >= Android.OS.BuildVersionCodes.R;
+            int auth = deviceCredentialSupported
+                ? AndroidX.Biometric.BiometricManager.Authenticators.BiometricStrong
+                  | AndroidX.Biometric.BiometricManager.Authenticators.DeviceCredential
+                : AndroidX.Biometric.BiometricManager.Authenticators.BiometricWeak;
+            AuthStatusText = mgr.CanAuthenticate(auth) ==
+                AndroidX.Biometric.BiometricManager.BiometricSuccess
+                ? "Biometric or PIN is set up."
+                : "No biometric or PIN enrolled.";
+        }
+        catch
+        {
+            AuthStatusText = "Authentication status unavailable.";
+        }
+#else
+        AuthStatusText = "Biometric auth is Android-only.";
+#endif
+    }
+
+    private static void OpenBiometricEnrollment()
+    {
+#if ANDROID
+        try
+        {
+#pragma warning disable CA1416
+            Android.Content.Intent intent;
+            if (Android.OS.Build.VERSION.SdkInt >= Android.OS.BuildVersionCodes.R)
+            {
+                intent = new Android.Content.Intent(Android.Provider.Settings.ActionBiometricEnroll);
+                // Tell the enrollment screen which authenticators this app actually uses.
+                // "android.provider.extra.BIOMETRIC_AUTHENTICATORS_ALLOWED" — added in API 30,
+                // tells enrollment screen to show only the authenticators this app uses.
+                intent.PutExtra(
+                    "android.provider.extra.BIOMETRIC_AUTHENTICATORS_ALLOWED",
+                    AndroidX.Biometric.BiometricManager.Authenticators.BiometricStrong
+                    | AndroidX.Biometric.BiometricManager.Authenticators.DeviceCredential);
+            }
+            else
+            {
+                intent = new Android.Content.Intent(Android.Provider.Settings.ActionSecuritySettings);
+            }
+#pragma warning restore CA1416
+            intent.SetFlags(Android.Content.ActivityFlags.NewTask);
+            Android.App.Application.Context.StartActivity(intent);
+        }
+        catch { }
+#endif
+    }
+
+    private static void OpenChangePin()
+    {
+#if ANDROID
+        try
+        {
+            var intent = new Android.Content.Intent(Android.Provider.Settings.ActionSecuritySettings);
+            intent.SetFlags(Android.Content.ActivityFlags.NewTask);
+            Android.App.Application.Context.StartActivity(intent);
+        }
+        catch { }
+#endif
     }
 
     private async Task InitializeDatabaseAsync()
@@ -840,17 +938,27 @@ public class HomeController : INotifyPropertyChanged
             return;
         }
 
+        // Cancel any in-flight HTTP search before starting a new one.
+        _searchCts?.Cancel();
+        _searchCts?.Dispose();
+        _searchCts = new CancellationTokenSource();
+        var token = _searchCts.Token;
+
         IsSearchingDestination = true;
         try
         {
             DestinationQuery = query;
-            var results = await _geocodingService.SearchAsync(query, CancellationToken.None);
+            var results = await _geocodingService.SearchAsync(query, token);
             ReplaceCollection(_searchResults, results);
             LastActionText = results.Any()
                 ? $"{results.Count} result(s) found. Tap one to select."
                 : "No results. Try a full name (e.g. \"SM Mall of Asia\") or add a city.";
             if (!results.Any())
                 ClearDestination();
+        }
+        catch (OperationCanceledException)
+        {
+            // Search was superseded by a newer query — silently drop stale results.
         }
         catch (Exception ex)
         {
@@ -1480,6 +1588,7 @@ public class HomeController : INotifyPropertyChanged
         _snoozeCount = 0;
         OnPropertyChanged(nameof(HasDestination));
         OnPropertyChanged(nameof(CanSaveRoute));
+        OnPropertyChanged(nameof(ShowStartTripCard));
     }
 
     private async Task CenterOnUserAsync()
@@ -1512,6 +1621,7 @@ public class HomeController : INotifyPropertyChanged
         _lastSpeedMetersPerSecond = 0;
         OnPropertyChanged(nameof(HasDestination));
         OnPropertyChanged(nameof(CanSaveRoute));
+        OnPropertyChanged(nameof(ShowStartTripCard));
     }
 
     private static void ReplaceCollection<T>(ObservableCollection<T> collection, IEnumerable<T> items)

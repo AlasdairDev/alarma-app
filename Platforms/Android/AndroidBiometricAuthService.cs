@@ -20,41 +20,60 @@ public class AndroidBiometricAuthService : IBiometricAuthService
 
             var biometricManager = BiometricManager.From(activity);
 
-            var canAuthStrong = biometricManager.CanAuthenticate(
-                BiometricManager.Authenticators.BiometricStrong
-                | BiometricManager.Authenticators.DeviceCredential);
+            // BIOMETRIC_STRONG/WEAK | DEVICE_CREDENTIAL combined is only valid on API 30+.
+            // API 26-29: that combination throws on PromptInfo.Build(); use biometric-only with a negative button.
+            bool deviceCredentialSupported =
+                global::Android.OS.Build.VERSION.SdkInt >= global::Android.OS.BuildVersionCodes.R;
 
-            var canAuthWeak = biometricManager.CanAuthenticate(
-                BiometricManager.Authenticators.BiometricWeak
-                | BiometricManager.Authenticators.DeviceCredential);
-
-            // Block access when no credentials are enrolled — do not allow through on unsecured devices.
-            if (canAuthStrong != BiometricManager.BiometricSuccess
-                && canAuthWeak != BiometricManager.BiometricSuccess)
+            int authenticators;
+            if (deviceCredentialSupported)
             {
-                return Task.FromResult(false);
-            }
+                var canStrong = biometricManager.CanAuthenticate(
+                    BiometricManager.Authenticators.BiometricStrong
+                    | BiometricManager.Authenticators.DeviceCredential);
+                var canWeak = biometricManager.CanAuthenticate(
+                    BiometricManager.Authenticators.BiometricWeak
+                    | BiometricManager.Authenticators.DeviceCredential);
 
-            // Prefer strong (fingerprint/face with Class 3) over weak, both with PIN/pattern fallback.
-            var authenticators = canAuthStrong == BiometricManager.BiometricSuccess
-                ? BiometricManager.Authenticators.BiometricStrong | BiometricManager.Authenticators.DeviceCredential
-                : BiometricManager.Authenticators.BiometricWeak | BiometricManager.Authenticators.DeviceCredential;
+                if (canStrong != BiometricManager.BiometricSuccess
+                    && canWeak != BiometricManager.BiometricSuccess)
+                    return Task.FromResult(false);
+
+                authenticators = canStrong == BiometricManager.BiometricSuccess
+                    ? BiometricManager.Authenticators.BiometricStrong
+                      | BiometricManager.Authenticators.DeviceCredential
+                    : BiometricManager.Authenticators.BiometricWeak
+                      | BiometricManager.Authenticators.DeviceCredential;
+            }
+            else
+            {
+                // API 26-29: biometric-only (no DEVICE_CREDENTIAL combination).
+                // If no biometric is enrolled on an older device, allow access rather than permanently locking.
+                var canWeak = biometricManager.CanAuthenticate(
+                    BiometricManager.Authenticators.BiometricWeak);
+                if (canWeak != BiometricManager.BiometricSuccess)
+                    return Task.FromResult(true);
+
+                authenticators = BiometricManager.Authenticators.BiometricWeak;
+            }
 
             var executor = ContextCompat.GetMainExecutor(activity);
             if (executor is null)
                 return Task.FromResult(false);
 
             var tcs = new TaskCompletionSource<bool>();
-            var callback = new BiometricCallback(tcs);
-            var prompt = new BiometricPrompt(activity, executor, callback);
+            var prompt = new BiometricPrompt(activity, executor, new BiometricCallback(tcs));
 
-            var promptInfo = new BiometricPrompt.PromptInfo.Builder()
+            var promptBuilder = new BiometricPrompt.PromptInfo.Builder()
                 .SetTitle(AppStrings.BiometricPromptTitle)
                 .SetSubtitle(reason)
-                .SetAllowedAuthenticators(authenticators)
-                .Build();
+                .SetAllowedAuthenticators(authenticators);
 
-            prompt.Authenticate(promptInfo);
+            // DEVICE_CREDENTIAL provides its own dismiss path; biometric-only needs an explicit button.
+            if (!deviceCredentialSupported)
+                promptBuilder.SetNegativeButtonText(AppStrings.BiometricPromptCancel);
+
+            prompt.Authenticate(promptBuilder.Build());
 
             cancellationToken.Register(() =>
             {
@@ -80,7 +99,10 @@ public class AndroidBiometricAuthService : IBiometricAuthService
             => _tcs.TrySetResult(true);
 
         public override void OnAuthenticationFailed()
-            => _tcs.TrySetResult(false);
+        {
+            // Called on each failed scan attempt (e.g. wrong finger).
+            // BiometricPrompt handles retries automatically — do NOT resolve the TCS here.
+        }
 
         public override void OnAuthenticationError(int errorCode, ICharSequence? errString)
             => _tcs.TrySetResult(false);

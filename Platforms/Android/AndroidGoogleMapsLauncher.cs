@@ -8,8 +8,11 @@ public class AndroidGoogleMapsLauncher : IGoogleMapsLauncher
 {
     public Task OpenRerouteAsync(double latitude, double longitude)
     {
+        var lat = latitude.ToString("F6", System.Globalization.CultureInfo.InvariantCulture);
+        var lon = longitude.ToString("F6", System.Globalization.CultureInfo.InvariantCulture);
+
         var context = AndroidApplication.Context;
-        var mapsUri = global::Android.Net.Uri.Parse($"google.navigation:q={latitude},{longitude}");
+        var mapsUri = global::Android.Net.Uri.Parse($"google.navigation:q={lat},{lon}");
         var mapsIntent = new Intent(Intent.ActionView, mapsUri);
         mapsIntent.SetPackage("com.google.android.apps.maps");
         mapsIntent.AddFlags(ActivityFlags.NewTask);
@@ -20,7 +23,7 @@ public class AndroidGoogleMapsLauncher : IGoogleMapsLauncher
             return Task.CompletedTask;
         }
 
-        var fallbackUri = global::Android.Net.Uri.Parse($"geo:{latitude},{longitude}?q={latitude},{longitude}");
+        var fallbackUri = global::Android.Net.Uri.Parse($"geo:{lat},{lon}?q={lat},{lon}");
         var fallbackIntent = new Intent(Intent.ActionView, fallbackUri);
         fallbackIntent.AddFlags(ActivityFlags.NewTask);
         if (fallbackIntent.ResolveActivity(context.PackageManager) is not null)
