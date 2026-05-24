@@ -434,6 +434,10 @@ public class HomeController : INotifyPropertyChanged
 
     public bool CanSaveRoute => _lastDestinationResult is not null;
 
+    public bool IsDestinationSaved =>
+        _lastDestinationResult is not null &&
+        _savedRoutes.Any(r => IsSameDestination(r, _lastDestinationResult));
+
     public bool HasBackupAvailable => _preferencesService.LastBackupUtc.HasValue;
 
     public ObservableCollection<EmergencyContact> EmergencyContacts => _emergencyContacts;
@@ -446,7 +450,6 @@ public class HomeController : INotifyPropertyChanged
     public ICommand SearchDestinationCommand { get; }
     public ICommand SelectResultCommand { get; }
     public ICommand OpenMapsCommand { get; }
-    public ICommand SendTestSmsCommand { get; }
     public ICommand TriggerSosCommand { get; }
     public ICommand StartTrackingCommand { get; }
     public ICommand StopTrackingCommand { get; }
@@ -454,6 +457,7 @@ public class HomeController : INotifyPropertyChanged
     public ICommand SetPrimaryContactCommand { get; }
     public ICommand RemoveEmergencyContactCommand { get; }
     public ICommand SaveDestinationCommand { get; }
+    public ICommand ToggleFavoriteCommand { get; }
     public ICommand ApplySavedRouteCommand { get; }
     public ICommand RemoveSavedRouteCommand { get; }
     public ICommand CompleteOnboardingCommand { get; }
@@ -521,14 +525,14 @@ public class HomeController : INotifyPropertyChanged
         SearchDestinationCommand = new Command(async () => await SearchDestinationAsync());
         SelectResultCommand = new Command<GeocodingResult>(SelectSearchResult);
         OpenMapsCommand = new Command(async () => await OpenMapsAsync());
-        SendTestSmsCommand = new Command(async () => await SendTestSmsAsync());
-        TriggerSosCommand = new Command(async () => await SendTestSmsAsync());
+        TriggerSosCommand = new Command(async () => await SendSosAsync());
         StartTrackingCommand = new Command(async () => await StartTrackingAsync());
         StopTrackingCommand = new Command(async () => await StopTrackingAsync());
         AddEmergencyContactCommand = new Command(async () => await AddEmergencyContactAsync());
         SetPrimaryContactCommand = new Command<EmergencyContact>(async contact => await SetPrimaryContactAsync(contact));
         RemoveEmergencyContactCommand = new Command<EmergencyContact>(async contact => await RemoveEmergencyContactAsync(contact));
         SaveDestinationCommand = new Command(async () => await SaveDestinationAsync());
+        ToggleFavoriteCommand = new Command(async () => await ToggleFavoriteAsync());
         ApplySavedRouteCommand = new Command<SavedRoute>(async route => await ApplySavedRouteAsync(route));
         RemoveSavedRouteCommand = new Command<SavedRoute>(async route => await RemoveSavedRouteAsync(route));
         CompleteOnboardingCommand = new Command(CompleteOnboarding);
@@ -561,6 +565,7 @@ public class HomeController : INotifyPropertyChanged
         {
             OnPropertyChanged(nameof(HasSavedRoutes));
             OnPropertyChanged(nameof(HasNoSavedRoutes));
+            OnPropertyChanged(nameof(IsDestinationSaved));
         };
         _tripHistoryEntries.CollectionChanged += (_, _) =>
         {
@@ -1009,6 +1014,20 @@ public class HomeController : INotifyPropertyChanged
         }
     }
 
+    private async Task ToggleFavoriteAsync()
+    {
+        if (_lastDestinationResult is null) return;
+
+        var existing = _savedRoutes.FirstOrDefault(r => IsSameDestination(r, _lastDestinationResult));
+        if (existing is not null)
+        {
+            await RemoveSavedRouteAsync(existing);
+            return;
+        }
+
+        await SaveDestinationAsync();
+    }
+
     private async Task SaveDestinationAsync()
     {
         if (_lastDestinationResult is null)
@@ -1023,39 +1042,35 @@ public class HomeController : INotifyPropertyChanged
             return;
         }
 
-        var routeName = string.IsNullOrWhiteSpace(NewRouteName)
-            ? _lastDestinationResult.DisplayName
-            : NewRouteName.Trim();
-        if (string.IsNullOrWhiteSpace(routeName))
-        {
-            routeName = "Saved route";
-        }
-
-        if (routeName.Length < 2 || routeName.Length > 30)
-        {
-            LastActionText = "Route name must be between 2 and 30 characters.";
-            return;
-        }
-
-        if (_savedRoutes.Any(route => string.Equals(route.Name, routeName, StringComparison.OrdinalIgnoreCase)))
-        {
-            LastActionText = "A saved route with this name already exists.";
-            return;
-        }
-
         if (_savedRoutes.Any(route => IsSameDestination(route, _lastDestinationResult)))
         {
             LastActionText = "This destination is already saved.";
             return;
         }
+
+        // Use custom name if provided, otherwise derive from display name.
+        // Clamp to 30 chars so long place names (e.g. universities) don't fail validation.
+        var rawName = string.IsNullOrWhiteSpace(NewRouteName)
+            ? _lastDestinationResult.DisplayName
+            : NewRouteName.Trim();
+        if (string.IsNullOrWhiteSpace(rawName))
+            rawName = "Saved route";
+        var routeName = rawName.Length > 30 ? rawName[..30].TrimEnd() : rawName;
+        if (routeName.Length < 2)
+            routeName = "Saved route";
+
+        if (_savedRoutes.Any(route => string.Equals(route.Name, routeName, StringComparison.OrdinalIgnoreCase)))
+        {
+            // Append a short suffix to avoid collision while still saving.
+            routeName = routeName.Length <= 27 ? routeName + " (2)" : routeName[..27] + " (2)";
+        }
+
         var route = new SavedRoute
         {
             Name = routeName,
             DestinationLatitude = _lastDestinationResult.Latitude,
             DestinationLongitude = _lastDestinationResult.Longitude,
-            Notes = string.IsNullOrWhiteSpace(NewRouteName)
-                ? null
-                : $"Saved from destination search: {_lastDestinationResult.DisplayName}"
+            Notes = $"Saved from search: {_lastDestinationResult.DisplayName}"
         };
 
         try
@@ -1063,7 +1078,7 @@ public class HomeController : INotifyPropertyChanged
             await _databaseService.SaveRouteAsync(route);
             NewRouteName = string.Empty;
             await LoadSavedRoutesAsync();
-            LastActionText = $"Saved route: {route.Name}.";
+            LastActionText = $"Saved: {route.Name}.";
         }
         catch (Exception ex)
         {
@@ -1215,7 +1230,7 @@ public class HomeController : INotifyPropertyChanged
         }
     }
 
-    private async Task SendTestSmsAsync()
+    private async Task SendSosAsync()
     {
         if (_lastSosSentAt.HasValue && DateTimeOffset.UtcNow - _lastSosSentAt.Value < SosCooldown)
         {
@@ -1267,7 +1282,7 @@ public class HomeController : INotifyPropertyChanged
 
         try
         {
-            await _alarmAudioService.TriggerAlarmAsync(AlarmStage.Stage3, AlarmSound, VibrationOnly);
+            await _alarmAudioService.TriggerAlarmAsync(AlarmStage.Stage3, AlarmSound, VibrationOnly, VibrationIntensity);
             await _smsService.SendEmergencySmsAsync(message, recipients);
             _lastSosSentAt = DateTimeOffset.UtcNow;
             LastActionText = dndAccessGranted
@@ -1347,12 +1362,17 @@ public class HomeController : INotifyPropertyChanged
         try
         {
             await _locationService.StopTrackingAsync();
-            await _alarmAudioService.DisableCriticalAudioAsync();
         }
         catch (Exception ex)
         {
             LastActionText = $"Unable to stop tracking cleanly: {ex.Message}";
         }
+
+        try
+        {
+            await _alarmAudioService.DisableCriticalAudioAsync();
+        }
+        catch { }
 
         IsTracking = false;
         var distanceKm = _totalDistanceMeters / MetersPerKilometer;
@@ -1522,7 +1542,7 @@ public class HomeController : INotifyPropertyChanged
                     AlarmStageActivated?.Invoke(this, stage);
                 }
 
-                await _alarmAudioService.TriggerAlarmAsync(stage, AlarmSound, VibrationOnly);
+                await _alarmAudioService.TriggerAlarmAsync(stage, AlarmSound, VibrationOnly, VibrationIntensity);
             }
 
             await _notificationService.ShowTripAlertAsync(title, message);
@@ -1589,6 +1609,7 @@ public class HomeController : INotifyPropertyChanged
         OnPropertyChanged(nameof(HasDestination));
         OnPropertyChanged(nameof(CanSaveRoute));
         OnPropertyChanged(nameof(ShowStartTripCard));
+        OnPropertyChanged(nameof(IsDestinationSaved));
     }
 
     private async Task CenterOnUserAsync()
@@ -1622,6 +1643,7 @@ public class HomeController : INotifyPropertyChanged
         OnPropertyChanged(nameof(HasDestination));
         OnPropertyChanged(nameof(CanSaveRoute));
         OnPropertyChanged(nameof(ShowStartTripCard));
+        OnPropertyChanged(nameof(IsDestinationSaved));
     }
 
     private static void ReplaceCollection<T>(ObservableCollection<T> collection, IEnumerable<T> items)
@@ -1695,6 +1717,7 @@ public class HomeController : INotifyPropertyChanged
             <html>
             <head>
               <meta charset="utf-8"/>
+              <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src https://unpkg.com 'unsafe-inline'; style-src https://unpkg.com 'unsafe-inline'; img-src https://*.cartocdn.com https://*.openstreetmap.org data: blob:; connect-src 'none'"/>
               <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"/>
               <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
               <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -1725,6 +1748,7 @@ public class HomeController : INotifyPropertyChanged
             <html>
             <head>
               <meta charset="utf-8"/>
+              <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src https://unpkg.com 'unsafe-inline'; style-src https://unpkg.com 'unsafe-inline'; img-src https://*.cartocdn.com https://*.openstreetmap.org data: blob:; connect-src 'none'"/>
               <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"/>
               <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
               <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -1746,11 +1770,14 @@ public class HomeController : INotifyPropertyChanged
         return new HtmlWebViewSource { Html = html, BaseUrl = "https://unpkg.com" };
     }
 
+    private static readonly System.Text.RegularExpressions.Regex PhoneRegex =
+        new(@"^(09\d{9}|\+639\d{9})$",
+            System.Text.RegularExpressions.RegexOptions.Compiled);
+
     private static bool IsValidPhilippineNumber(string number)
     {
         if (string.IsNullOrWhiteSpace(number)) return false;
-        var n = number.Trim();
-        return System.Text.RegularExpressions.Regex.IsMatch(n, @"^(09\d{9}|\+639\d{9})$");
+        return PhoneRegex.IsMatch(number.Trim());
     }
 
     private void OnPropertyChanged([CallerMemberName] string? propertyName = null)

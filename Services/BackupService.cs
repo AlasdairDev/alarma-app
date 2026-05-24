@@ -26,11 +26,20 @@ public class BackupService
     private const int MaxContactNameLength = 50;
     private const int MaxRouteNameLength = 30;
     private const int MinRouteNameLength = 2;
+    private const int MaxSummaryLength = 300;
+    private const int MaxProfileNotesLength = 300;
+    private const int MinAlarmLeadMinutes = 1;
+    private const int MaxAlarmLeadMinutes = 60;
+    private const double MaxDistanceMeters = 1_000_000; // 1 000 km upper bound
     // Philippines bounding box — same constants as GeocodingService / HomeController
     private const double PhLatMin = 4.5;
     private const double PhLatMax = 21.1;
     private const double PhLonMin = 116.9;
     private const double PhLonMax = 126.6;
+
+    // Allowed alarm sound values — mirrors HomeController._alarmSoundOptions
+    private static readonly HashSet<string> ValidAlarmSounds =
+        new(StringComparer.OrdinalIgnoreCase) { "Default", "Alarm", "Chime", "Notification", "Ringtone" };
 
     private readonly DatabaseService _databaseService;
     private readonly PreferencesService _preferencesService;
@@ -98,19 +107,14 @@ public class BackupService
         if (payload is null)
             return null;
 
-        await _databaseService.ClearTripHistoryAsync();
-        await _databaseService.ClearSavedRoutesAsync();
-        await _databaseService.ClearEmergencyContactsAsync();
-        await _databaseService.ClearBehavioralProfilesAsync();
-
+        // Validate ALL records before touching the database — this prevents data loss when
+        // a tampered or empty backup passes decryption but contains no valid records.
         var validContacts = payload.EmergencyContacts
             .Where(c => IsValidPhilippineNumber(c.PhoneNumber)
                         && !string.IsNullOrWhiteSpace(c.Name)
                         && c.Name.Length <= MaxContactNameLength)
             .Take(MaxRestoreContacts)
             .ToList();
-        if (validContacts.Count > 0)
-            await _databaseService.InsertAllAsync(validContacts);
 
         var routesToRestore = payload.SavedRoutes
             .Where(r => !string.IsNullOrWhiteSpace(r.Name)
@@ -120,19 +124,63 @@ public class BackupService
                         && r.DestinationLongitude >= PhLonMin && r.DestinationLongitude <= PhLonMax)
             .Take(MaxRestoreRoutes)
             .ToList();
+
+        // Validate TripHistory: reject records with out-of-range numeric fields, impossible dates,
+        // or unbounded strings that could exhaust memory or produce nonsense UI.
+        var minDate = new DateTime(2020, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        var maxDate = DateTime.UtcNow.AddDays(1);
+        var historyToRestore = payload.TripHistory
+            .Where(h =>
+                h.StartedAt >= minDate && h.StartedAt <= maxDate &&
+                (h.EndedAt == null || (h.EndedAt >= h.StartedAt && h.EndedAt <= maxDate)) &&
+                h.DistanceMeters is >= 0 and <= MaxDistanceMeters &&
+                h.MaxAlarmStageReached is >= 0 and <= 3 &&
+                h.SnoozeCount is >= 0 and <= 100 &&
+                (h.DestinationName == null || h.DestinationName.Length <= MaxDisplayNameLength) &&
+                (h.Summary == null || h.Summary.Length <= MaxSummaryLength) &&
+                (h.DestinationLatitude == null ||
+                    (h.DestinationLatitude >= -90 && h.DestinationLatitude <= 90)) &&
+                (h.DestinationLongitude == null ||
+                    (h.DestinationLongitude >= -180 && h.DestinationLongitude <= 180)))
+            .Take(MaxRestoreHistory)
+            .ToList();
+
+        // Validate BehavioralProfile: enforce name length, lead-time range, and whitelist alarm sound.
+        var profilesToRestore = payload.BehavioralProfiles
+            .Where(p =>
+                !string.IsNullOrWhiteSpace(p.Name) &&
+                p.Name.Length <= MaxContactNameLength &&
+                p.AlarmLeadMinutes is >= MinAlarmLeadMinutes and <= MaxAlarmLeadMinutes &&
+                ValidAlarmSounds.Contains(p.AlarmSound ?? string.Empty) &&
+                (p.Notes == null || p.Notes.Length <= MaxProfileNotesLength))
+            .Take(MaxRestoreProfiles)
+            .ToList();
+
+        // All records validated — now clear and restore.
+        await _databaseService.ClearTripHistoryAsync();
+        await _databaseService.ClearSavedRoutesAsync();
+        await _databaseService.ClearEmergencyContactsAsync();
+        await _databaseService.ClearBehavioralProfilesAsync();
+
+        if (validContacts.Count > 0)
+            await _databaseService.InsertAllAsync(validContacts);
+
         if (routesToRestore.Count > 0)
             await _databaseService.InsertAllAsync(routesToRestore);
 
-        var historyToRestore = payload.TripHistory.Take(MaxRestoreHistory).ToList();
         if (historyToRestore.Count > 0)
             await _databaseService.InsertAllAsync(historyToRestore);
 
-        var profilesToRestore = payload.BehavioralProfiles.Take(MaxRestoreProfiles).ToList();
         if (profilesToRestore.Count > 0)
             await _databaseService.InsertAllAsync(profilesToRestore);
 
-        _preferencesService.AlarmSound = payload.Preferences.AlarmSound;
-        _preferencesService.AlarmLeadMinutes = payload.Preferences.AlarmLeadMinutes;
+        // Clamp and whitelist preferences before writing to storage so Preferences never hold
+        // a raw unvalidated value, even transiently between restore and next HomeController init.
+        var rawSound = payload.Preferences.AlarmSound;
+        _preferencesService.AlarmSound = ValidAlarmSounds.Contains(rawSound ?? string.Empty)
+            ? rawSound! : "Default";
+        _preferencesService.AlarmLeadMinutes =
+            Math.Clamp(payload.Preferences.AlarmLeadMinutes, MinAlarmLeadMinutes, MaxAlarmLeadMinutes);
         _preferencesService.VibrationOnly = payload.Preferences.VibrationOnly;
         _preferencesService.LastBackupUtc = payload.ExportedAtUtc;
         return latestFile;
@@ -183,8 +231,10 @@ public class BackupService
         return plaintext;
     }
 
+    private static readonly System.Text.RegularExpressions.Regex PhoneRegex =
+        new(@"^(09\d{9}|\+639\d{9})$",
+            System.Text.RegularExpressions.RegexOptions.Compiled);
+
     private static bool IsValidPhilippineNumber(string number) =>
-        !string.IsNullOrWhiteSpace(number)
-        && System.Text.RegularExpressions.Regex.IsMatch(
-            number.Trim(), @"^(09\d{9}|\+639\d{9})$");
+        !string.IsNullOrWhiteSpace(number) && PhoneRegex.IsMatch(number.Trim());
 }

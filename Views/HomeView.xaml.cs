@@ -9,6 +9,7 @@ public partial class HomeView : ContentPage
 {
     private readonly HomeController _controller;
     private readonly PreferencesService _preferencesService;
+    private bool _alarmStageShowing;
 
     public HomeView(HomeController controller, PreferencesService preferencesService)
     {
@@ -22,6 +23,7 @@ public partial class HomeView : ContentPage
     protected override void OnAppearing()
     {
         Content.Opacity = 0;
+        _alarmStageShowing = false;
         base.OnAppearing();
         _controller.AlarmStageActivated += OnAlarmStageActivated;
         _controller.LiveLocationUpdated += OnLiveLocationUpdated;
@@ -41,7 +43,7 @@ public partial class HomeView : ContentPage
     {
         if (!_preferencesService.HasSeenTutorial)
         {
-            await Shell.Current.GoToAsync("onboarding");
+            await Shell.Current.GoToAsync("onboarding", animate: false);
             return;
         }
 
@@ -52,17 +54,19 @@ public partial class HomeView : ContentPage
 
     private async void OnSearchTapped(object? sender, TappedEventArgs e)
     {
-        await Shell.Current.GoToAsync("search");
+        await Shell.Current.GoToAsync("search", animate: false);
     }
 
     private async void OnViewActiveTripTapped(object? sender, TappedEventArgs e)
     {
-        await Shell.Current.GoToAsync("alarmstage");
+        await Shell.Current.GoToAsync("alarmstage", animate: false);
     }
 
     private async void OnAlarmStageActivated(object? sender, AlarmStage stage)
     {
-        await Shell.Current.GoToAsync("alarmstage");
+        if (_alarmStageShowing) return;
+        _alarmStageShowing = true;
+        await Shell.Current.GoToAsync("alarmstage", animate: false);
     }
 
     private async void OnLiveLocationUpdated(object? sender, (double Lat, double Lon) loc)

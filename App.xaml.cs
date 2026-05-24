@@ -22,6 +22,6 @@ public partial class App : Application
     {
         _launchView.Completed -= OnLaunchCompleted;
         Windows[0].Page = _shell;
-        await _shell.GoToAsync("//home");
+        await _shell.GoToAsync("//home", animate: false);
     }
 }
