@@ -21,10 +21,12 @@ public partial class HomeView : ContentPage
 
     protected override void OnAppearing()
     {
+        Content.Opacity = 0;
         base.OnAppearing();
         _controller.AlarmStageActivated += OnAlarmStageActivated;
         _controller.LiveLocationUpdated += OnLiveLocationUpdated;
         _controller.CenterMapRequested += OnCenterMapRequested;
+        Content.FadeTo(1, 220, Easing.CubicOut);
     }
 
     protected override void OnDisappearing()

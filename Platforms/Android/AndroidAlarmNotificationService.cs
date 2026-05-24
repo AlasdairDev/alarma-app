@@ -56,11 +56,12 @@ public class AndroidAlarmNotificationService : IAlarmNotificationService
         var notification = builder
             .SetContentTitle(title)
             .SetContentText(message)
-            .SetSmallIcon(AndroidResource.Drawable.IcDialogAlert)  // Fixed: explicit alias
+            .SetSmallIcon(AndroidResource.Drawable.IcDialogAlert)
             .SetAutoCancel(true)
             .SetPriority((int)NotificationPriority.High)
             .Build();
 
+        if (notification is null) return;
         manager.Notify(AlertNotificationId, notification);
     }
 }

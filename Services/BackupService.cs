@@ -17,12 +17,20 @@ public class BackupService
     private const int GcmNonceSize = 12;
     private const int GcmTagSize = 16;
 
-    // Restore caps — matches the in-app add limits to prevent unbounded inserts from tampered backups
+    // Restore caps — match the in-app add-time limits to prevent unbounded inserts from older backups
     private const int MaxRestoreContacts = 3;
     private const int MaxRestoreRoutes = 5;
     private const int MaxRestoreHistory = 100;
     private const int MaxRestoreProfiles = 20;
     private const int MaxDisplayNameLength = 200;
+    private const int MaxContactNameLength = 50;
+    private const int MaxRouteNameLength = 30;
+    private const int MinRouteNameLength = 2;
+    // Philippines bounding box — same constants as GeocodingService / HomeController
+    private const double PhLatMin = 4.5;
+    private const double PhLatMax = 21.1;
+    private const double PhLonMin = 116.9;
+    private const double PhLonMax = 126.6;
 
     private readonly DatabaseService _databaseService;
     private readonly PreferencesService _preferencesService;
@@ -96,13 +104,22 @@ public class BackupService
         await _databaseService.ClearBehavioralProfilesAsync();
 
         var validContacts = payload.EmergencyContacts
-            .Where(c => IsValidPhilippineNumber(c.PhoneNumber))
+            .Where(c => IsValidPhilippineNumber(c.PhoneNumber)
+                        && !string.IsNullOrWhiteSpace(c.Name)
+                        && c.Name.Length <= MaxContactNameLength)
             .Take(MaxRestoreContacts)
             .ToList();
         if (validContacts.Count > 0)
             await _databaseService.InsertAllAsync(validContacts);
 
-        var routesToRestore = payload.SavedRoutes.Take(MaxRestoreRoutes).ToList();
+        var routesToRestore = payload.SavedRoutes
+            .Where(r => !string.IsNullOrWhiteSpace(r.Name)
+                        && r.Name.Length >= MinRouteNameLength
+                        && r.Name.Length <= MaxRouteNameLength
+                        && r.DestinationLatitude >= PhLatMin && r.DestinationLatitude <= PhLatMax
+                        && r.DestinationLongitude >= PhLonMin && r.DestinationLongitude <= PhLonMax)
+            .Take(MaxRestoreRoutes)
+            .ToList();
         if (routesToRestore.Count > 0)
             await _databaseService.InsertAllAsync(routesToRestore);
 

@@ -104,7 +104,7 @@
             </Border>
 
             <!-- Start Trip card — shown when destination set and not yet tracking -->
-            <Border IsVisible="{Binding HasDestination}"
+            <Border IsVisible="{Binding ShowStartTripCard}"
                     BackgroundColor="#EE1A0F35"
                     StrokeShape="RoundRectangle 16"
                     Stroke="Transparent"
