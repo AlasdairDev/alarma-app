@@ -1,4 +1,12 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
-  <rect width="256" height="256" rx="48" fill="#1B1F3B" />
-  <circle cx="128" cy="128" r="72" fill="#FF6B35" />
+  <!-- Background exactly matching LaunchView BackgroundColor -->
+  <rect width="256" height="256" fill="#1A0F35"/>
+  <!-- Bell dome -->
+  <path d="M68,148 L68,120 C68,76 92,52 128,52 C164,52 188,76 188,120 L188,148 Z" fill="#7B3FA0"/>
+  <!-- Bell rim -->
+  <ellipse cx="128" cy="148" rx="64" ry="12" fill="#9B6FBF"/>
+  <!-- Clapper -->
+  <circle cx="128" cy="170" r="14" fill="#9B6FBF"/>
+  <!-- Hanger -->
+  <rect x="120" y="36" width="16" height="22" rx="8" fill="#C8B8E8"/>
 </svg>

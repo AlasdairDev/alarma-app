@@ -57,7 +57,7 @@ public class AndroidAlarmAudioService : IAlarmAudioService
         return Task.CompletedTask;
     }
 
-    public async Task TriggerAlarmAsync(AlarmStage stage, string soundKey, bool vibrationOnly)
+    public async Task TriggerAlarmAsync(AlarmStage stage, string soundKey, bool vibrationOnly, string vibrationIntensity = "Medium")
     {
         var audioManager = AndroidApplication.Context.GetSystemService(Context.AudioService) as AudioManager;
         var notificationManager = AndroidApplication.Context.GetSystemService(Context.NotificationService) as NotificationManager;
@@ -92,7 +92,7 @@ public class AndroidAlarmAudioService : IAlarmAudioService
             audioManager.SetStreamVolume(AndroidStream.Alarm, targetVolume, VolumeNotificationFlags.ShowUi);
         }
 
-        TriggerVibration(stage);
+        TriggerVibration(stage, vibrationIntensity);
         if (!vibrationOnly)
         {
             await PlayRingtoneAsync(soundKey, stage);
@@ -110,7 +110,7 @@ public class AndroidAlarmAudioService : IAlarmAudioService
         };
     }
 
-    private void TriggerVibration(AlarmStage stage)
+    private void TriggerVibration(AlarmStage stage, string intensity)
     {
         var vibrator = AndroidApplication.Context.GetSystemService(Context.VibratorService) as Vibrator;
         if (vibrator is null || !vibrator.HasVibrator)
@@ -118,13 +118,24 @@ public class AndroidAlarmAudioService : IAlarmAudioService
             return;
         }
 
-        var pattern = stage switch
+        long[] basePattern = stage switch
         {
-            AlarmStage.Stage1 => new long[] { 0, 200, 100, 200 },
-            AlarmStage.Stage2 => new long[] { 0, 300, 150, 300, 150, 300 },
-            AlarmStage.Stage3 => new long[] { 0, 500, 200, 500, 200, 500 },
-            _ => new long[] { 0, 200 }
+            AlarmStage.Stage1 => [0, 200, 100, 200],
+            AlarmStage.Stage2 => [0, 300, 150, 300, 150, 300],
+            AlarmStage.Stage3 => [0, 500, 200, 500, 200, 500],
+            _ => [0, 200]
         };
+
+        // Scale pulse durations by intensity (gaps at index 0 and even indices stay 0 or minimal)
+        var scale = intensity switch
+        {
+            "Low"  => 0.5,
+            "High" => 1.5,
+            _      => 1.0   // Medium
+        };
+        var pattern = basePattern
+            .Select((v, i) => i == 0 ? 0L : Math.Max(50L, (long)(v * scale)))
+            .ToArray();
 
         if (Build.VERSION.SdkInt >= BuildVersionCodes.O)
         {

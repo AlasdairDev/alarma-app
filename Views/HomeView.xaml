@@ -120,14 +120,22 @@
                                LineBreakMode="TailTruncation"
                                VerticalOptions="Center" />
                         <Label Grid.Column="1"
-                               Text="&#11088;"
-                               FontSize="18"
+                               Text="&#9734;"
+                               FontSize="20"
                                TextColor="#9B6FBF"
                                VerticalOptions="Center"
                                Margin="8,0,0,0">
                             <Label.GestureRecognizers>
-                                <TapGestureRecognizer Command="{Binding SaveDestinationCommand}" />
+                                <TapGestureRecognizer Command="{Binding ToggleFavoriteCommand}" />
                             </Label.GestureRecognizers>
+                            <Label.Triggers>
+                                <DataTrigger TargetType="Label"
+                                             Binding="{Binding IsDestinationSaved}"
+                                             Value="True">
+                                    <Setter Property="Text" Value="&#9733;" />
+                                    <Setter Property="TextColor" Value="#FFD700" />
+                                </DataTrigger>
+                            </Label.Triggers>
                         </Label>
                     </Grid>
                     <Grid ColumnDefinitions="*,Auto"

@@ -29,7 +29,10 @@ public class AndroidSmsService : ISmsService
         }
     }
 
+    private static readonly System.Text.RegularExpressions.Regex RecipientRegex =
+        new(@"^(09\d{9}|\+639\d{9})$",
+            System.Text.RegularExpressions.RegexOptions.Compiled);
+
     // Defense-in-depth: re-validate format at the transport layer before handing off to Android.
-    private static bool IsValidRecipient(string number) =>
-        System.Text.RegularExpressions.Regex.IsMatch(number, @"^(09\d{9}|\+639\d{9})$");
+    private static bool IsValidRecipient(string number) => RecipientRegex.IsMatch(number);
 }

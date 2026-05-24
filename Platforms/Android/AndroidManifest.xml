@@ -21,6 +21,8 @@
 
   <application
       android:allowBackup="false"
+      android:icon="@mipmap/appicon"
+      android:roundIcon="@mipmap/appicon_round"
       android:label="Alarma"
       android:hardwareAccelerated="true"
       android:usesCleartextTraffic="false">
