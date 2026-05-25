@@ -29,6 +29,11 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <Compile Remove="AlarmaApp.Tests\**" />
+    <None Remove="AlarmaApp.Tests\**" />
+  </ItemGroup>
+
+  <ItemGroup>
 <MauiSplashScreen Include="Resources\\Splash\\splash.svg" Color="#1A0F35" BaseSize="256,256" />
     <MauiImage Include="Resources\\Images\\*" />
     <MauiFont Include="Resources\\Fonts\\*" />
