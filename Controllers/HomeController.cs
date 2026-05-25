@@ -1,3 +1,18 @@
+// Security Considerations (OWASP Top 10)
+// A01 Broken Access Control: InitializeAsync is gated by BiometricPrompt in release builds
+//   (#if !DEBUG); SOS dispatch is rate-limited to 30 s cooldown; onboarding gate enforced by
+//   HomeView.OnAppearing before InitializeAsync is ever called.
+// A03 Injection: DestinationQuery capped at 200 chars; NewContactName capped at 50 chars;
+//   phone numbers validated by compiled PhoneRegex ^(09\d{9}|\+639\d{9})$; external API
+//   DisplayName capped at 200 chars; map popup labels passed through JsonSerializer.Serialize
+//   (XSS-safe); all JS coordinate injections use InvariantCulture F6 numeric strings only.
+// A04 Insecure Design: BackupService uses validate-before-clear — tampered backups with 0
+//   valid records do not wipe the existing database.
+// A05 Security Misconfiguration: AlarmSound whitelisted on read+write; AlarmLeadMinutes
+//   clamped to 1–60 on both input and post-restore; VibrationIntensity validated against
+//   the allowed options set; VehicleType validated against the allowed options set.
+// SQLi: sqlite-net-pcl uses parameterized queries for all CRUD — no raw SQL construction.
+
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
@@ -373,8 +388,11 @@ public class HomeController : INotifyPropertyChanged
         get => _vibrationIntensity;
         set
         {
-            if (SetProperty(ref _vibrationIntensity, value))
-                _preferencesService.VibrationIntensity = value;
+            var valid = _vibrationIntensityOptions.Contains(value, StringComparer.OrdinalIgnoreCase)
+                ? _vibrationIntensityOptions.First(o => o.Equals(value, StringComparison.OrdinalIgnoreCase))
+                : "Medium";
+            if (SetProperty(ref _vibrationIntensity, valid))
+                _preferencesService.VibrationIntensity = valid;
         }
     }
 
@@ -383,8 +401,11 @@ public class HomeController : INotifyPropertyChanged
         get => _vehicleType;
         set
         {
-            if (SetProperty(ref _vehicleType, value))
-                _preferencesService.VehicleType = value;
+            var valid = _vehicleTypeOptions.Contains(value, StringComparer.OrdinalIgnoreCase)
+                ? _vehicleTypeOptions.First(o => o.Equals(value, StringComparison.OrdinalIgnoreCase))
+                : "Jeepney";
+            if (SetProperty(ref _vehicleType, valid))
+                _preferencesService.VehicleType = valid;
         }
     }
 
@@ -624,8 +645,9 @@ public class HomeController : INotifyPropertyChanged
         }
         catch (Exception ex)
         {
+            System.Diagnostics.Debug.WriteLine($"[HomeController] InitializeAsync failed: {ex}");
             StatusText = "Initialization encountered an error.";
-            LastActionText = $"Initialization error: {ex.Message}";
+            LastActionText = "Initialization failed. Restart the app and try again.";
         }
         finally
         {
@@ -791,7 +813,8 @@ public class HomeController : INotifyPropertyChanged
         }
         catch (Exception ex)
         {
-            LastActionText = $"Database initialization failed: {ex.Message}";
+            System.Diagnostics.Debug.WriteLine($"[HomeController] InitializeDatabaseAsync failed: {ex}");
+            LastActionText = "Database initialization failed. Restart the app and try again.";
         }
         finally
         {
@@ -835,7 +858,8 @@ public class HomeController : INotifyPropertyChanged
         }
         catch (Exception ex)
         {
-            LastActionText = $"Failed to load emergency contacts: {ex.Message}";
+            System.Diagnostics.Debug.WriteLine($"[HomeController] LoadEmergencyContactsAsync failed: {ex}");
+            LastActionText = "Failed to load emergency contacts.";
         }
     }
 
@@ -851,7 +875,8 @@ public class HomeController : INotifyPropertyChanged
         }
         catch (Exception ex)
         {
-            LastActionText = $"Failed to load saved routes: {ex.Message}";
+            System.Diagnostics.Debug.WriteLine($"[HomeController] LoadSavedRoutesAsync failed: {ex}");
+            LastActionText = "Failed to load saved routes.";
         }
     }
 
@@ -868,7 +893,8 @@ public class HomeController : INotifyPropertyChanged
         }
         catch (Exception ex)
         {
-            LastActionText = $"Failed to load trip history: {ex.Message}";
+            System.Diagnostics.Debug.WriteLine($"[HomeController] LoadTripHistoryAsync failed: {ex}");
+            LastActionText = "Failed to load trip history.";
         }
     }
 
@@ -882,7 +908,8 @@ public class HomeController : INotifyPropertyChanged
         }
         catch (Exception ex)
         {
-            BackupStatusText = $"Backup export failed: {ex.Message}";
+            System.Diagnostics.Debug.WriteLine($"[HomeController] ExportBackupAsync failed: {ex}");
+            BackupStatusText = "Backup export failed. Check storage permissions and try again.";
         }
     }
 
@@ -910,7 +937,8 @@ public class HomeController : INotifyPropertyChanged
         }
         catch (Exception ex)
         {
-            BackupStatusText = $"Backup restore failed: {ex.Message}";
+            System.Diagnostics.Debug.WriteLine($"[HomeController] RestoreBackupAsync failed: {ex}");
+            BackupStatusText = "Backup restore failed. The backup file may be corrupted or from a different device.";
         }
     }
 
@@ -943,6 +971,12 @@ public class HomeController : INotifyPropertyChanged
             return;
         }
 
+        if (query.Length > 200)
+        {
+            LastActionText = "Search query is too long. Please shorten it.";
+            return;
+        }
+
         // Cancel any in-flight HTTP search before starting a new one.
         _searchCts?.Cancel();
         _searchCts?.Dispose();
@@ -967,7 +1001,8 @@ public class HomeController : INotifyPropertyChanged
         }
         catch (Exception ex)
         {
-            LastActionText = $"Search failed: {ex.Message}";
+            System.Diagnostics.Debug.WriteLine($"[HomeController] SearchDestinationAsync failed: {ex}");
+            LastActionText = "Search failed. Check your internet connection and try again.";
             ClearDestination();
         }
         finally
@@ -1010,7 +1045,8 @@ public class HomeController : INotifyPropertyChanged
         }
         catch (Exception ex)
         {
-            LastActionText = $"Unable to open Google Maps: {ex.Message}";
+            System.Diagnostics.Debug.WriteLine($"[HomeController] OpenMapsAsync failed: {ex}");
+            LastActionText = "Unable to open Google Maps. Please ensure it is installed.";
         }
     }
 
@@ -1082,7 +1118,8 @@ public class HomeController : INotifyPropertyChanged
         }
         catch (Exception ex)
         {
-            LastActionText = $"Failed to save route: {ex.Message}";
+            System.Diagnostics.Debug.WriteLine($"[HomeController] SaveDestinationAsync failed: {ex}");
+            LastActionText = "Failed to save route. Please try again.";
         }
     }
 
@@ -1114,7 +1151,8 @@ public class HomeController : INotifyPropertyChanged
         }
         catch (Exception ex)
         {
-            LastActionText = $"Failed to remove route: {ex.Message}";
+            System.Diagnostics.Debug.WriteLine($"[HomeController] RemoveSavedRouteAsync failed: {ex}");
+            LastActionText = "Failed to remove route. Please try again.";
         }
     }
 
@@ -1173,7 +1211,8 @@ public class HomeController : INotifyPropertyChanged
         }
         catch (Exception ex)
         {
-            LastActionText = $"Failed to save emergency contact: {ex.Message}";
+            System.Diagnostics.Debug.WriteLine($"[HomeController] AddEmergencyContactAsync failed: {ex}");
+            LastActionText = "Failed to save emergency contact. Please try again.";
         }
     }
 
@@ -1207,7 +1246,8 @@ public class HomeController : INotifyPropertyChanged
         }
         catch (Exception ex)
         {
-            LastActionText = $"Failed to update primary contact: {ex.Message}";
+            System.Diagnostics.Debug.WriteLine($"[HomeController] SetPrimaryContactAsync failed: {ex}");
+            LastActionText = "Failed to update primary contact. Please try again.";
         }
     }
 
@@ -1226,7 +1266,8 @@ public class HomeController : INotifyPropertyChanged
         }
         catch (Exception ex)
         {
-            LastActionText = $"Failed to remove contact: {ex.Message}";
+            System.Diagnostics.Debug.WriteLine($"[HomeController] RemoveEmergencyContactAsync failed: {ex}");
+            LastActionText = "Failed to remove contact. Please try again.";
         }
     }
 
@@ -1291,7 +1332,8 @@ public class HomeController : INotifyPropertyChanged
         }
         catch (Exception ex)
         {
-            LastActionText = $"Failed to send SOS message: {ex.Message}";
+            System.Diagnostics.Debug.WriteLine($"[HomeController] SendSosAsync failed: {ex}");
+            LastActionText = "Failed to send SOS. Ensure SMS permission is granted and try again.";
         }
     }
 
@@ -1346,8 +1388,9 @@ public class HomeController : INotifyPropertyChanged
         }
         catch (Exception ex)
         {
+            System.Diagnostics.Debug.WriteLine($"[HomeController] StartTrackingAsync failed: {ex}");
             await _alarmAudioService.DisableCriticalAudioAsync();
-            LastActionText = $"Unable to start tracking: {ex.Message}";
+            LastActionText = "Unable to start tracking. Check location permissions and try again.";
             IsTracking = false;
         }
     }
@@ -1365,7 +1408,8 @@ public class HomeController : INotifyPropertyChanged
         }
         catch (Exception ex)
         {
-            LastActionText = $"Unable to stop tracking cleanly: {ex.Message}";
+            System.Diagnostics.Debug.WriteLine($"[HomeController] StopTrackingAsync failed: {ex}");
+            LastActionText = "Unable to stop tracking cleanly.";
         }
 
         try
@@ -1392,7 +1436,8 @@ public class HomeController : INotifyPropertyChanged
             }
             catch (Exception ex)
             {
-                LastActionText = $"Failed to save trip history: {ex.Message}";
+                System.Diagnostics.Debug.WriteLine($"[HomeController] StopTrackingAsync save history failed: {ex}");
+                LastActionText = "Failed to save trip history.";
             }
         }
 
@@ -1409,7 +1454,8 @@ public class HomeController : INotifyPropertyChanged
             }
             catch (Exception ex)
             {
-                LastActionText = $"Location update error: {ex.Message}";
+                System.Diagnostics.Debug.WriteLine($"[HomeController] HandleLocationUpdateAsync failed: {ex}");
+                LastActionText = "Location update error.";
             }
         });
     }
@@ -1557,7 +1603,8 @@ public class HomeController : INotifyPropertyChanged
         }
         catch (Exception ex)
         {
-            LastActionText = $"Alert failed: {ex.Message}";
+            System.Diagnostics.Debug.WriteLine($"[HomeController] TriggerAlarmStageAsync failed: {ex}");
+            LastActionText = "Alarm alert failed.";
         }
     }
 
@@ -1624,7 +1671,8 @@ public class HomeController : INotifyPropertyChanged
         }
         catch (Exception ex)
         {
-            LastActionText = $"Could not get location: {ex.Message}";
+            System.Diagnostics.Debug.WriteLine($"[HomeController] CenterOnUserAsync failed: {ex}");
+            LastActionText = "Could not get current location. Ensure GPS is enabled.";
         }
     }
 

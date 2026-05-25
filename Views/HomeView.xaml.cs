@@ -1,3 +1,13 @@
+// Security Considerations (OWASP Top 10)
+// A04 Insecure Design: Event handlers (AlarmStageActivated, LiveLocationUpdated,
+//   CenterMapRequested) are subscribed in OnAppearing and unsubscribed in OnDisappearing,
+//   preventing memory leaks and stale handler invocations from prior Activity instances.
+// A03 Injection: Location coordinates passed to EvaluateJavaScriptAsync are formatted with
+//   InvariantCulture F6 specifiers — no user-supplied strings reach the WebView JS context.
+// A01 Broken Access Control: Onboarding gate (HasSeenTutorial check) is enforced here
+//   before InitializeAsync so biometric/location init cannot be bypassed by navigating
+//   directly to the Home shell route.
+
 using AlarmaApp.Controllers;
 using AlarmaApp.Models;
 using AlarmaApp.Services;
@@ -17,10 +27,9 @@ public partial class HomeView : ContentPage
         _preferencesService = preferencesService;
         BindingContext = _controller;
         InitializeComponent();
-        Appearing += OnAppearing;
     }
 
-    protected override void OnAppearing()
+    protected override async void OnAppearing()
     {
         Content.Opacity = 0;
         _alarmStageShowing = false;
@@ -29,18 +38,7 @@ public partial class HomeView : ContentPage
         _controller.LiveLocationUpdated += OnLiveLocationUpdated;
         _controller.CenterMapRequested += OnCenterMapRequested;
         Content.FadeTo(1, 220, Easing.CubicOut);
-    }
 
-    protected override void OnDisappearing()
-    {
-        base.OnDisappearing();
-        _controller.AlarmStageActivated -= OnAlarmStageActivated;
-        _controller.LiveLocationUpdated -= OnLiveLocationUpdated;
-        _controller.CenterMapRequested -= OnCenterMapRequested;
-    }
-
-    private async void OnAppearing(object? sender, EventArgs e)
-    {
         if (!_preferencesService.HasSeenTutorial)
         {
             await Shell.Current.GoToAsync("onboarding", animate: false);
@@ -50,6 +48,14 @@ public partial class HomeView : ContentPage
         // Brief delay so the page renders before the biometric prompt appears.
         await Task.Delay(350);
         await _controller.InitializeAsync();
+    }
+
+    protected override void OnDisappearing()
+    {
+        base.OnDisappearing();
+        _controller.AlarmStageActivated -= OnAlarmStageActivated;
+        _controller.LiveLocationUpdated -= OnLiveLocationUpdated;
+        _controller.CenterMapRequested -= OnCenterMapRequested;
     }
 
     private async void OnSearchTapped(object? sender, TappedEventArgs e)

@@ -1,28 +1,29 @@
-﻿Act as a highly secure, zero-trust Senior Security Engineer and Lead Developer. Your objective is to perform a comprehensive, end-to-end verification of all application features to ensure 100% functional integrity and security compliance.
+Act as a highly secure, zero-trust Senior Security Engineer and Lead Developer. Your objective is to perform a comprehensive, end-to-end verification of all application features to ensure 100% functional integrity and security compliance.
 
-Execution Strategy:
+1. SYSTEMATIC AUDITING & IMMEDIATE REMEDIATION
+- Audit all execution paths, UI interactions, and navigation flows. 
+- If you detect bugs, performance lag, or navigation issues (e.g., the 'Launch' page/History transition, animation stutters, or Emergency Contact implementation), you are authorized and required to immediately implement fixes.
+- Authentication Audit: Verify the integrity of the biometric/PIN setup. Ensure BiometricPrompt (strong/weak/fallback) and PIN entry flows function flawlessly across the supported API range (API 26–35). Ensure the #if !DEBUG guard correctly handles biometric gates for release builds.
 
-    Systematic Auditing & Immediate Remediation: Test all core paths, UI interactions, and edge cases. For any component failing to meet expected outputs, causing performance lag, or exhibiting bugs (including the current navigation and animation issues), you are authorized and required to immediately implement the necessary fixes.
+2. SECURITY-FIRST DEVELOPMENT
+Every modification must strictly adhere to these pillars:
+- Input Validation: Sanitize all inputs; ensure Philippine phone numbers (09X / +639X) and name lengths (≤50 chars) are enforced.
+- Secure Defaults: Enforce least privilege, rate limiting, and database encryption (AES-256).
+- Secret Management: Use secure stores; ensure zero hardcoded credentials.
+- Dependency Security: Audit all NuGet packages for vulnerabilities.
+- Error Handling: Suppress stack traces in production to prevent information leakage.
 
-    Security-First Development: Every fix or modification must adhere to these five pillars:
+3. PRODUCTION BUILD & DOCUMENTATION SYNC
+- Once all features are verified as 100% functional, perform a production build:
+  - Optimize for Android (API 35 target).
+  - Generate a signed .apk file ready for deployment to a physical device.
+  - Exclude sensitive debug symbols.
+- Documentation Sync: Automatically update the README.md to reflect all changes, repairs, and security hardening measures implemented during this session to ensure the documentation remains 100% accurate.
 
-        Input Validation: Sanitize, validate, and parameterize all user input.
+4. OUTPUT REQUIREMENTS
+- For every modified module/API: Include a 'Security Considerations' section (defining vectors like XSS, SQLi, IDOR) and confirm OWASP Top 10 alignment.
+- Include security-centric unit tests that target boundary edge cases.
+- Provide a summary of the verification process, a security audit report, and a detailed log of all repairs made.
 
-        Secure Defaults: Enforce least privilege, rate limiting, and encryption.
-
-        Secret Management: Use environment variables; never hardcode credentials.
-
-        Dependency Security: Ensure all dependencies are patched and vulnerability-free.
-
-        Error Handling: Suppress sensitive stack traces to prevent information leakage.
-
-Output Requirements:
-For every modified module, feature, or API route, you must include:
-
-    A 'Security Considerations' section: Define potential attack vectors (e.g., XSS, SQLi, CSRF, IDOR) and your specific mitigation strategy.
-
-    OWASP Alignment: Demonstrate that the implementation follows OWASP Top 10 guidelines.
-
-    Security-Centric Testing: Include unit tests that explicitly target security vulnerabilities and functional boundary edge cases.
-
-Please provide a comprehensive summary of the verification process, a detailed security audit report, and a log of all repairs made upon completion.
+5. FINAL SANITIZATION
+- Upon successful build, perform a deep clean of the workspace, purging temporary logs and build artifacts. Ensure the final .apk and the updated README.md are located in the root directory for retrieval.

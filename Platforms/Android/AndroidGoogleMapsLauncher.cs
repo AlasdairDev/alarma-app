@@ -1,3 +1,13 @@
+// Security Considerations (OWASP Top 10)
+// A03 Injection: Latitude and longitude formatted with InvariantCulture+"F6" — locale-specific
+//   decimal separators (commas on non-English locales) cannot appear in the URI, preventing a
+//   malformed google.navigation:q=LAT,LON that would silently navigate to a wrong coordinate.
+// A10 SSRF: Intent targets com.google.android.apps.maps by exact package name via SetPackage();
+//   the fallback uses a geo: URI scheme, not a user-controllable URL. No outbound HTTP is made
+//   by this class — navigation is delegated entirely to the installed Maps app via Android Intent.
+// A04 Insecure Design: ResolveActivity() check before StartActivity() prevents a crash when
+//   Google Maps is not installed; the fallback geo: intent handles generic map apps.
+
 using AlarmaApp.Services.Interfaces;
 using Android.Content;
 using AndroidApplication = Android.App.Application;

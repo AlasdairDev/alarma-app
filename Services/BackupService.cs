@@ -1,3 +1,15 @@
+// Security Considerations (OWASP Top 10)
+// A02 Cryptographic Failures: AES-256-GCM authenticated encryption with a 96-bit nonce generated
+//   fresh per export via RandomNumberGenerator.GetBytes(). Key is 256-bit, stored in Android
+//   Keystore via SecureStorage (alarma_backup_key_v2) — never hardcoded or in SharedPreferences.
+// A03 Injection: All restored string fields are length-capped; phone numbers re-validated by
+//   compiled PhoneRegex; no raw SQL — sqlite-net-pcl ORM uses parameterized queries.
+// A04 Insecure Design: All records are validated BEFORE any ClearXxxAsync() call — a tampered
+//   backup with zero valid records cannot silently wipe the existing user database.
+// A08 Software and Data Integrity Failures: AES-GCM authentication tag is verified during
+//   Decrypt() — any bit-flip in ciphertext, nonce, or tag throws CryptographicException before
+//   a single byte of plaintext is returned or deserialized.
+
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
