@@ -62,13 +62,13 @@
 
             <!-- Location FAB — floats right, above the card stack -->
             <Button HorizontalOptions="End"
-                    Text="&#9685;"
-                    FontSize="18"
+                    Text="&#9673;"
+                    FontSize="20"
                     WidthRequest="52"
                     HeightRequest="52"
                     CornerRadius="26"
                     BackgroundColor="White"
-                    TextColor="#2D1B4E"
+                    TextColor="#7B3FA0"
                     Margin="0,0,20,0"
                     Padding="0"
                     Command="{Binding CenterOnUserCommand}" />
@@ -105,7 +105,7 @@
 
             <!-- Start Trip card — shown when destination set and not yet tracking -->
             <Border IsVisible="{Binding ShowStartTripCard}"
-                    BackgroundColor="#EE1A0F35"
+                    BackgroundColor="#F01A0F35"
                     StrokeShape="RoundRectangle 16"
                     Stroke="Transparent"
                     Margin="16,0"
