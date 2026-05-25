@@ -173,7 +173,8 @@ AlarmaApp/
 │                                  #   sound whitelist, lead-time clamping, backup caps, GCM format
 ├── AppShell.xaml(.cs)             # TabBar + modal route registration (search, alarmstage, onboarding)
 └── Resources/
-    ├── Images/                    # launch.png (splash), tutorial1–4.png (onboarding slides)
+    ├── Images/                    # launch_bg.jpg (splash background), main_logo.png (logo),
+    │                              #   alarma_app_icon.png (app icon), tutorial1–4.png (onboarding slides)
     └── Styles/                    # Colors.xaml, Styles.xaml
 ```
 
@@ -318,6 +319,9 @@ Emergency SOS messages are sent directly from Android `SmsManager` over the cell
 | 2026-05-24 | UX hardening | SearchView 500ms debounce; OnboardingView swipe + _isAnimating guard; LaunchView PrepareForAppearance; biometric OnAuthenticationFailed no-op; API 26-29 BiometricPrompt crash fix |
 | 2026-05-25 | Final audit | History tab flicker fix; LaunchView animation jank fix; Security Considerations blocks added to App.xaml.cs, HomeView, EmergencyView, LaunchView; build fix for x86_64 emulator |
 | 2026-05-25 | Full verification audit | Security Considerations blocks added to all 17 remaining modules; SearchView MaxLength=200 added; csproj UseInterpreter conditioned on Debug; Release AOT settings added; security unit test project created (AlarmaApp.Tests); README comprehensively updated |
+| 2026-05-25 | Flawless-execution audit | HomeView animation/tutorial ordering fix — fade-in now deferred until after tutorial redirect check to eliminate concurrent animation jank; SettingsView backup row tap targets widened to full-row Grid gestures; EmergencyView SOS timer defensive stop-before-create; README project structure corrected (launch_bg.jpg); version bumped to 1.0.0; production APK compiled |
+| 2026-05-25 | Full-connectivity audit | AlarmStageActivated moved from HomeView to AppShell singleton — alarm modal now surfaces on any tab, not only when Home is active; FavoritesView route-tap now navigates to Home tab so user sees the destination card immediately; FavoritesView LastActionText feedback label added |
+| 2026-05-25 | Second connectivity pass | AppShell _alarmStageShowing now set bidirectionally via Navigated event — fixes duplicate AlarmStageView push when user manually navigates "View Active Trip" and alarm fires; AlarmStageView Stop Trip button wired to code-behind OnStopTripClicked that stops tracking and exits the view (was Command-only, user was stranded after stopping) |
 
 ---
 

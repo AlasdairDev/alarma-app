@@ -149,6 +149,9 @@ public class HomeController : INotifyPropertyChanged
     public event EventHandler<AlarmStage>? AlarmStageActivated;
     public event EventHandler<(double Lat, double Lon)>? LiveLocationUpdated;
     public event EventHandler<(double Lat, double Lon)>? CenterMapRequested;
+    // Fires a JS string to be executed against the live WebView map; HomeView calls
+    // EvaluateJavaScriptAsync. On re-appear, HomeView replays state via LastDestinationResult.
+    public event EventHandler<string>? MapJsRequested;
 
     public string StatusText
     {
@@ -179,6 +182,10 @@ public class HomeController : INotifyPropertyChanged
         get => _mapHtmlSource;
         private set => SetProperty(ref _mapHtmlSource, value);
     }
+
+    // Exposes the active destination so HomeView can replay setDestination() on re-appear
+    // without a full WebView reload — null means map should show no destination marker.
+    public GeocodingResult? LastDestinationResult => _lastDestinationResult;
 
     public bool IsTracking
     {
@@ -492,6 +499,9 @@ public class HomeController : INotifyPropertyChanged
     public ICommand CenterOnUserCommand { get; }
     public ICommand OpenBiometricEnrollmentCommand { get; }
     public ICommand OpenChangePinCommand { get; }
+    public ICommand RequestLocationPermissionCommand { get; }
+    public ICommand RequestNotificationPermissionCommand { get; }
+    public ICommand RequestBluetoothPermissionCommand { get; }
 
     public HomeController(
         DatabaseService databaseService,
@@ -573,6 +583,9 @@ public class HomeController : INotifyPropertyChanged
         CenterOnUserCommand = new Command(async () => await CenterOnUserAsync());
         OpenBiometricEnrollmentCommand = new Command(OpenBiometricEnrollment);
         OpenChangePinCommand = new Command(OpenChangePin);
+        RequestLocationPermissionCommand = new Command(async () => await RequestLocationPermissionAsync());
+        RequestNotificationPermissionCommand = new Command(async () => await RequestNotificationPermissionAsync());
+        RequestBluetoothPermissionCommand = new Command(OpenBluetoothSettings);
 
         _locationService.LocationUpdated += OnLocationUpdated;
         _emergencyContacts.CollectionChanged += (_, _) =>
@@ -786,6 +799,52 @@ public class HomeController : INotifyPropertyChanged
         try
         {
             var intent = new Android.Content.Intent(Android.Provider.Settings.ActionSecuritySettings);
+            intent.SetFlags(Android.Content.ActivityFlags.NewTask);
+            Android.App.Application.Context.StartActivity(intent);
+        }
+        catch { }
+#endif
+    }
+
+    private async Task RequestLocationPermissionAsync()
+    {
+        try
+        {
+            var granted = await _permissionsService.EnsureLocationPermissionsAsync(requireBackground: false);
+            AvailabilityStatusText = granted
+                ? "Location permission granted."
+                : "Location permission denied. Enable it in Android Settings → Apps → Alarma → Permissions.";
+            LastActionText = AvailabilityStatusText;
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[HomeController] RequestLocationPermissionAsync failed: {ex}");
+            LastActionText = "Could not request location permission.";
+        }
+    }
+
+    private async Task RequestNotificationPermissionAsync()
+    {
+        try
+        {
+            var granted = await _permissionsService.EnsureNotificationPermissionAsync();
+            LastActionText = granted
+                ? "Notification permission granted."
+                : "Notification permission denied. Enable it in Android Settings → Apps → Alarma → Permissions.";
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[HomeController] RequestNotificationPermissionAsync failed: {ex}");
+            LastActionText = "Could not request notification permission.";
+        }
+    }
+
+    private static void OpenBluetoothSettings()
+    {
+#if ANDROID
+        try
+        {
+            var intent = new Android.Content.Intent(Android.Provider.Settings.ActionBluetoothSettings);
             intent.SetFlags(Android.Content.ActivityFlags.NewTask);
             Android.App.Application.Context.StartActivity(intent);
         }
@@ -1645,7 +1704,10 @@ public class HomeController : INotifyPropertyChanged
     {
         _lastDestinationResult = destination;
         DestinationSummaryText = $"{sourceLabel}: {destination.DisplayName}";
-        MapHtmlSource = BuildMapHtml(destination.Latitude, destination.Longitude, destination.DisplayName);
+        var latStr = destination.Latitude.ToString("F6", System.Globalization.CultureInfo.InvariantCulture);
+        var lonStr = destination.Longitude.ToString("F6", System.Globalization.CultureInfo.InvariantCulture);
+        var safeLabel = System.Text.Json.JsonSerializer.Serialize(destination.DisplayName);
+        MapJsRequested?.Invoke(this, $"setDestination({latStr},{lonStr},{safeLabel})");
         _minDistanceToDestination = double.MaxValue;
         _hasArrivedAtDestination = false;
         _overshootAlerted = false;
@@ -1755,62 +1817,54 @@ public class HomeController : INotifyPropertyChanged
 
     private void ClearMapTile()
     {
-        MapHtmlSource = BuildDefaultMapHtml();
+        MapJsRequested?.Invoke(this, "clearDestination()");
     }
 
+    // Security Considerations (OWASP Top 10)
+    // A03 Injection: All dynamic values passed to JS functions (setDestination / updateUserLocation /
+    //   centerOnUser) use InvariantCulture F6 numeric strings or JsonSerializer.Serialize — no raw
+    //   user strings reach the eval context.
+    // A05 Security Misconfiguration: CSP now explicitly allows CartoDB tile domains on connect-src
+    //   (Leaflet 1.9.x may use XHR/fetch for retina-tile probing); img-src covers actual tile images.
+    //   The map HTML is constructed once and never replaced — eliminating the full-WebView-reload
+    //   that caused gray tiles when the user panned or tapped Center-on-me.
     private static HtmlWebViewSource BuildDefaultMapHtml()
     {
-        var html = $$"""
+        var html = """
             <!DOCTYPE html>
             <html>
             <head>
               <meta charset="utf-8"/>
-              <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src https://unpkg.com 'unsafe-inline'; style-src https://unpkg.com 'unsafe-inline'; img-src https://*.cartocdn.com https://*.openstreetmap.org data: blob:; connect-src 'none'"/>
+              <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src https://unpkg.com 'unsafe-inline'; style-src https://unpkg.com 'unsafe-inline'; img-src https://*.cartocdn.com https://*.openstreetmap.org data: blob:; connect-src https://*.cartocdn.com https://unpkg.com"/>
               <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"/>
               <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
               <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-              <style>html,body,#map{margin:0;padding:0;width:100%;height:100%}</style>
+              <style>
+                html,body,#map{margin:0;padding:0;width:100%;height:100%}
+                .leaflet-tile{filter:sepia(0.8) hue-rotate(250deg) saturate(2.5) brightness(0.75)}
+              </style>
             </head>
             <body>
               <div id="map"></div>
               <script>
-                var map = L.map('map').setView([14.5995,120.9842],12);
-                L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',subdomains:'abcd',maxZoom:19}).addTo(map);
+                var map = L.map('map',{zoomControl:false}).setView([14.5995,120.9842],12);
+                L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{attribution:'&copy; OSM &copy; CARTO',subdomains:'abcd',maxZoom:19}).addTo(map);
                 var _userMarker=null;
-                function updateUserLocation(lat,lon){var ll=[lat,lon];if(_userMarker){_userMarker.setLatLng(ll);return;}_userMarker=L.circleMarker(ll,{radius:8,color:'#fff',weight:2,fillColor:'#4A90D9',fillOpacity:0.9}).addTo(map).bindTooltip('You',{permanent:false,direction:'top'});}
+                var _destMarker=null;
+                function updateUserLocation(lat,lon){
+                  var ll=[lat,lon];
+                  if(_userMarker){_userMarker.setLatLng(ll);return;}
+                  _userMarker=L.circleMarker(ll,{radius:8,color:'#fff',weight:2,fillColor:'#4A90D9',fillOpacity:0.9}).addTo(map).bindTooltip('You',{permanent:false,direction:'top'});
+                }
                 function centerOnUser(lat,lon){updateUserLocation(lat,lon);map.flyTo([lat,lon],16);}
-              </script>
-            </body>
-            </html>
-            """;
-        return new HtmlWebViewSource { Html = html, BaseUrl = "https://unpkg.com" };
-    }
-
-    private static HtmlWebViewSource BuildMapHtml(double lat, double lon, string label)
-    {
-        var latStr = lat.ToString("F6", System.Globalization.CultureInfo.InvariantCulture);
-        var lonStr = lon.ToString("F6", System.Globalization.CultureInfo.InvariantCulture);
-        var safeLabel = System.Text.Json.JsonSerializer.Serialize(label);
-        var html = $$"""
-            <!DOCTYPE html>
-            <html>
-            <head>
-              <meta charset="utf-8"/>
-              <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src https://unpkg.com 'unsafe-inline'; style-src https://unpkg.com 'unsafe-inline'; img-src https://*.cartocdn.com https://*.openstreetmap.org data: blob:; connect-src 'none'"/>
-              <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"/>
-              <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
-              <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-              <style>html,body,#map{margin:0;padding:0;width:100%;height:100%}</style>
-            </head>
-            <body>
-              <div id="map"></div>
-              <script>
-                var map = L.map('map').setView([{{latStr}},{{lonStr}}],15);
-                L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',subdomains:'abcd',maxZoom:19}).addTo(map);
-                L.marker([{{latStr}},{{lonStr}}]).addTo(map).bindPopup({{safeLabel}}).openPopup();
-                var _userMarker=null;
-                function updateUserLocation(lat,lon){var ll=[lat,lon];if(_userMarker){_userMarker.setLatLng(ll);return;}_userMarker=L.circleMarker(ll,{radius:8,color:'#fff',weight:2,fillColor:'#4A90D9',fillOpacity:0.9}).addTo(map).bindTooltip('You',{permanent:false,direction:'top'});}
-                function centerOnUser(lat,lon){updateUserLocation(lat,lon);map.flyTo([lat,lon],16);}
+                function setDestination(lat,lon,label){
+                  clearDestination();
+                  _destMarker=L.marker([lat,lon]).addTo(map).bindPopup(label).openPopup();
+                  map.flyTo([lat,lon],15);
+                }
+                function clearDestination(){
+                  if(_destMarker){map.removeLayer(_destMarker);_destMarker=null;}
+                }
               </script>
             </body>
             </html>
