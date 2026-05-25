@@ -1,3 +1,15 @@
+// Security Considerations (OWASP Top 10)
+// A07 Identification and Authentication Failures:
+//   - OnAuthenticationFailed() is a no-op; BiometricPrompt handles retries internally — a single
+//     bad fingerprint scan does not resolve the TCS and close the prompt.
+//   - null activity and null executor both return false (fail-closed), never true.
+//   - API 26-29: BiometricStrong|DeviceCredential combo is API 30+ only and would crash on
+//     PromptInfo.Build(). Older devices use BiometricWeak with a cancel button instead.
+//   - API 26-29 with no enrolled biometric: allows access (documented fail-open trade-off —
+//     the alternative is permanently locking users on older devices with no enrollment UX).
+//   - CancellationToken registration calls prompt.CancelAuthentication() so a 60-second timeout
+//     in HomeController.InitializeAsync() cannot leave a zombie BiometricPrompt on-screen.
+
 using AlarmaApp.Resources.Strings;
 using AlarmaApp.Services.Interfaces;
 using AndroidX.Biometric;

@@ -22,10 +22,10 @@ Alarma is an **offline-first** Android safety app built for Metro Manila jeepney
 | Framework | .NET MAUI (.NET 9) |
 | Language | C# |
 | Architecture | MVC |
-| Local DB | `sqlite-net-pcl` — trip history, saved routes, emergency contacts |
+| Local DB | `sqlite-net-pcl` + SQLCipher — AES-256 encrypted SQLite for trip history, saved routes, emergency contacts |
 | Key-value store | MAUI `Preferences` API — alarm settings, vehicle type, vibration, onboarding state |
-| Map rendering | Leaflet.js + CartoDB dark tiles in a MAUI `WebView` |
-| Build tooling | `UseInterpreter=true` for faster debug iteration on Android |
+| Map rendering | Leaflet.js + CartoDB dark tiles in a MAUI `WebView` with strict Content Security Policy |
+| Build tooling | Debug: `UseInterpreter=true` for faster iteration. Release: AOT compilation + SDK-only linker |
 
 ---
 
@@ -45,7 +45,7 @@ Alarma makes **no outbound requests to a proprietary backend**. The only network
 | **`AudioManager` + `NotificationManager`** | Fires multi-stage alarms, overrides silent/DND mode when critical. |
 | **`Vibrator`** | Vibration-only alarm stages for users who disable ringtones. |
 | **`BiometricPrompt`** | PIN or biometric unlock on app launch (release builds). |
-| **`ConnectivityManager`** | Checks network availability before destination search and tile download. |
+| **`ConnectivityManager`** | Checks `NetCapability.Validated` before destination search to avoid false-positive on captive-portal WiFi. |
 | **`PowerManager`** | Requests battery-optimization exemption to keep the foreground service alive. |
 | **`AudioManager.GetDevices()`** | Detects wired and Bluetooth earphone connections. |
 
@@ -56,43 +56,43 @@ Alarma makes **no outbound requests to a proprietary backend**. The only network
 | Feature | Status | Notes |
 |---|---|---|
 | GPS-based real-time location tracking | ✅ | Haversine distance, adaptive speed calculation |
-| Background foreground location service | ✅ | Persistent notification, survives screen-off |
+| Background foreground location service | ✅ | Persistent notification, survives screen-off; `Exported=false`, `ForegroundServiceType=TypeLocation` |
 | Multi-stage alarm system (3 stages) | ✅ | Stage 1 → Stage 2 → Emergency full-screen |
 | Adaptive alarm trigger distance | ✅ | Speed × lead time, vehicle-type minimum distances |
 | Vehicle type selection | ✅ | Jeepney (300 m min), UV Express (500 m), City Bus (400 m) |
 | Alarm volume escalation per stage | ✅ | Via `AudioManager` alarm channel priority |
-| Vibration intensity (Low / Medium / High) | ✅ | Picker in Settings → ALARM; scales vibration pulse durations (Low: 0.5×, Medium: 1×, High: 1.5×) passed through to `AndroidAlarmAudioService` |
+| Vibration intensity (Low / Medium / High) | ✅ | Picker in Settings → ALARM; scales vibration pulse durations (Low: 0.5×, Medium: 1×, High: 1.5×) |
 | Vibration-only mode | ✅ | Toggle in Settings → ALARM; suppresses ringtone |
 | Alarm sound selection (5 options) | ✅ | Picker in Settings → ALARM; Default / Alarm / Chime / Notification / Ringtone |
 | Alarm lead time (1–60 min) | ✅ | Stepper in Settings → ALARM; controls adaptive trigger distance |
 | Alarm snooze (max 3, then escalates) | ✅ | Auto-escalates to Stage 3 after 3 snoozes |
-| DND and silent mode override | ✅ | Stage 2 + Stage 3 use alarm channel priority |
+| DND and silent mode override | ✅ | Stage 2 + Stage 3 use alarm channel priority; ringer mode restored on dismiss |
 | Overshoot detection | ✅ | Consecutive distance monitoring past stop |
 | Route deviation detection | ✅ | Alerts when moving away from destination |
-| Google Maps rerouting on overshoot | ✅ | Android Intent with pre-filled destination coordinates |
+| Google Maps rerouting on overshoot | ✅ | Android Intent with pre-filled destination coordinates (InvariantCulture formatted) |
 | Destination search — dual-source geocoding | ✅ | Photon (primary, fuzzy) + Nominatim (fallback) |
 | Philippine abbreviation expansion | ✅ | BGC, MOA, NAIA, CDO, MRT, EDSA, Greenbelt, etc. |
 | Place-type subtitles in search results | ✅ | Hospital, Fast Food, University, Barangay, Street, etc. |
-| As-you-type search with 500 ms debounce | ✅ | Spinner shown during search |
+| As-you-type search with 500 ms debounce | ✅ | Spinner shown during search; Entry capped at MaxLength=200 |
 | Map destination pin with popup | ✅ | Map pans to selection at zoom 15 after picking a result |
 | Live user location dot on map | ✅ | Blue circle updated every 5 s while tracking |
 | Center-on-me FAB | ✅ | Tapping the circle button pans map to current GPS position |
-| Emergency SOS — 2-second hold activation | ✅ | Prevents accidental sends |
+| Emergency SOS — 2-second hold activation | ✅ | Prevents accidental sends; timer nulled on page disappear |
 | SOS sends to all emergency contacts simultaneously | ✅ | All saved contacts, not just primary |
 | SOS message includes GPS + Google Maps link | ✅ | `https://maps.google.com/?q=LAT,LON` in SMS body |
 | SOS rate limiter | ✅ | 30-second cooldown between sends |
-| Emergency contact management (up to 3) | ✅ | Managed directly from the Emergency tab; Philippine number format validated (09X / +639X) |
+| Emergency contact management (up to 3) | ✅ | Managed directly from the Emergency tab; Philippine number format validated (09X / +639X); MaxLength enforced at XAML layer |
 | Star / primary contact designation | ✅ | Tap the star on any contact row in the Emergency tab to promote it |
 | Saved favorite routes (up to 5) | ✅ | Route name 2–30 characters; tap to apply, star to remove |
 | Save destination shortcut | ✅ | Star icon in the destination card on the Home screen |
 | Travel history dashboard (last 20 trips) | ✅ | Start time, destination, duration, distance, overshoot badge |
 | Trip history badges | ✅ | Alarm stage reached, km traveled, duration, Missed Stop |
-| Launch splash screen | ✅ | `LaunchView` is the initial `MainPage`; zero flash of the Shell before the splash appears. Tap or ~1.8 s auto-advance (400 ms fade-in + 1 400 ms hold + 280 ms fade-out) |
-| Entrance animations — all pages | ✅ | `Content`-layer fade-in/slide-up on entry, fade-out/slide-down on exit; Shell's native page animation is disabled so only one animation system runs at a time — no jank |
-| Onboarding tutorial (4 slides) | ✅ | Shown on first launch after splash; swipe or tap to advance |
+| Launch splash screen | ✅ | `LaunchView` is the initial `MainPage`; zero flash of the Shell. Tap or ~1.7 s auto-advance (300 ms fade-in + 1 200 ms hold + 220 ms fade-out) |
+| Entrance animations — all pages | ✅ | `Content`-layer fade-in/slide-up on entry, fade-out/slide-down on exit; Shell's native animation disabled |
+| Onboarding tutorial (4 slides) | ✅ | Shown on first launch after splash; swipe left/right or tap to advance |
 | PIN or biometric authentication | ✅ | `BiometricPrompt` on launch (release builds); API 30+ uses BiometricStrong + DeviceCredential, API 26–29 falls back to BiometricWeak only |
 | Biometric / PIN setup in Settings | ✅ | AUTHENTICATION section — shows enrollment status, deep-links to Android biometric enrollment and security settings |
-| In-app AES-GCM encrypted backup and restore | ✅ | Exports to local device storage; restore validates phone numbers, name lengths, and coordinate bounds before inserting |
+| In-app AES-GCM encrypted backup and restore | ✅ | Exports to local device storage; all records validated before DB clear; restore validates phone numbers, name lengths, coordinate bounds |
 | Battery optimization exemption request | ✅ | Prevents OS from killing the GPS service |
 | Earphone connection detection | ✅ | Wired and Bluetooth via `AudioManager.GetDevices()` |
 | Offline-first operation | ✅ | GPS, alarms, SOS, saved routes all work without internet |
@@ -138,8 +138,8 @@ AlarmaApp/
 │   └── TripHistory.cs             # Start/end time, distance, overshoot, alarm stage, snooze count
 ├── Views/
 │   ├── HomeView.xaml(.cs)         # Map, search pill, Start Trip card, location FAB
-│   ├── SearchView.xaml(.cs)       # Full-screen search with debounced autocomplete
-│   ├── AlarmStageView.xaml(.cs)   # Full-screen alarm dismiss/snooze UI
+│   ├── SearchView.xaml(.cs)       # Full-screen search with debounced autocomplete; MaxLength=200
+│   ├── AlarmStageView.xaml(.cs)   # Full-screen alarm dismiss/snooze UI; hardware back overridden
 │   ├── EmergencyView.xaml(.cs)    # SOS hold-to-activate + inline emergency contact management
 │   ├── FavoritesView.xaml(.cs)    # Saved routes list
 │   ├── HistoryView.xaml(.cs)      # Trip history cards
@@ -147,8 +147,8 @@ AlarmaApp/
 │   ├── LaunchView.xaml(.cs)       # Branded splash (initial MainPage, not a Shell route)
 │   └── OnboardingView.xaml(.cs)   # 4-slide first-launch tutorial
 ├── Services/
-│   ├── BackupService.cs           # AES-GCM export and restore
-│   ├── DatabaseService.cs         # SQLite CRUD via sqlite-net-pcl
+│   ├── BackupService.cs           # AES-256-GCM export and restore with validate-before-clear
+│   ├── DatabaseService.cs         # SQLite CRUD via sqlite-net-pcl + SQLCipher
 │   ├── GeocodingService.cs        # Photon (primary) + Nominatim (fallback) with PH alias expansion
 │   ├── PermissionsService.cs      # Runtime permission helpers
 │   ├── PreferencesService.cs      # MAUI Preferences wrapper
@@ -158,15 +158,19 @@ AlarmaApp/
 │   ├── AndroidAlarmNotificationService.cs # NotificationManager channel + alerts
 │   ├── AndroidBatteryOptimizationService.cs
 │   ├── AndroidBiometricAuthService.cs     # BiometricPrompt (strong → weak → DeviceCredential)
-│   ├── AndroidConnectivityService.cs
+│   ├── AndroidConnectivityService.cs      # Validated capability check
 │   ├── AndroidEarphoneService.cs          # AudioManager.GetDevices() wired + BT detection
 │   ├── AndroidGoogleMapsLauncher.cs       # google.navigation: intent + geo: fallback
 │   ├── AndroidLocationService.cs          # Wraps LocationTrackingService foreground service
 │   ├── AndroidSmsService.cs               # SmsManager direct SMS (re-validates PH number format)
-│   ├── LocationTrackingService.cs         # Android Service + ILocationListener, GPS+Network
+│   ├── LocationTrackingService.cs         # Android Service + ILocationListener, GPS+Network, Exported=false
 │   ├── MainActivity.cs
 │   ├── MainApplication.cs
 │   └── AndroidManifest.xml
+├── AlarmaApp.Tests/
+│   ├── AlarmaApp.Tests.csproj     # xUnit, net9.0 (no Android/MAUI SDK required)
+│   └── ValidationTests.cs         # Security-centric boundary tests: phone regex, coordinates,
+│                                  #   sound whitelist, lead-time clamping, backup caps, GCM format
 ├── AppShell.xaml(.cs)             # TabBar + modal route registration (search, alarmstage, onboarding)
 └── Resources/
     ├── Images/                    # launch.png (splash), tutorial1–4.png (onboarding slides)
@@ -177,33 +181,39 @@ AlarmaApp/
 
 ## Security
 
-Alarma has been through a full DevSecOps / SSDLC audit. Key hardening measures:
+Alarma has been through a full DevSecOps / SSDLC audit with OWASP Top 10 alignment. All Security Considerations are documented in the file-level comment header of every modified module.
+
+### OWASP Top 10 alignment
+
+| OWASP ID | Concern | Mitigation |
+|---|---|---|
+| **A01** Broken Access Control | Biometric gate bypass, IDOR on local data | `#if !DEBUG` biometric guard; onboarding gate enforced before `InitializeAsync`; all DB records are device-local with no cross-user surface |
+| **A02** Cryptographic Failures | Weak encryption, hardcoded keys | AES-256-GCM for backup (random 96-bit nonce per export); AES-256 for SQLite; keys generated by `RandomNumberGenerator.GetBytes(32)` and stored in Android Keystore via `SecureStorage` |
+| **A03** Injection | XSS via map popup label; SQL injection; HTTP parameter injection | Map labels JSON-serialized via `JsonSerializer.Serialize()`; sqlite-net-pcl parameterized queries; search queries URL-encoded via `Uri.EscapeDataString`; phone regex validated at controller and transport layer; `MaxLength` on all user Entry fields |
+| **A04** Insecure Design | Data loss via backup restore; alarm bypass via back button; SOS accidental send | Validate-before-clear in `BackupService`; `OnBackButtonPressed` overridden in `AlarmStageView`; SOS requires 2-second hold with timer nulled on page disappear |
+| **A05** Security Misconfiguration | Cleartext traffic; ADB backup; captive-portal false-positive | `usesCleartextTraffic="false"`; `allowBackup="false"`; `NetCapability.Validated` check; `LocationTrackingService` with `Exported=false` and `ForegroundServiceType=TypeLocation` |
+| **A07** Auth Failures | Biometric fail-open; single-scan rejection | `OnAuthenticationFailed` is a no-op (BiometricPrompt handles retries); null activity/executor → `false`; 60-second auth timeout via `CancellationTokenSource` |
+| **A08** Data Integrity | Tampered backup; corrupted encrypted data | AES-GCM tag verified before any JSON deserialization; backup length guard (`< nonce + tag + 1` → `CryptographicException`) |
+| **A10** SSRF | User-controlled URL construction | `HttpClient` base addresses hardcoded to known geocoding endpoints; Google Maps uses Android Intent with explicit package name, not an HTTP request |
+
+### Hardening measures
 
 | Area | Measure |
 |---|---|
-| **Local database** | AES-256 key generated by `RandomNumberGenerator`, stored in Android `SecureStorage` (Keystore-backed). Never in `Preferences` or hardcoded. |
-| **Backup encryption** | AES-256-GCM with a random 12-byte nonce per export. The GCM authentication tag is verified before any JSON is deserialized — tampered or corrupted files are rejected before a single byte of plaintext is read. |
-| **Backup restore validation** | All records are validated **before** any database table is cleared. This prevents data loss when a tampered or empty backup passes decryption but contains zero valid records. Contacts are filtered by Philippine number format and name length (≤ 50 chars). Routes are validated for name length (2–30 chars) and coordinates within the Philippines bounding box. Quantity caps (3 contacts / 5 routes / 100 history / 20 profiles) prevent unbounded inserts. |
-| **Biometric auth** | `OnAuthenticationFailed()` is a no-op — BiometricPrompt handles retries internally; a single bad scan does not close the prompt. `OnAuthenticationError()` resolves false. No fail-open paths. |
-| **Biometric API compatibility** | `BiometricStrong + DeviceCredential` combined is API 30+ only. API 26–29 uses `BiometricWeak` with a negative cancel button to avoid a crash on `PromptInfo.Build()`. If no biometric is enrolled on an older device, access is allowed rather than permanently locking the user out. |
-| **SOS hold timer cleanup** | `EmergencyView.OnDisappearing` stops and nulls the 2-second hold timer so a page transition (e.g. alarm pushing over the Emergency tab) cannot silently fire SOS on a hidden page. |
-| **SOS rate limiter** | 30-second cooldown enforced in `HomeController`; phone number format re-validated in `AndroidSmsService` at the transport layer (defense in depth). |
-| **Google Maps coordinates** | Formatted with `InvariantCulture` + `"F6"` to prevent locale-specific decimal separators (commas) breaking the navigation URI on non-English devices. |
-| **Map popup label** | Destination name injected into Leaflet JS via `JsonSerializer.Serialize()`, which HTML-escapes `<`, `>`, `'` as `\uXXXX` — prevents script injection via API-sourced place names. |
-| **WebView Content Security Policy** | Both map HTML templates include `<meta http-equiv="Content-Security-Policy">` restricting scripts to `unpkg.com`, images to CartoDB/OSM tile hosts, and blocking all outbound `connect-src` from the WebView context. |
-| **Captive portal detection** | `NetCapability.Validated` checked alongside `Internet` so a captive-portal WiFi does not produce a false "online" reading. |
-| **Ringer mode restore** | `_savedRingerMode` saved with `??=` before Stage 2+ overrides; restored in `DisableCriticalAudioAsync`. A `CancellationTokenSource` per ringtone play ensures a superseded alarm does not restore ringer mode and silence a still-playing escalated alarm. |
-| **Search cancellation** | Each `SearchDestinationAsync` call cancels the previous in-flight HTTP request via `CancellationTokenSource`. `GeocodingService` re-throws `OperationCanceledException` so stale responses are silently dropped rather than overwriting current results. |
-| **Contact name length** | Capped at 50 characters at add-time (`AddEmergencyContactAsync`) and at restore-time (`RestoreLatestAsync`). |
-| **Display name length** | External API display names capped at 200 characters before being stored as `DestinationSummaryText`. |
-| **Emergency contact max** | Hard cap of 3 contacts enforced at add-time and at backup restore. |
-| **Biometric timeout** | `CancellationTokenSource(60s)` wraps the `AuthenticateAsync` call — prevents an infinite hang if the OS never calls back. |
-| **Debug bypass** | `#if !DEBUG` guard around the biometric gate so debug builds on emulators (no PIN enrolled) are not permanently locked. |
-| **Notification null guard** | `Notification.Builder.Build()` result is null-checked before `NotificationManager.Notify()` — prevents a potential `NullReferenceException` under low-resource conditions. |
-| **TripHistory restore validation** | Each record in a restored backup is checked for: date range (2020-01-01 to now+1d), `DistanceMeters` ≤ 1 000 km, `MaxAlarmStageReached` ∈ {0–3}, `SnoozeCount` ≤ 100, `DestinationName`/`Summary` within length caps, and coordinates within ±90/±180. Records that fail any check are silently discarded before insertion. |
-| **BehavioralProfile restore validation** | Restored profiles are checked for: non-empty name ≤ 50 chars, `AlarmLeadMinutes` clamped to 1–60, `AlarmSound` in the allowed whitelist {Default, Alarm, Chime, Notification, Ringtone}, `Notes` ≤ 300 chars. |
-| **Preferences clamping on restore** | `AlarmLeadMinutes` is clamped to 1–60 and `AlarmSound` is whitelisted before writing to `Preferences`, so storage never holds a raw unvalidated value even transiently between restore and next app init. |
-| **EmergencyView UI length enforcement** | `Entry` fields enforce `MaxLength="50"` (name) and `MaxLength="13"` (phone) at the Android input layer, preventing large strings from reaching the controller and consuming memory before validation fires. |
+| **Local database** | AES-256 key from `RandomNumberGenerator`, stored in Android Keystore (`SecureStorage`). Never in `Preferences` or hardcoded. |
+| **Backup encryption** | AES-256-GCM with fresh 12-byte nonce per export. GCM tag verified before JSON deserialization — tampered files rejected. |
+| **Backup restore** | All records validated **before** DB clear. Contacts filtered by PH phone format + name ≤ 50 chars. Routes: name 2–30 chars, coordinates within PH bounding box. TripHistory: date range, distance ≤ 1 000 km, stage 0–3, snooze ≤ 100. Quantity caps enforced. Preferences clamped before write. |
+| **Biometric auth** | `OnAuthenticationFailed` no-op; `OnAuthenticationError` → false. API 26–29 crash path on `BiometricStrong|DeviceCredential` combo avoided with API-level guard. 60-second timeout via `CancellationTokenSource`. |
+| **SOS hold timer** | `EmergencyView.OnDisappearing` stops and nulls the timer — a page transition cannot silently fire SOS on a hidden page. |
+| **SOS rate limiter** | 30-second cooldown in `HomeController`; phone number re-validated at `AndroidSmsService` transport layer (defense-in-depth). |
+| **Map popup injection** | Destination name passed through `JsonSerializer.Serialize()` — `<`, `>`, `'` escaped as `\uXXXX`. |
+| **WebView CSP** | Both map HTML templates include a strict Content-Security-Policy restricting scripts to `unpkg.com`, images to CartoDB/OSM hosts, blocking all `connect-src`. |
+| **Captive portal** | `NetCapability.Validated` checked alongside `Internet` — prevents false "online" on hotel/airport WiFi. |
+| **Ringer mode restore** | `_savedRingerMode` saved with `??=` before Stage 2+ override; restored in `DisableCriticalAudioAsync`. Per-ringtone `CancellationTokenSource` ensures a superseded alarm's callback does not silence a higher-priority alarm. |
+| **Search cancellation** | Each `SearchDestinationAsync` call cancels the previous in-flight HTTP request — stale responses are silently dropped. |
+| **Compiled Regex** | `PhoneRegex` is a static compiled `Regex` in `HomeController`, `AndroidSmsService`, and `BackupService` — no per-call regex compilation. |
+| **Google Maps URI** | Coordinates formatted with `InvariantCulture`+`"F6"` — locale decimal separators cannot corrupt the URI. |
+| **LocationTrackingService** | `Exported=false` + `ForegroundServiceType=TypeLocation` (required API 34+); `SecurityException` on location request → `StopSelf()`. |
 
 ---
 
@@ -235,11 +245,38 @@ dotnet build -f net9.0-android
 dotnet build -t:Run -f net9.0-android
 ```
 
-### Release build (enables biometric auth)
+### Release build (enables biometric auth, AOT compilation, SDK-only linker)
 
 ```bash
-dotnet publish -f net9.0-android -c Release
+dotnet publish -f net9.0-android -c Release \
+  -p:AndroidSigningKeyStore=path/to/keystore.jks \
+  -p:AndroidSigningKeyAlias=key-alias \
+  -p:AndroidSigningKeyPass=key-password \
+  -p:AndroidSigningStorePass=store-password
 ```
+
+The Release configuration enables:
+- `RunAOTCompilation=true` — ahead-of-time compilation for faster cold start
+- `AndroidLinkMode=SdkOnly` — strips unused SDK code from the APK
+- `AndroidEnableProfiledAot=true` — profile-guided AOT for hot paths
+- `DebugSymbols=false` / `DebugType=none` — no debug symbols in the production APK
+
+### Run the security unit tests
+
+```bash
+dotnet test AlarmaApp.Tests/AlarmaApp.Tests.csproj
+```
+
+Tests cover (no Android/MAUI SDK required):
+- Philippine phone number regex — valid/invalid boundary cases
+- Philippines coordinate bounding box
+- Latitude/longitude parsing with NaN and Infinity guards
+- Alarm sound whitelist and normalization
+- AlarmLeadMinutes clamping (1–60)
+- Contact name length validation
+- Backup restore caps (contacts, distance, alarm stage, snooze count)
+- Snooze escalation threshold
+- AES-GCM backup minimum length check
 
 ---
 
@@ -250,7 +287,7 @@ dotnet publish -f net9.0-android -c Release
 | `ACCESS_FINE_LOCATION` | GPS tracking |
 | `ACCESS_COARSE_LOCATION` | Network-assisted location |
 | `ACCESS_BACKGROUND_LOCATION` | Keep tracking when the screen is off |
-| `FOREGROUND_SERVICE` + `FOREGROUND_SERVICE_LOCATION` | Background location service |
+| `FOREGROUND_SERVICE` + `FOREGROUND_SERVICE_LOCATION` | Background location service (required API 34+ for location type) |
 | `SEND_SMS` | Emergency SOS messages |
 | `POST_NOTIFICATIONS` | Trip alerts and alarm notifications |
 | `MODIFY_AUDIO_SETTINGS` + `VIBRATE` | Alarm volume and vibration control |
@@ -267,6 +304,20 @@ No data leaves the device except:
 - Map tile image requests sent to CartoDB/OpenStreetMap tile servers over HTTPS.
 
 Emergency SOS messages are sent directly from Android `SmsManager` over the cellular network — they do not pass through any Alarma server. All GPS coordinates, emergency contacts, trip history, and behavioral data are stored exclusively on the user's device in a local SQLite database encrypted at the application layer, in compliance with RA 10173 (Data Privacy Act of the Philippines).
+
+---
+
+## Security audit log
+
+| Date | Session | Changes |
+|---|---|---|
+| 2026-05-24 | Initial audit | SOS hold time 3s→2s; EmergencyView fake call routing fixed; snooze system added; search 3-char minimum; Start Trip card; HistoryView badges |
+| 2026-05-24 | Security hardening | BackupService AES-CBC→GCM; AndroidBiometricAuthService fail-open paths closed; SOS rate limiter; phone validation; biometric timeout; coordinate validation; phone re-validation at SMS transport layer |
+| 2026-05-24 | Feature cleanup | FakeCall feature removed; OnboardingView 4-slide tutorial; LaunchView splash; animation system unified |
+| 2026-05-24 | Deep audit | Google Maps locale fix; ringer mode restore fix; ShowStartTripCard; captive portal fix; AlarmStageView back button; _alarmStageShowing guard; LaunchView timing fix; StopTrackingAsync independent try/catch; compiled Regex; validate-before-clear in BackupService |
+| 2026-05-24 | UX hardening | SearchView 500ms debounce; OnboardingView swipe + _isAnimating guard; LaunchView PrepareForAppearance; biometric OnAuthenticationFailed no-op; API 26-29 BiometricPrompt crash fix |
+| 2026-05-25 | Final audit | History tab flicker fix; LaunchView animation jank fix; Security Considerations blocks added to App.xaml.cs, HomeView, EmergencyView, LaunchView; build fix for x86_64 emulator |
+| 2026-05-25 | Full verification audit | Security Considerations blocks added to all 17 remaining modules; SearchView MaxLength=200 added; csproj UseInterpreter conditioned on Debug; Release AOT settings added; security unit test project created (AlarmaApp.Tests); README comprehensively updated |
 
 ---
 

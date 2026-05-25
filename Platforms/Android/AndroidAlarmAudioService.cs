@@ -1,3 +1,13 @@
+// Security Considerations (OWASP Top 10)
+// A04 Insecure Design:
+//   - _savedRingerMode uses ??= so only the first Stage 2+ override saves the original mode;
+//     every DisableCriticalAudioAsync call restores it and clears the saved value — silent mode
+//     cannot be permanently changed by repeated alarm escalations.
+//   - Per-ringtone CancellationTokenSource (_playCts): a superseded alarm's Task.Delay callback
+//     throws OperationCanceledException and returns without calling DisableCriticalAudioAsync,
+//     preventing it from silencing a higher-priority alarm that started after it.
+// No user data, credentials, or network access in this service.
+
 using AlarmaApp.Models;
 using AlarmaApp.Services.Interfaces;
 using Android.App;

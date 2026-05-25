@@ -1,3 +1,12 @@
+// Security Considerations (OWASP Top 10)
+// A04 Insecure Design: SecurityException in GetLastKnownLocationAsync is caught and returns null
+//   rather than crashing — a revoked location permission at runtime (user revokes in Settings
+//   while app is backgrounded) is handled gracefully; the caller (HomeController) null-checks
+//   the result before constructing the SOS message.
+// A05 Security Misconfiguration: Location data is never persisted or logged here — only passed
+//   as LocationSnapshot value objects to subscribers (HomeController, LocationTrackingService).
+// No user credentials, PII, or network calls are made by this service.
+
 using System.Diagnostics;
 using System.Security;
 using AlarmaApp.Models;

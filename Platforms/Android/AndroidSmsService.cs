@@ -1,3 +1,11 @@
+// Security Considerations (OWASP Top 10)
+// A03 Injection: IsValidRecipient() re-validates phone number format with a compiled Regex at
+//   the transport layer (defense in depth after HomeController's pre-validation) — no number
+//   that does not match ^(09\d{9}|\+639\d{9})$ reaches SmsManager.SendTextMessage().
+// A04 Insecure Design: The LINQ Where(IsValidRecipient) filter is applied inside the foreach
+//   loop so even if a caller bypasses controller validation, no malformed number is sent.
+// No message content is logged — GPS coordinates in the SOS body never appear in logcat output.
+
 using AlarmaApp.Services.Interfaces;
 using Android.Telephony;
 

@@ -1,3 +1,14 @@
+// Security Considerations (OWASP Top 10)
+// A03 Injection: User queries are encoded via Uri.EscapeDataString before appending to request
+//   URIs — no raw user input reaches the network layer unescaped.
+// A10 Server-Side Request Forgery (SSRF): HttpClient base addresses are hardcoded to
+//   photon.komoot.io and nominatim.openstreetmap.org — there is no user-controllable URL
+//   construction. A Philippines bounding box (bbox parameter) further restricts result scope.
+// A05 Security Misconfiguration: HttpClient.Timeout = 15 s prevents indefinite hang on slow
+//   or adversarial network; coordinates parsed with TryParseLatitude/TryParseLongitude with
+//   strict ±90/±180 range guards before any result is returned to the caller.
+// No credentials, no API keys, no user PII are transmitted or logged by this service.
+
 using System.Globalization;
 using System.Net.Http.Json;
 using System.Text.Json.Serialization;

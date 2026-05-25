@@ -15,7 +15,17 @@
     <AndroidMinSdkVersion>26</AndroidMinSdkVersion>
     <AndroidTargetSdkVersion>35</AndroidTargetSdkVersion>
     <EmbedAssembliesIntoApk>true</EmbedAssembliesIntoApk>
-    <UseInterpreter>true</UseInterpreter>
+    <UseInterpreter Condition="'$(Configuration)' == 'Debug'">true</UseInterpreter>
+  </PropertyGroup>
+
+  <!-- Release: AOT compilation + SDK-only linker for a smaller, faster production APK -->
+  <PropertyGroup Condition="'$(Configuration)' == 'Release'">
+    <RunAOTCompilation>true</RunAOTCompilation>
+    <AndroidLinkMode>SdkOnly</AndroidLinkMode>
+    <Optimize>true</Optimize>
+    <AndroidEnableProfiledAot>true</AndroidEnableProfiledAot>
+    <DebugType>none</DebugType>
+    <DebugSymbols>false</DebugSymbols>
   </PropertyGroup>
 
   <ItemGroup>
