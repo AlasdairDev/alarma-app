@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- API 26-30: full-screen official launch background as window background drawable. -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android"
+            android:opacity="opaque">
+    <item>
+        <bitmap android:src="@drawable/alarma_launch_bg"
+                android:gravity="fill" />
+    </item>
+</layer-list>

@@ -1,0 +1,159 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="AlarmaApp.Views.HistoryView"
+             Shell.NavBarIsVisible="False"
+             BackgroundColor="#2D1B4E">
+
+    <Grid RowDefinitions="Auto,Auto,*">
+
+        <!-- Header -->
+        <VerticalStackLayout Grid.Row="0"
+                             Padding="24,52,24,12"
+                             BackgroundColor="#2D1B4E">
+            <Label Text="Trip History"
+                   FontSize="28"
+                   FontAttributes="Bold"
+                   TextColor="White" />
+        </VerticalStackLayout>
+
+        <!-- Search bar (decorative) -->
+        <Border Grid.Row="1"
+                BackgroundColor="#3D2B5E"
+                StrokeShape="RoundRectangle 12"
+                Stroke="Transparent"
+                Margin="16,4,16,12"
+                Padding="14,10">
+            <Grid ColumnDefinitions="Auto,*">
+                <Label Grid.Column="0"
+                       Text="&#128269;"
+                       FontSize="16"
+                       TextColor="#8A7AAE"
+                       VerticalOptions="Center" />
+                <Label Grid.Column="1"
+                       Text="Search"
+                       TextColor="#8A7AAE"
+                       FontSize="14"
+                       Margin="10,0,0,0"
+                       VerticalOptions="Center" />
+            </Grid>
+        </Border>
+
+        <!-- Trip list -->
+        <ScrollView Grid.Row="2">
+            <VerticalStackLayout Spacing="0">
+
+                <!-- Empty state -->
+                <Label IsVisible="{Binding HasNoTripHistory}"
+                       Text="No trips recorded yet."
+                       TextColor="#8A7AAE"
+                       FontSize="14"
+                       HorizontalOptions="Center"
+                       Margin="0,48" />
+
+                <!-- History entries -->
+                <CollectionView ItemsSource="{Binding TripHistoryEntries}"
+                                IsVisible="{Binding HasTripHistory}">
+                    <CollectionView.ItemTemplate>
+                        <DataTemplate>
+                            <Border BackgroundColor="#3D2B5E"
+                                    StrokeShape="RoundRectangle 16"
+                                    Stroke="Transparent"
+                                    Margin="16,6"
+                                    Padding="16,14">
+                                <VerticalStackLayout Spacing="8">
+
+                                    <!-- Departure → Destination row -->
+                                    <Grid ColumnDefinitions="*,Auto,*">
+                                        <VerticalStackLayout Grid.Column="0" Spacing="2">
+                                            <Label Text="Departure"
+                                                   FontSize="11"
+                                                   TextColor="#8A7AAE" />
+                                            <Label Text="{Binding StartedAt, StringFormat='{0:h:mm tt}'}"
+                                                   FontSize="13"
+                                                   FontAttributes="Bold"
+                                                   TextColor="White" />
+                                        </VerticalStackLayout>
+                                        <Label Grid.Column="1"
+                                               Text="&#8594;"
+                                               FontSize="14"
+                                               TextColor="#8A7AAE"
+                                               VerticalOptions="End"
+                                               Margin="8,0" />
+                                        <VerticalStackLayout Grid.Column="2" Spacing="2">
+                                            <Label Text="Arrival"
+                                                   FontSize="11"
+                                                   TextColor="#8A7AAE" />
+                                            <Label Text="{Binding DestinationName}"
+                                                   FontSize="13"
+                                                   FontAttributes="Bold"
+                                                   TextColor="White"
+                                                   LineBreakMode="TailTruncation" />
+                                        </VerticalStackLayout>
+                                    </Grid>
+
+                                    <!-- Badges row -->
+                                    <HorizontalStackLayout Spacing="8">
+                                        <Border IsVisible="{Binding HasAlarmStage}"
+                                                BackgroundColor="#7A3200"
+                                                StrokeShape="RoundRectangle 6"
+                                                Stroke="Transparent"
+                                                Padding="10,4">
+                                            <Label Text="{Binding AlarmStageBadgeText}"
+                                                   FontSize="11"
+                                                   FontAttributes="Bold"
+                                                   TextColor="#FF8C00" />
+                                        </Border>
+                                        <Border BackgroundColor="#1E5C3A"
+                                                StrokeShape="RoundRectangle 6"
+                                                Stroke="Transparent"
+                                                Padding="10,4">
+                                            <Label Text="{Binding DistanceKmText}"
+                                                   FontSize="11"
+                                                   FontAttributes="Bold"
+                                                   TextColor="#4CD964" />
+                                        </Border>
+                                        <Border BackgroundColor="#0F3A3A"
+                                                StrokeShape="RoundRectangle 6"
+                                                Stroke="Transparent"
+                                                Padding="10,4">
+                                            <Label Text="{Binding DurationText}"
+                                                   FontSize="11"
+                                                   TextColor="#4DD0C4" />
+                                        </Border>
+                                        <Border IsVisible="{Binding OvershootDetected}"
+                                                BackgroundColor="#4A1A00"
+                                                StrokeShape="RoundRectangle 6"
+                                                Stroke="Transparent"
+                                                Padding="10,4">
+                                            <Label Text="Missed Stop"
+                                                   FontSize="11"
+                                                   FontAttributes="Bold"
+                                                   TextColor="#FF9500" />
+                                        </Border>
+                                    </HorizontalStackLayout>
+
+                                    <!-- Date row -->
+                                    <HorizontalStackLayout Spacing="6">
+                                        <Label Text="&#128197;"
+                                               FontSize="12"
+                                               TextColor="#8A7AAE"
+                                               VerticalOptions="Center" />
+                                        <Label Text="{Binding StartedAt, StringFormat='{0:MMMM d, yyyy}'}"
+                                               FontSize="12"
+                                               TextColor="#8A7AAE"
+                                               VerticalOptions="Center" />
+                                    </HorizontalStackLayout>
+
+                                </VerticalStackLayout>
+                            </Border>
+                        </DataTemplate>
+                    </CollectionView.ItemTemplate>
+                </CollectionView>
+
+                <BoxView HeightRequest="24" Color="Transparent" />
+            </VerticalStackLayout>
+        </ScrollView>
+
+    </Grid>
+</ContentPage>

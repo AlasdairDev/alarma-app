@@ -19,6 +19,12 @@ public class PermissionsService
             status = await Permissions.RequestAsync<Permissions.LocationWhenInUse>();
         }
 
+        if (status == PermissionStatus.Denied)
+        {
+            OpenAppSettings();
+            return false;
+        }
+
         if (status != PermissionStatus.Granted)
         {
             return false;
@@ -35,6 +41,12 @@ public class PermissionsService
             backgroundStatus = await Permissions.RequestAsync<Permissions.LocationAlways>();
         }
 
+        if (backgroundStatus == PermissionStatus.Denied)
+        {
+            OpenAppSettings();
+            return false;
+        }
+
         return backgroundStatus == PermissionStatus.Granted;
     }
 
@@ -44,6 +56,12 @@ public class PermissionsService
         if (status != PermissionStatus.Granted)
         {
             status = await Permissions.RequestAsync<SmsPermission>();
+        }
+
+        if (status == PermissionStatus.Denied)
+        {
+            OpenAppSettings();
+            return false;
         }
 
         return status == PermissionStatus.Granted;
@@ -57,7 +75,28 @@ public class PermissionsService
             status = await Permissions.RequestAsync<PostNotificationsPermission>();
         }
 
+        if (status == PermissionStatus.Denied)
+        {
+            OpenAppSettings();
+            return false;
+        }
+
         return status == PermissionStatus.Granted;
+    }
+
+    private static void OpenAppSettings()
+    {
+#if ANDROID
+        try
+        {
+            var intent = new Intent(Settings.ActionApplicationDetailsSettings);
+            intent.SetData(Android.Net.Uri.Parse(
+                $"package:{AndroidApplication.Context.PackageName}"));
+            intent.AddFlags(ActivityFlags.NewTask);
+            AndroidApplication.Context.StartActivity(intent);
+        }
+        catch { }
+#endif
     }
 
     public Task<bool> EnsureDoNotDisturbAccessAsync()

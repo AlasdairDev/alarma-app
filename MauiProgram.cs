@@ -33,6 +33,7 @@ public static class MauiProgram
         builder.Services.AddTransient<Views.SearchView>();
         builder.Services.AddTransient<Views.AlarmStageView>();
         builder.Services.AddTransient<Views.OnboardingView>();
+        builder.Services.AddTransient<Views.PermissionsSetupView>();
         builder.Services.AddSingleton<Views.LaunchView>();
 
 #if ANDROID

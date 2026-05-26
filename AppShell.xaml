@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<Shell xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+       xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+       xmlns:views="clr-namespace:AlarmaApp.Views"
+       x:Class="AlarmaApp.AppShell"
+       FlyoutBehavior="Disabled"
+       Shell.TabBarBackgroundColor="#1A0F35"
+       Shell.TabBarForegroundColor="#FFFFFF"
+       Shell.TabBarUnselectedColor="#7B6A9E"
+       Shell.NavBarIsVisible="False">
+
+    <TabBar>
+        <ShellContent Title="History"
+                      Icon="tab_history.svg"
+                      Route="history"
+                      ContentTemplate="{DataTemplate views:HistoryView}" />
+        <ShellContent Title="Favorites"
+                      Icon="tab_favorites.svg"
+                      Route="favorites"
+                      ContentTemplate="{DataTemplate views:FavoritesView}" />
+        <ShellContent Title="Home"
+                      Icon="tab_home.svg"
+                      Route="home"
+                      ContentTemplate="{DataTemplate views:HomeView}" />
+        <ShellContent Title="Emergency"
+                      Icon="tab_emergency.svg"
+                      Route="emergency"
+                      ContentTemplate="{DataTemplate views:EmergencyView}" />
+        <ShellContent Title="Settings"
+                      Icon="tab_settings.svg"
+                      Route="settings"
+                      ContentTemplate="{DataTemplate views:SettingsView}" />
+    </TabBar>
+</Shell>

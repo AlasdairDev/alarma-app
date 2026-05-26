@@ -1,0 +1,215 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="AlarmaApp.Views.PermissionsSetupView"
+             Shell.NavBarIsVisible="False"
+             Shell.TabBarIsVisible="False"
+             BackgroundColor="#1A0F35">
+
+    <Grid x:Name="RootGrid" Opacity="0" RowDefinitions="Auto,*,Auto">
+
+        <!-- Header -->
+        <VerticalStackLayout Grid.Row="0"
+                             HorizontalOptions="Center"
+                             Spacing="8"
+                             Padding="32,56,32,24">
+
+            <Image Source="main_logo.png"
+                   WidthRequest="72"
+                   HeightRequest="72"
+                   Aspect="AspectFit"
+                   HorizontalOptions="Center" />
+
+            <Label Text="Permissions Requests"
+                   FontSize="26"
+                   FontAttributes="Bold"
+                   TextColor="White"
+                   HorizontalOptions="Center"
+                   HorizontalTextAlignment="Center"
+                   Margin="0,12,0,0" />
+
+            <Label Text="Alarma needs the following permissions to wake you by location."
+                   FontSize="14"
+                   TextColor="#C8B8E8"
+                   HorizontalOptions="Center"
+                   HorizontalTextAlignment="Center"
+                   LineBreakMode="WordWrap" />
+
+        </VerticalStackLayout>
+
+        <!-- Permission rows -->
+        <ScrollView Grid.Row="1">
+            <VerticalStackLayout Spacing="12"
+                                 Padding="20,0">
+
+                <!-- Notifications -->
+                <Border x:Name="NotifRow"
+                        BackgroundColor="#3D2B5E"
+                        StrokeShape="RoundRectangle 14"
+                        Stroke="Transparent"
+                        Padding="18,16">
+                    <Border.GestureRecognizers>
+                        <TapGestureRecognizer Tapped="OnNotificationsTapped" />
+                    </Border.GestureRecognizers>
+                    <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="14">
+                        <Label Grid.Column="0"
+                               Text="&#128276;"
+                               FontSize="22"
+                               VerticalOptions="Center" />
+                        <VerticalStackLayout Grid.Column="1" Spacing="2" VerticalOptions="Center">
+                            <Label Text="Notifications"
+                                   FontSize="15"
+                                   FontAttributes="Bold"
+                                   TextColor="White" />
+                            <Label Text="Show alarms and alerts."
+                                   FontSize="12"
+                                   TextColor="#8A7AAE" />
+                        </VerticalStackLayout>
+                        <Switch x:Name="NotifSwitch"
+                                Grid.Column="2"
+                                IsToggled="False"
+                                ThumbColor="#9B6FBF"
+                                OnColor="#7B3FA0"
+                                VerticalOptions="Center"
+                                IsEnabled="False" />
+                    </Grid>
+                </Border>
+
+                <!-- Location Always -->
+                <Border x:Name="LocationRow"
+                        BackgroundColor="#3D2B5E"
+                        StrokeShape="RoundRectangle 14"
+                        Stroke="Transparent"
+                        Padding="18,16">
+                    <Border.GestureRecognizers>
+                        <TapGestureRecognizer Tapped="OnLocationTapped" />
+                    </Border.GestureRecognizers>
+                    <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="14">
+                        <Label Grid.Column="0"
+                               Text="&#128205;"
+                               FontSize="22"
+                               VerticalOptions="Center" />
+                        <VerticalStackLayout Grid.Column="1" Spacing="2" VerticalOptions="Center">
+                            <Label Text="Location (Always)"
+                                   FontSize="15"
+                                   FontAttributes="Bold"
+                                   TextColor="White" />
+                            <Label Text="Track your trip even when the app is closed."
+                                   FontSize="12"
+                                   TextColor="#8A7AAE" />
+                        </VerticalStackLayout>
+                        <Switch x:Name="LocationSwitch"
+                                Grid.Column="2"
+                                IsToggled="False"
+                                ThumbColor="#9B6FBF"
+                                OnColor="#7B3FA0"
+                                VerticalOptions="Center"
+                                IsEnabled="False" />
+                    </Grid>
+                </Border>
+
+                <!-- Bluetooth -->
+                <Border x:Name="BtRow"
+                        BackgroundColor="#3D2B5E"
+                        StrokeShape="RoundRectangle 14"
+                        Stroke="Transparent"
+                        Padding="18,16">
+                    <Border.GestureRecognizers>
+                        <TapGestureRecognizer Tapped="OnBluetoothTapped" />
+                    </Border.GestureRecognizers>
+                    <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="14">
+                        <Label Grid.Column="0"
+                               Text="&#128268;"
+                               FontSize="22"
+                               VerticalOptions="Center" />
+                        <VerticalStackLayout Grid.Column="1" Spacing="2" VerticalOptions="Center">
+                            <Label Text="Bluetooth"
+                                   FontSize="15"
+                                   FontAttributes="Bold"
+                                   TextColor="White" />
+                            <Label Text="Allow earphone-only detection."
+                                   FontSize="12"
+                                   TextColor="#8A7AAE" />
+                        </VerticalStackLayout>
+                        <Switch x:Name="BtSwitch"
+                                Grid.Column="2"
+                                IsToggled="False"
+                                ThumbColor="#9B6FBF"
+                                OnColor="#7B3FA0"
+                                VerticalOptions="Center"
+                                IsEnabled="False" />
+                    </Grid>
+                </Border>
+
+                <!-- Optimize Battery -->
+                <Border x:Name="BatteryRow"
+                        BackgroundColor="#3D2B5E"
+                        StrokeShape="RoundRectangle 14"
+                        Stroke="Transparent"
+                        Padding="18,16">
+                    <Border.GestureRecognizers>
+                        <TapGestureRecognizer Tapped="OnBatteryTapped" />
+                    </Border.GestureRecognizers>
+                    <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="14">
+                        <Label Grid.Column="0"
+                               Text="&#128267;"
+                               FontSize="22"
+                               VerticalOptions="Center" />
+                        <VerticalStackLayout Grid.Column="1" Spacing="2" VerticalOptions="Center">
+                            <Label Text="Optimize Battery"
+                                   FontSize="15"
+                                   FontAttributes="Bold"
+                                   TextColor="White" />
+                            <Label Text="Allow alarms to run reliably in the background."
+                                   FontSize="12"
+                                   TextColor="#8A7AAE" />
+                        </VerticalStackLayout>
+                        <Switch x:Name="BatterySwitch"
+                                Grid.Column="2"
+                                IsToggled="False"
+                                ThumbColor="#9B6FBF"
+                                OnColor="#7B3FA0"
+                                VerticalOptions="Center"
+                                IsEnabled="False" />
+                    </Grid>
+                </Border>
+
+                <!-- Status feedback -->
+                <Label x:Name="StatusLabel"
+                       Text=""
+                       FontSize="12"
+                       TextColor="#8A7AAE"
+                       HorizontalOptions="Center"
+                       HorizontalTextAlignment="Center"
+                       Margin="8,4" />
+
+            </VerticalStackLayout>
+        </ScrollView>
+
+        <!-- Bottom buttons -->
+        <VerticalStackLayout Grid.Row="2"
+                             Spacing="16"
+                             Padding="32,16,32,48">
+
+            <Button Text="Continue"
+                    FontSize="17"
+                    FontAttributes="Bold"
+                    BackgroundColor="#7B3FA0"
+                    TextColor="White"
+                    CornerRadius="28"
+                    HeightRequest="56"
+                    Clicked="OnContinueClicked" />
+
+            <Label Text="Skip for now &#8250;"
+                   FontSize="14"
+                   TextColor="#8A7AAE"
+                   HorizontalOptions="Center">
+                <Label.GestureRecognizers>
+                    <TapGestureRecognizer Tapped="OnSkipTapped" />
+                </Label.GestureRecognizers>
+            </Label>
+
+        </VerticalStackLayout>
+
+    </Grid>
+</ContentPage>

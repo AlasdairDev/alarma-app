@@ -6,177 +6,220 @@
              Shell.NavBarIsVisible="False"
              BackgroundColor="#2D1B4E">
 
-    <Grid RowDefinitions="Auto,*">
+    <!-- Outer Grid — children stack (overlap). Inner content + overlay are siblings. -->
+    <Grid>
 
-        <!-- Dark purple header -->
-        <VerticalStackLayout Grid.Row="0"
-                             BackgroundColor="#2D1B4E"
-                             Padding="24,48,24,20">
-            <Label Text="{Binding Greeting}"
-                   FontSize="18"
-                   TextColor="#C8B8E8" />
-            <Label Text="Where are you headed?"
-                   FontSize="26"
-                   FontAttributes="Bold"
-                   TextColor="White"
-                   Margin="0,2,0,16" />
+        <!-- ── Inner content ─────────────────────────────────────────── -->
+        <Grid RowDefinitions="Auto,*">
 
-            <!-- Search pill — tappable, navigates to SearchView -->
-            <Border BackgroundColor="White"
-                    StrokeShape="RoundRectangle 28"
-                    Stroke="Transparent"
-                    Padding="16,13">
-                <Grid ColumnDefinitions="Auto,*">
-                    <Label Grid.Column="0"
-                           Text="&#128269;"
-                           FontSize="16"
-                           TextColor="#888888"
-                           VerticalOptions="Center" />
-                    <Label Grid.Column="1"
-                           Text="{Binding DestinationSummaryText}"
-                           TextColor="#888888"
-                           FontSize="14"
-                           Margin="10,0,0,0"
-                           VerticalOptions="Center"
-                           LineBreakMode="TailTruncation" />
-                </Grid>
-                <Border.GestureRecognizers>
-                    <TapGestureRecognizer Tapped="OnSearchTapped" />
-                </Border.GestureRecognizers>
-            </Border>
-        </VerticalStackLayout>
-
-        <!-- Map fills the rest -->
-        <WebView x:Name="MapWebView"
-                 Grid.Row="1"
-                 Source="{Binding MapHtmlSource}"
-                 HorizontalOptions="Fill"
-                 VerticalOptions="Fill" />
-
-        <!-- Bottom overlays stacked above tab bar — FAB is first so it floats above cards -->
-        <VerticalStackLayout Grid.Row="1"
-                             VerticalOptions="End"
-                             HorizontalOptions="Fill"
-                             Spacing="8"
-                             Margin="0,0,0,16">
-
-            <!-- Location FAB — floats right, above the card stack -->
-            <Button HorizontalOptions="End"
-                    Text="&#9673;"
-                    FontSize="20"
-                    WidthRequest="52"
-                    HeightRequest="52"
-                    CornerRadius="26"
-                    BackgroundColor="White"
-                    TextColor="#7B3FA0"
-                    Margin="0,0,20,0"
-                    Padding="0"
-                    Command="{Binding CenterOnUserCommand}" />
-
-            <!-- View Active Trip pill (when tracking) -->
-            <Border IsVisible="{Binding IsTracking}"
-                    BackgroundColor="#7B3FA0"
-                    Stroke="Transparent"
-                    StrokeShape="RoundRectangle 28"
-                    Padding="24,14"
-                    HorizontalOptions="Center">
-                <Label Text="&#128205;  View Active Trip"
-                       TextColor="White"
-                       FontSize="15"
+            <!-- Dark purple header -->
+            <VerticalStackLayout Grid.Row="0"
+                                 BackgroundColor="#2D1B4E"
+                                 Padding="24,48,24,20">
+                <Label Text="{Binding Greeting}"
+                       FontSize="18"
+                       TextColor="#C8B8E8" />
+                <Label Text="Where are you headed?"
+                       FontSize="26"
                        FontAttributes="Bold"
-                       HorizontalOptions="Center" />
-                <Border.GestureRecognizers>
-                    <TapGestureRecognizer Tapped="OnViewActiveTripTapped" />
-                </Border.GestureRecognizers>
-            </Border>
+                       TextColor="White"
+                       Margin="0,2,0,16" />
 
-            <!-- Earphones connected banner -->
-            <Border IsVisible="{Binding IsEarphonesConnected}"
-                    BackgroundColor="#3D2B5E"
-                    Stroke="Transparent"
-                    StrokeShape="RoundRectangle 20"
-                    Padding="20,10"
-                    HorizontalOptions="Center">
-                <Label Text="&#127911;  Earphones connected"
-                       TextColor="#C8B8E8"
-                       FontSize="13"
-                       HorizontalOptions="Center" />
-            </Border>
-
-            <!-- Start Trip card — shown when destination set and not yet tracking -->
-            <Border IsVisible="{Binding ShowStartTripCard}"
-                    BackgroundColor="#F01A0F35"
-                    StrokeShape="RoundRectangle 16"
-                    Stroke="Transparent"
-                    Margin="16,0"
-                    Padding="20,16">
-                <VerticalStackLayout Spacing="12">
-                    <Grid ColumnDefinitions="*,Auto">
+                <!-- Search pill — tappable, navigates to SearchView -->
+                <Border BackgroundColor="White"
+                        StrokeShape="RoundRectangle 28"
+                        Stroke="Transparent"
+                        Padding="16,13">
+                    <Grid ColumnDefinitions="Auto,*">
                         <Label Grid.Column="0"
-                               Text="{Binding DestinationSummaryText}"
-                               FontSize="14"
-                               FontAttributes="Bold"
-                               TextColor="White"
-                               LineBreakMode="TailTruncation"
+                               Text="&#128269;"
+                               FontSize="16"
+                               TextColor="#888888"
                                VerticalOptions="Center" />
                         <Label Grid.Column="1"
-                               Text="&#9734;"
-                               FontSize="20"
-                               TextColor="#9B6FBF"
+                               Text="{Binding DestinationSummaryText}"
+                               TextColor="#888888"
+                               FontSize="14"
+                               Margin="10,0,0,0"
                                VerticalOptions="Center"
-                               Margin="8,0,0,0">
-                            <Label.GestureRecognizers>
-                                <TapGestureRecognizer Command="{Binding ToggleFavoriteCommand}" />
-                            </Label.GestureRecognizers>
-                            <Label.Triggers>
-                                <DataTrigger TargetType="Label"
-                                             Binding="{Binding IsDestinationSaved}"
-                                             Value="True">
-                                    <Setter Property="Text" Value="&#9733;" />
-                                    <Setter Property="TextColor" Value="#FFD700" />
-                                </DataTrigger>
-                            </Label.Triggers>
-                        </Label>
+                               LineBreakMode="TailTruncation" />
                     </Grid>
-                    <Grid ColumnDefinitions="*,Auto"
-                          ColumnSpacing="12">
-                        <Picker Grid.Column="0"
-                                ItemsSource="{Binding VehicleTypeOptions}"
-                                SelectedItem="{Binding VehicleType}"
-                                TextColor="White"
-                                FontSize="14"
-                                BackgroundColor="#4A3570"
-                                Title="Vehicle type" />
-                        <Button Grid.Column="1"
-                                Text="Start Trip"
-                                FontSize="14"
-                                BackgroundColor="#7B3FA0"
-                                TextColor="White"
-                                CornerRadius="20"
-                                Padding="20,10"
-                                IsVisible="{Binding IsNotTracking}"
-                                Command="{Binding StartTrackingCommand}" />
-                    </Grid>
-                </VerticalStackLayout>
+                    <Border.GestureRecognizers>
+                        <TapGestureRecognizer Tapped="OnSearchTapped" />
+                    </Border.GestureRecognizers>
+                </Border>
+            </VerticalStackLayout>
+
+            <!-- Map fills the rest -->
+            <WebView x:Name="MapWebView"
+                     Grid.Row="1"
+                     Source="{Binding MapHtmlSource}"
+                     HorizontalOptions="Fill"
+                     VerticalOptions="Fill" />
+
+            <!-- Bottom overlays stacked above tab bar — FAB is first so it floats above cards -->
+            <VerticalStackLayout Grid.Row="1"
+                                 VerticalOptions="End"
+                                 HorizontalOptions="Fill"
+                                 Spacing="8"
+                                 Margin="0,0,0,16">
+
+                <!-- Location FAB — floats right, above the card stack -->
+                <Button HorizontalOptions="End"
+                        Text="&#9673;"
+                        FontSize="20"
+                        WidthRequest="52"
+                        HeightRequest="52"
+                        CornerRadius="26"
+                        BackgroundColor="White"
+                        TextColor="#7B3FA0"
+                        Margin="0,0,20,0"
+                        Padding="0"
+                        Command="{Binding CenterOnUserCommand}" />
+
+                <!-- View Active Trip pill (when tracking) -->
+                <Border IsVisible="{Binding IsTracking}"
+                        BackgroundColor="#7B3FA0"
+                        Stroke="Transparent"
+                        StrokeShape="RoundRectangle 28"
+                        Padding="24,14"
+                        HorizontalOptions="Center">
+                    <Label Text="&#128205;  View Active Trip"
+                           TextColor="White"
+                           FontSize="15"
+                           FontAttributes="Bold"
+                           HorizontalOptions="Center" />
+                    <Border.GestureRecognizers>
+                        <TapGestureRecognizer Tapped="OnViewActiveTripTapped" />
+                    </Border.GestureRecognizers>
+                </Border>
+
+                <!-- Earphones connected banner -->
+                <Border IsVisible="{Binding IsEarphonesConnected}"
+                        BackgroundColor="#3D2B5E"
+                        Stroke="Transparent"
+                        StrokeShape="RoundRectangle 20"
+                        Padding="20,10"
+                        HorizontalOptions="Center">
+                    <Label Text="&#127911;  Earphones connected"
+                           TextColor="#C8B8E8"
+                           FontSize="13"
+                           HorizontalOptions="Center" />
+                </Border>
+
+                <!-- Start Trip card — shown when destination set and not yet tracking -->
+                <Border IsVisible="{Binding ShowStartTripCard}"
+                        BackgroundColor="#F01A0F35"
+                        StrokeShape="RoundRectangle 16"
+                        Stroke="Transparent"
+                        Margin="16,0"
+                        Padding="20,16">
+                    <VerticalStackLayout Spacing="12">
+                        <Grid ColumnDefinitions="*,Auto">
+                            <Label Grid.Column="0"
+                                   Text="{Binding DestinationSummaryText}"
+                                   FontSize="14"
+                                   FontAttributes="Bold"
+                                   TextColor="White"
+                                   LineBreakMode="TailTruncation"
+                                   VerticalOptions="Center" />
+                            <Label Grid.Column="1"
+                                   Text="&#9734;"
+                                   FontSize="20"
+                                   TextColor="#9B6FBF"
+                                   VerticalOptions="Center"
+                                   Margin="8,0,0,0">
+                                <Label.GestureRecognizers>
+                                    <TapGestureRecognizer Command="{Binding ToggleFavoriteCommand}" />
+                                </Label.GestureRecognizers>
+                                <Label.Triggers>
+                                    <DataTrigger TargetType="Label"
+                                                 Binding="{Binding IsDestinationSaved}"
+                                                 Value="True">
+                                        <Setter Property="Text" Value="&#9733;" />
+                                        <Setter Property="TextColor" Value="#FFD700" />
+                                    </DataTrigger>
+                                </Label.Triggers>
+                            </Label>
+                        </Grid>
+                        <Grid ColumnDefinitions="*,Auto"
+                              ColumnSpacing="12">
+                            <Picker Grid.Column="0"
+                                    ItemsSource="{Binding VehicleTypeOptions}"
+                                    SelectedItem="{Binding VehicleType}"
+                                    TextColor="White"
+                                    FontSize="14"
+                                    BackgroundColor="#4A3570"
+                                    Title="Vehicle type" />
+                            <Button Grid.Column="1"
+                                    Text="Start Trip"
+                                    FontSize="14"
+                                    BackgroundColor="#7B3FA0"
+                                    TextColor="White"
+                                    CornerRadius="20"
+                                    Padding="20,10"
+                                    IsVisible="{Binding IsNotTracking}"
+                                    Command="{Binding StartTrackingCommand}" />
+                        </Grid>
+                    </VerticalStackLayout>
+                </Border>
+
+            </VerticalStackLayout>
+
+            <!-- Offline banner at top of map -->
+            <Border Grid.Row="1"
+                    IsVisible="{Binding IsOffline}"
+                    BackgroundColor="#4A3570"
+                    Stroke="Transparent"
+                    StrokeShape="RoundRectangle 8"
+                    Padding="16,8"
+                    HorizontalOptions="Center"
+                    VerticalOptions="Start"
+                    Margin="16,12">
+                <Label Text="{Binding ConnectivityText}"
+                       TextColor="#C8B8E8"
+                       FontSize="12"
+                       HorizontalOptions="Center" />
             </Border>
 
-        </VerticalStackLayout>
+        </Grid>
 
-        <!-- Offline banner at top of map -->
-        <Border Grid.Row="1"
-                IsVisible="{Binding IsOffline}"
-                BackgroundColor="#4A3570"
-                Stroke="Transparent"
-                StrokeShape="RoundRectangle 8"
-                Padding="16,8"
-                HorizontalOptions="Center"
-                VerticalOptions="Start"
-                Margin="16,12">
-            <Label Text="{Binding ConnectivityText}"
-                   TextColor="#C8B8E8"
-                   FontSize="12"
-                   HorizontalOptions="Center" />
-        </Border>
+        <!-- ── SOS Warning overlay (Figma "SOS Warning.png") ─────────── -->
+        <!-- Shown once on first Home entry after onboarding is complete. -->
+        <Grid x:Name="SosWarningOverlay"
+              IsVisible="False"
+              BackgroundColor="#AA000020">
+            <Border HorizontalOptions="Center"
+                    VerticalOptions="Center"
+                    BackgroundColor="#3D2B5E"
+                    StrokeShape="RoundRectangle 20"
+                    Stroke="#6A4590"
+                    StrokeThickness="1"
+                    Padding="28,24"
+                    Margin="32,0">
+                <VerticalStackLayout Spacing="14">
+                    <Label Text="SOS Warning"
+                           FontSize="22"
+                           FontAttributes="Bold"
+                           TextColor="White"
+                           HorizontalOptions="Center" />
+                    <Label Text="Make sure your SIM card has sufficient prepaid load before your trip to ensure your SOS message can be sent."
+                           FontSize="14"
+                           TextColor="#C8B8E8"
+                           HorizontalOptions="Center"
+                           HorizontalTextAlignment="Center"
+                           LineBreakMode="WordWrap" />
+                    <Button Text="Close"
+                            BackgroundColor="#7B3FA0"
+                            TextColor="White"
+                            FontSize="15"
+                            FontAttributes="Bold"
+                            CornerRadius="24"
+                            Padding="0,12"
+                            Clicked="OnSosWarningClosed" />
+                </VerticalStackLayout>
+            </Border>
+        </Grid>
 
     </Grid>
 </ContentPage>
