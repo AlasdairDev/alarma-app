@@ -12,9 +12,8 @@
 //   called while the view was off-screen (e.g. returning from SearchView or FavoritesView).
 // A03 Injection: All values forwarded to EvaluateJavaScriptAsync use InvariantCulture F6
 //   numeric strings or JsonSerializer.Serialize — no user-supplied strings reach the JS context.
-// A01 Broken Access Control: Onboarding gate (HasSeenTutorial check) is enforced here
-//   before InitializeAsync so biometric/location init cannot be bypassed by navigating
-//   directly to the Home shell route.
+// A01 Broken Access Control: Onboarding + permissions gates are enforced here before
+//   InitializeAsync so location/SMS init cannot be bypassed by navigating directly to //home.
 
 using AlarmaApp.Controllers;
 using AlarmaApp.Services;
@@ -44,19 +43,31 @@ public partial class HomeView : ContentPage
         _controller.CenterMapRequested += OnCenterMapRequested;
         _controller.MapJsRequested += OnMapJsRequested;
 
-        // Check tutorial gate before starting the fade-in so the animation
-        // does not run concurrently with a GoToAsync redirect away from Home.
-        if (!_preferencesService.HasSeenTutorial)
+        // Gate 1: Tutorial + T&C must be completed first.
+        if (!_preferencesService.HasSeenTutorial || !_preferencesService.HasAgreedToTerms)
         {
             await Shell.Current.GoToAsync("onboarding", animate: false);
             return;
         }
 
+        // Gate 2: Permissions setup screen must have been shown.
+        if (!_preferencesService.HasCompletedPermissionsSetup)
+        {
+            await Shell.Current.GoToAsync("permissions-setup", animate: false);
+            return;
+        }
+
         _ = Content.FadeTo(1, 220, Easing.CubicOut);
 
-        // Brief delay so the page renders before the biometric prompt appears.
         await Task.Delay(350);
         await _controller.InitializeAsync();
+
+        // Show SOS Warning once (Figma "SOS Warning.png") — inform user about SIM load requirement.
+        if (!_preferencesService.HasSeenSosWarning)
+        {
+            _preferencesService.HasSeenSosWarning = true;
+            SosWarningOverlay.IsVisible = true;
+        }
 
         // Replay destination state in case SetDestination or ClearDestination fired
         // while this view was off-screen (e.g. navigated back from Search/Favorites).
@@ -84,6 +95,11 @@ public partial class HomeView : ContentPage
         {
             await MapWebView.EvaluateJavaScriptAsync("clearDestination()");
         }
+    }
+
+    private void OnSosWarningClosed(object? sender, EventArgs e)
+    {
+        SosWarningOverlay.IsVisible = false;
     }
 
     private async void OnSearchTapped(object? sender, TappedEventArgs e)

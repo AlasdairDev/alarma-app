@@ -1,0 +1,145 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="AlarmaApp.Views.FavoritesView"
+             Shell.NavBarIsVisible="False"
+             BackgroundColor="#2D1B4E">
+
+    <Grid RowDefinitions="Auto,*,Auto">
+
+        <!-- Header -->
+        <Grid Grid.Row="0"
+              ColumnDefinitions="*,Auto"
+              Padding="24,52,20,16"
+              BackgroundColor="#2D1B4E">
+            <Label Grid.Column="0"
+                   Text="Favorites"
+                   FontSize="28"
+                   FontAttributes="Bold"
+                   TextColor="White"
+                   VerticalOptions="Center" />
+            <Button Grid.Column="1"
+                    Text="+"
+                    FontSize="22"
+                    BackgroundColor="#4A3570"
+                    TextColor="White"
+                    WidthRequest="44"
+                    HeightRequest="44"
+                    CornerRadius="22"
+                    Padding="0"
+                    Command="{Binding SaveDestinationCommand}" />
+        </Grid>
+
+        <!-- Content area -->
+        <Grid Grid.Row="1">
+
+            <!-- Empty state (compass) -->
+            <VerticalStackLayout IsVisible="{Binding HasNoSavedRoutes}"
+                                 VerticalOptions="Center"
+                                 HorizontalOptions="Center"
+                                 Spacing="0">
+                <Grid WidthRequest="180"
+                      HeightRequest="180"
+                      HorizontalOptions="Center">
+                    <Ellipse WidthRequest="160"
+                             HeightRequest="160"
+                             Stroke="#4A3570"
+                             StrokeThickness="2"
+                             Fill="Transparent"
+                             HorizontalOptions="Center"
+                             VerticalOptions="Center" />
+                    <Label Text="&#129517;"
+                           FontSize="72"
+                           TextColor="#7B3FA0"
+                           HorizontalOptions="Center"
+                           VerticalOptions="Center" />
+                    <Label Text="&#11088;"
+                           FontSize="24"
+                           TextColor="#9B6FBF"
+                           HorizontalOptions="End"
+                           VerticalOptions="Start"
+                           Margin="0,10,10,0" />
+                </Grid>
+
+                <Label Text="No favorites yet."
+                       FontSize="20"
+                       FontAttributes="Bold"
+                       TextColor="White"
+                       HorizontalOptions="Center"
+                       Margin="0,16,0,8" />
+                <Label Text="Add favorites from the Home Screen by tapping the star on a place. They'll show here and for one-tap trips."
+                       FontSize="14"
+                       TextColor="#8A7AAE"
+                       HorizontalOptions="Center"
+                       HorizontalTextAlignment="Center"
+                       LineBreakMode="WordWrap"
+                       Margin="32,0" />
+            </VerticalStackLayout>
+
+            <!-- Favorites list -->
+            <ScrollView IsVisible="{Binding HasSavedRoutes}">
+                <VerticalStackLayout Spacing="0">
+                    <CollectionView ItemsSource="{Binding SavedRoutes}">
+                        <CollectionView.ItemTemplate>
+                            <DataTemplate>
+                                <Grid ColumnDefinitions="Auto,*,Auto"
+                                      Padding="16,14"
+                                      BackgroundColor="Transparent">
+                                    <Border Grid.Column="0"
+                                            BackgroundColor="#4A3570"
+                                            StrokeShape="Ellipse"
+                                            Stroke="Transparent"
+                                            WidthRequest="44"
+                                            HeightRequest="44">
+                                        <Label Text="&#128205;"
+                                               FontSize="18"
+                                               TextColor="#9B6FBF"
+                                               HorizontalOptions="Center"
+                                               VerticalOptions="Center" />
+                                    </Border>
+
+                                    <Label Grid.Column="1"
+                                           Text="{Binding Name}"
+                                           FontSize="14"
+                                           TextColor="White"
+                                           FontAttributes="Bold"
+                                           LineBreakMode="TailTruncation"
+                                           Margin="14,0,0,0"
+                                           VerticalOptions="Center" />
+
+                                    <Label Grid.Column="2"
+                                           Text="&#11088;"
+                                           FontSize="20"
+                                           TextColor="#9B6FBF"
+                                           VerticalOptions="Center"
+                                           Margin="8,0,0,0">
+                                        <Label.GestureRecognizers>
+                                            <TapGestureRecognizer Command="{Binding Source={RelativeSource AncestorType={x:Type ContentPage}}, Path=BindingContext.RemoveSavedRouteCommand}"
+                                                                   CommandParameter="{Binding .}" />
+                                        </Label.GestureRecognizers>
+                                    </Label>
+
+                                    <Grid.GestureRecognizers>
+                                        <TapGestureRecognizer Tapped="OnFavoriteRouteTapped" />
+                                    </Grid.GestureRecognizers>
+                                </Grid>
+                            </DataTemplate>
+                        </CollectionView.ItemTemplate>
+                    </CollectionView>
+                    <BoxView HeightRequest="24" Color="Transparent" />
+                </VerticalStackLayout>
+            </ScrollView>
+
+        </Grid>
+
+        <!-- Action feedback -->
+        <Label Grid.Row="2"
+               Text="{Binding LastActionText}"
+               FontSize="12"
+               TextColor="#8A7AAE"
+               HorizontalOptions="Center"
+               HorizontalTextAlignment="Center"
+               Margin="16,8,16,16" />
+
+    </Grid>
+</ContentPage>

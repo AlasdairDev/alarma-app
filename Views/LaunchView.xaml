@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="AlarmaApp.Views.LaunchView"
+             Shell.NavBarIsVisible="False"
+             Shell.TabBarIsVisible="False"
+             BackgroundColor="#0D0D1A">
+
+    <Grid x:Name="RootContent" Opacity="0">
+
+        <!-- Full-screen background image -->
+        <Image Source="launch_bg.jpg"
+               Aspect="AspectFill"
+               HorizontalOptions="Fill"
+               VerticalOptions="Fill" />
+
+        <!-- Dark overlay ensures text legibility over any background -->
+        <BoxView BackgroundColor="#AA000000" />
+
+        <!-- Centered logo + title -->
+        <VerticalStackLayout HorizontalOptions="Center"
+                             VerticalOptions="Center"
+                             Spacing="0">
+
+            <Image Source="main_logo.png"
+                   WidthRequest="200"
+                   HeightRequest="200"
+                   Aspect="AspectFit"
+                   HorizontalOptions="Center" />
+
+            <Label Text="ALARMA"
+                   HorizontalOptions="Center"
+                   Margin="0,16,0,0"
+                   FontSize="32"
+                   FontAttributes="Bold"
+                   CharacterSpacing="8"
+                   TextColor="White" />
+
+        </VerticalStackLayout>
+
+        <Grid.GestureRecognizers>
+            <TapGestureRecognizer Tapped="OnScreenTapped" />
+        </Grid.GestureRecognizers>
+
+    </Grid>
+
+</ContentPage>

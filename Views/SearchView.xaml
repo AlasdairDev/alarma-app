@@ -1,0 +1,160 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:services="clr-namespace:AlarmaApp.Services"
+             x:Class="AlarmaApp.Views.SearchView"
+             x:Name="SearchPage"
+             Shell.NavBarIsVisible="False"
+             Shell.TabBarIsVisible="False"
+             BackgroundColor="#2D1B4E">
+
+    <Grid RowDefinitions="Auto,Auto,*">
+
+        <!-- Header with back button -->
+        <Grid Grid.Row="0"
+              ColumnDefinitions="Auto,*"
+              Padding="16,48,24,8"
+              BackgroundColor="#2D1B4E">
+            <Button Grid.Column="0"
+                    Text="&#8249;"
+                    FontSize="28"
+                    BackgroundColor="Transparent"
+                    TextColor="White"
+                    Padding="8,0"
+                    Clicked="OnBackClicked" />
+            <Label Grid.Column="1"
+                   Text="Where to?"
+                   FontSize="22"
+                   FontAttributes="Bold"
+                   TextColor="White"
+                   VerticalOptions="Center" />
+        </Grid>
+
+        <!-- Search input -->
+        <Border Grid.Row="1"
+                BackgroundColor="#4A3570"
+                StrokeShape="RoundRectangle 12"
+                Stroke="Transparent"
+                Margin="16,8"
+                Padding="16,4">
+            <Grid ColumnDefinitions="Auto,*,Auto">
+
+                <Label Grid.Column="0"
+                       Text="&#128269;"
+                       FontSize="16"
+                       TextColor="#8A7AAE"
+                       VerticalOptions="Center"
+                       Padding="4">
+                    <Label.GestureRecognizers>
+                        <TapGestureRecognizer Command="{Binding SearchDestinationCommand}" />
+                    </Label.GestureRecognizers>
+                </Label>
+
+                <Entry Grid.Column="1"
+                       x:Name="SearchEntry"
+                       Text="{Binding DestinationQuery}"
+                       Placeholder="Search destination..."
+                       PlaceholderColor="#8A7AAE"
+                       TextColor="White"
+                       ReturnCommand="{Binding SearchDestinationCommand}"
+                       ReturnType="Search"
+                       TextChanged="OnSearchTextChanged"
+                       MaxLength="200"
+                       Margin="8,0,0,0" />
+
+                <!-- Spinner while searching -->
+                <ActivityIndicator Grid.Column="2"
+                                   IsRunning="{Binding IsSearchingDestination}"
+                                   IsVisible="{Binding IsSearchingDestination}"
+                                   Color="#9B6FBF"
+                                   WidthRequest="22"
+                                   HeightRequest="22"
+                                   VerticalOptions="Center"
+                                   Margin="8,0,0,0" />
+            </Grid>
+        </Border>
+
+        <!-- Results / state -->
+        <ScrollView Grid.Row="2">
+            <VerticalStackLayout>
+
+                <Label Text="&#8226;  Current Location"
+                       TextColor="#C8B8E8"
+                       FontSize="14"
+                       Margin="24,16,16,8" />
+
+                <!-- Search results -->
+                <CollectionView ItemsSource="{Binding SearchResults}"
+                                IsVisible="{Binding HasSearchResults}">
+                    <CollectionView.ItemTemplate>
+                        <DataTemplate x:DataType="services:GeocodingResult">
+                            <Grid ColumnDefinitions="Auto,*"
+                                  Padding="16,12"
+                                  BackgroundColor="Transparent">
+
+                                <Border Grid.Column="0"
+                                        BackgroundColor="#4A3570"
+                                        StrokeShape="Ellipse"
+                                        Stroke="Transparent"
+                                        WidthRequest="40"
+                                        HeightRequest="40">
+                                    <Label Text="&#8599;"
+                                           FontSize="18"
+                                           TextColor="#9B6FBF"
+                                           HorizontalOptions="Center"
+                                           VerticalOptions="Center" />
+                                </Border>
+
+                                <VerticalStackLayout Grid.Column="1"
+                                                     Margin="14,0,0,0"
+                                                     Spacing="2"
+                                                     VerticalOptions="Center">
+                                    <Label Text="{Binding DisplayName}"
+                                           TextColor="White"
+                                           FontSize="14"
+                                           FontAttributes="Bold"
+                                           LineBreakMode="TailTruncation" />
+                                    <!-- PlaceType shows as a dim subtitle; hidden when null/empty -->
+                                    <Label Text="{Binding PlaceType}"
+                                           TextColor="#9B6FBF"
+                                           FontSize="11"
+                                           LineBreakMode="TailTruncation">
+                                        <Label.Triggers>
+                                            <DataTrigger TargetType="Label"
+                                                         Binding="{Binding PlaceType}"
+                                                         Value="{x:Null}">
+                                                <Setter Property="IsVisible" Value="False" />
+                                            </DataTrigger>
+                                        </Label.Triggers>
+                                    </Label>
+                                </VerticalStackLayout>
+
+                                <Grid.GestureRecognizers>
+                                    <TapGestureRecognizer Tapped="OnResultTapped" />
+                                </Grid.GestureRecognizers>
+                            </Grid>
+                        </DataTemplate>
+                    </CollectionView.ItemTemplate>
+                </CollectionView>
+
+                <!-- No results / helpful hint -->
+                <Label IsVisible="{Binding ShowNoResults}"
+                       Text="{Binding LastActionText}"
+                       TextColor="#8A7AAE"
+                       FontSize="13"
+                       HorizontalTextAlignment="Center"
+                       HorizontalOptions="Fill"
+                       Margin="24,32" />
+
+                <!-- Result count when results are showing -->
+                <Label IsVisible="{Binding HasSearchResults}"
+                       Text="{Binding LastActionText}"
+                       TextColor="#6A5A8E"
+                       FontSize="11"
+                       HorizontalOptions="Center"
+                       Margin="16,4" />
+
+            </VerticalStackLayout>
+        </ScrollView>
+    </Grid>
+</ContentPage>

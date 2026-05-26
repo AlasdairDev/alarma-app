@@ -1,0 +1,242 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="AlarmaApp.Views.OnboardingView"
+             Shell.NavBarIsVisible="False"
+             Shell.TabBarIsVisible="False"
+             BackgroundColor="#1A0F35">
+
+    <Grid RowDefinitions="*,Auto">
+
+        <Grid.GestureRecognizers>
+            <SwipeGestureRecognizer Direction="Left"  Swiped="OnSwipedLeft" />
+            <SwipeGestureRecognizer Direction="Right" Swiped="OnSwipedRight" />
+        </Grid.GestureRecognizers>
+
+        <!-- ── Slides ───────────────────────────────────────────────── -->
+        <Grid Grid.Row="0">
+
+            <!-- Slide 0 — Welcome to Alarma -->
+            <VerticalStackLayout x:Name="Slide0"
+                                 IsVisible="True"
+                                 VerticalOptions="Center"
+                                 HorizontalOptions="Fill"
+                                 Spacing="24"
+                                 Padding="40,0">
+                <Image Source="tutorial1.png"
+                       WidthRequest="220"
+                       HeightRequest="220"
+                       Aspect="AspectFit"
+                       HorizontalOptions="Center" />
+                <Label Text="Welcome to Alarma."
+                       FontSize="28"
+                       FontAttributes="Bold"
+                       TextColor="White"
+                       HorizontalOptions="Center"
+                       HorizontalTextAlignment="Center" />
+                <Label Text="Never miss your stop again."
+                       FontSize="16"
+                       TextColor="#C8B8E8"
+                       HorizontalOptions="Center"
+                       HorizontalTextAlignment="Center"
+                       LineBreakMode="WordWrap" />
+            </VerticalStackLayout>
+
+            <!-- Slide 1 — Set Your Destination -->
+            <VerticalStackLayout x:Name="Slide1"
+                                 IsVisible="False"
+                                 VerticalOptions="Center"
+                                 HorizontalOptions="Fill"
+                                 Spacing="24"
+                                 Padding="40,0">
+                <Image Source="tutorial2.png"
+                       WidthRequest="220"
+                       HeightRequest="220"
+                       Aspect="AspectFit"
+                       HorizontalOptions="Center" />
+                <Label Text="Set Your Destination"
+                       FontSize="28"
+                       FontAttributes="Bold"
+                       TextColor="White"
+                       HorizontalOptions="Center"
+                       HorizontalTextAlignment="Center" />
+                <Label Text="Pick a spot on the map and track your destination in real-time."
+                       FontSize="16"
+                       TextColor="#C8B8E8"
+                       HorizontalOptions="Center"
+                       HorizontalTextAlignment="Center"
+                       LineBreakMode="WordWrap" />
+            </VerticalStackLayout>
+
+            <!-- Slide 2 — Rest Easy -->
+            <VerticalStackLayout x:Name="Slide2"
+                                 IsVisible="False"
+                                 VerticalOptions="Center"
+                                 HorizontalOptions="Fill"
+                                 Spacing="24"
+                                 Padding="40,0">
+                <Image Source="tutorial3.png"
+                       WidthRequest="220"
+                       HeightRequest="220"
+                       Aspect="AspectFit"
+                       HorizontalOptions="Center" />
+                <Label Text="Rest Easy"
+                       FontSize="28"
+                       FontAttributes="Bold"
+                       TextColor="White"
+                       HorizontalOptions="Center"
+                       HorizontalTextAlignment="Center" />
+                <Label Text="Close your eyes and let us handle the rest. Wake up to personalized sounds and vibrations."
+                       FontSize="16"
+                       TextColor="#C8B8E8"
+                       HorizontalOptions="Center"
+                       HorizontalTextAlignment="Center"
+                       LineBreakMode="WordWrap" />
+            </VerticalStackLayout>
+
+            <!-- Slide 3 — Smart Travel Safety + T&C Gate -->
+            <ScrollView x:Name="Slide3"
+                        IsVisible="False"
+                        VerticalOptions="Fill"
+                        HorizontalOptions="Fill">
+                <VerticalStackLayout Spacing="20"
+                                     Padding="40,32,40,8">
+
+                    <Image Source="tutorial4.png"
+                           WidthRequest="200"
+                           HeightRequest="200"
+                           Aspect="AspectFit"
+                           HorizontalOptions="Center" />
+                    <Label Text="Smart Travel Safety"
+                           FontSize="26"
+                           FontAttributes="Bold"
+                           TextColor="White"
+                           HorizontalOptions="Center"
+                           HorizontalTextAlignment="Center" />
+                    <Label Text="Get adaptive ETA alarms, travel stop alerts, overshoot detection, and SOS features."
+                           FontSize="15"
+                           TextColor="#C8B8E8"
+                           HorizontalOptions="Center"
+                           HorizontalTextAlignment="Center"
+                           LineBreakMode="WordWrap" />
+
+                    <!-- Divider -->
+                    <BoxView HeightRequest="1"
+                             Color="#4A3570"
+                             Margin="0,4" />
+
+                    <!-- Policy links -->
+                    <VerticalStackLayout Spacing="6"
+                                         HorizontalOptions="Center">
+                        <Label FontSize="13"
+                               TextColor="#C8B8E8"
+                               HorizontalTextAlignment="Center">
+                            <Label.FormattedText>
+                                <FormattedString>
+                                    <Span Text="By continuing you agree to our " />
+                                    <Span x:Name="PrivacyPolicySpan"
+                                          Text="Privacy Policy"
+                                          TextColor="#9B6FBF"
+                                          TextDecorations="Underline" />
+                                    <Span Text=" and " />
+                                    <Span x:Name="TermsSpan"
+                                          Text="Terms &amp; Conditions"
+                                          TextColor="#9B6FBF"
+                                          TextDecorations="Underline" />
+                                </FormattedString>
+                            </Label.FormattedText>
+                            <Label.GestureRecognizers>
+                                <TapGestureRecognizer Tapped="OnPolicyLinkTapped" />
+                            </Label.GestureRecognizers>
+                        </Label>
+                    </VerticalStackLayout>
+
+                    <!-- Agree checkbox row -->
+                    <HorizontalStackLayout HorizontalOptions="Center"
+                                           Spacing="10">
+                        <CheckBox x:Name="AgreeCheckBox"
+                                  Color="#9B6FBF"
+                                  CheckedChanged="OnAgreeCheckChanged"
+                                  VerticalOptions="Center" />
+                        <Label Text="I have read and agree"
+                               FontSize="14"
+                               TextColor="#C8B8E8"
+                               VerticalOptions="Center" />
+                    </HorizontalStackLayout>
+
+                </VerticalStackLayout>
+            </ScrollView>
+
+        </Grid>
+
+        <!-- ── Dots + Buttons ─────────────────────────────────────── -->
+        <VerticalStackLayout Grid.Row="1"
+                             Spacing="28"
+                             Padding="32,0,32,56">
+
+            <!-- Page dots indicator -->
+            <HorizontalStackLayout HorizontalOptions="Center"
+                                   VerticalOptions="Center"
+                                   Spacing="10">
+                <Ellipse x:Name="Dot0"
+                         WidthRequest="24"
+                         HeightRequest="8"
+                         Fill="#9B6FBF"
+                         VerticalOptions="Center" />
+                <Ellipse x:Name="Dot1"
+                         WidthRequest="8"
+                         HeightRequest="8"
+                         Fill="#4A3570"
+                         VerticalOptions="Center" />
+                <Ellipse x:Name="Dot2"
+                         WidthRequest="8"
+                         HeightRequest="8"
+                         Fill="#4A3570"
+                         VerticalOptions="Center" />
+                <Ellipse x:Name="Dot3"
+                         WidthRequest="8"
+                         HeightRequest="8"
+                         Fill="#4A3570"
+                         VerticalOptions="Center" />
+            </HorizontalStackLayout>
+
+            <!-- Skip / Next buttons -->
+            <Grid ColumnDefinitions="*,*"
+                  ColumnSpacing="16">
+
+                <Border Grid.Column="0"
+                        BackgroundColor="Transparent"
+                        StrokeShape="RoundRectangle 28"
+                        Stroke="#4A3570"
+                        StrokeThickness="1.5"
+                        Padding="0,16">
+                    <Label x:Name="SkipLabel"
+                           Text="Skip"
+                           FontSize="16"
+                           TextColor="#C8B8E8"
+                           HorizontalOptions="Center">
+                        <Label.GestureRecognizers>
+                            <TapGestureRecognizer Tapped="OnSkipTapped" />
+                        </Label.GestureRecognizers>
+                    </Label>
+                    <Border.GestureRecognizers>
+                        <TapGestureRecognizer Tapped="OnSkipTapped" />
+                    </Border.GestureRecognizers>
+                </Border>
+
+                <Button Grid.Column="1"
+                        x:Name="NextButton"
+                        Text="Next"
+                        FontSize="16"
+                        FontAttributes="Bold"
+                        BackgroundColor="#7B3FA0"
+                        TextColor="White"
+                        CornerRadius="28"
+                        Clicked="OnNextClicked" />
+
+            </Grid>
+
+        </VerticalStackLayout>
+
+    </Grid>
+</ContentPage>

@@ -1,0 +1,236 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="AlarmaApp.Views.AlarmStageView"
+             Shell.NavBarIsVisible="False"
+             Shell.TabBarIsVisible="False"
+             BackgroundColor="#1A0F35">
+
+    <Grid>
+        <!-- Map background — JS-updated in OnAppearing via MapJsRequested event -->
+        <WebView x:Name="AlarmMapWebView"
+                 Source="{Binding MapHtmlSource}"
+                 HorizontalOptions="Fill"
+                 VerticalOptions="Fill" />
+
+        <!-- Stage 3 red tint overlay -->
+        <BoxView BackgroundColor="#881A0000"
+                 IsVisible="{Binding IsStage3Active}"
+                 HorizontalOptions="Fill"
+                 VerticalOptions="Fill" />
+
+        <!-- Alarm stage label (top center) -->
+        <Label Text="{Binding AlarmStageLabel}"
+               FontSize="18"
+               FontAttributes="Italic"
+               TextColor="White"
+               HorizontalOptions="Center"
+               VerticalOptions="Start"
+               Margin="0,56,0,0" />
+
+        <!-- Distance chip -->
+        <Border HorizontalOptions="Center"
+                VerticalOptions="Start"
+                Margin="0,86,0,0"
+                BackgroundColor="#3D2B5E"
+                StrokeShape="RoundRectangle 20"
+                Stroke="Transparent"
+                Padding="16,8">
+            <HorizontalStackLayout Spacing="8">
+                <Label Text="&#128205;"
+                       FontSize="14"
+                       TextColor="#9B6FBF"
+                       VerticalOptions="Center" />
+                <Label Text="{Binding DistanceToDestinationText}"
+                       FontSize="14"
+                       TextColor="White"
+                       VerticalOptions="Center" />
+            </HorizontalStackLayout>
+        </Border>
+
+        <!-- Bottom alarm card background -->
+        <Border VerticalOptions="End"
+                HorizontalOptions="Fill"
+                BackgroundColor="#F21A0F35"
+                StrokeShape="RoundRectangle 0"
+                Stroke="Transparent"
+                HeightRequest="300" />
+
+        <!-- Stage 1/2 content -->
+        <VerticalStackLayout VerticalOptions="End"
+                             HorizontalOptions="Fill"
+                             Padding="28,0,28,48"
+                             Spacing="10"
+                             IsVisible="{Binding IsStage1Or2Active}">
+
+            <Label Text="{Binding AlarmStageTitle}"
+                   FontSize="30"
+                   FontAttributes="Bold"
+                   TextColor="White"
+                   HorizontalOptions="Center"
+                   HorizontalTextAlignment="Center" />
+            <Label Text="{Binding AlarmStageBody}"
+                   FontSize="16"
+                   TextColor="#C8B8E8"
+                   HorizontalOptions="Center"
+                   HorizontalTextAlignment="Center" />
+
+            <!-- Slide to Stop pill -->
+            <Border BackgroundColor="#4A3570"
+                    StrokeShape="RoundRectangle 28"
+                    Stroke="#6A5590"
+                    StrokeThickness="1"
+                    Padding="8"
+                    Margin="0,10,0,0">
+                <Grid ColumnDefinitions="Auto,*">
+                    <Border Grid.Column="0"
+                            BackgroundColor="White"
+                            StrokeShape="Ellipse"
+                            Stroke="Transparent"
+                            WidthRequest="44"
+                            HeightRequest="44">
+                        <Label Text="&#10006;"
+                               FontSize="18"
+                               TextColor="#4A3570"
+                               HorizontalOptions="Center"
+                               VerticalOptions="Center" />
+                    </Border>
+                    <Label Grid.Column="1"
+                           Text="Slide to Stop"
+                           FontSize="16"
+                           TextColor="White"
+                           HorizontalOptions="Center"
+                           VerticalOptions="Center" />
+                </Grid>
+                <Border.GestureRecognizers>
+                    <TapGestureRecognizer Tapped="OnSlideToStopTapped" />
+                </Border.GestureRecognizers>
+            </Border>
+
+            <!-- Snooze button (Stage 1 and Stage 2) -->
+            <Border BackgroundColor="#3D2B5E"
+                    StrokeShape="RoundRectangle 20"
+                    Stroke="#5A4580"
+                    StrokeThickness="1"
+                    Padding="0,12"
+                    Margin="0,4,0,0">
+                <Border.GestureRecognizers>
+                    <TapGestureRecognizer Command="{Binding SnoozeAlarmCommand}" />
+                </Border.GestureRecognizers>
+                <Label Text="Snooze"
+                       FontSize="15"
+                       TextColor="#C8B8E8"
+                       HorizontalOptions="Center" />
+            </Border>
+
+            <!-- Reminder items (Stage 1 only) -->
+            <VerticalStackLayout Spacing="8"
+                                 Margin="0,8,0,0"
+                                 IsVisible="{Binding IsStage1Active}">
+                <HorizontalStackLayout Spacing="10">
+                    <Label Text="&#10003;"
+                           FontSize="16"
+                           TextColor="#4CD964"
+                           VerticalOptions="Center" />
+                    <Label Text="Gather belongings"
+                           FontSize="14"
+                           TextColor="#C8B8E8"
+                           VerticalOptions="Center" />
+                </HorizontalStackLayout>
+                <HorizontalStackLayout Spacing="10">
+                    <Label Text="&#10003;"
+                           FontSize="16"
+                           TextColor="#4CD964"
+                           VerticalOptions="Center" />
+                    <Label Text="Stay alert"
+                           FontSize="14"
+                           TextColor="#C8B8E8"
+                           VerticalOptions="Center" />
+                </HorizontalStackLayout>
+            </VerticalStackLayout>
+
+        </VerticalStackLayout>
+
+        <!-- Stage 3 content -->
+        <VerticalStackLayout VerticalOptions="End"
+                             HorizontalOptions="Fill"
+                             Padding="28,0,28,48"
+                             Spacing="10"
+                             IsVisible="{Binding IsStage3Active}">
+
+            <Label Text="{Binding AlarmStageTitle}"
+                   FontSize="48"
+                   FontAttributes="Bold"
+                   TextColor="#FF3B30"
+                   HorizontalOptions="Center"
+                   HorizontalTextAlignment="Center" />
+            <Label Text="{Binding AlarmStageBody}"
+                   FontSize="18"
+                   FontAttributes="Bold"
+                   TextColor="White"
+                   HorizontalOptions="Center"
+                   HorizontalTextAlignment="Center" />
+
+            <!-- Slide to Dismiss pill (red) -->
+            <Border BackgroundColor="#CC1A0F"
+                    StrokeShape="RoundRectangle 28"
+                    Stroke="#FF3B30"
+                    StrokeThickness="1"
+                    Padding="8"
+                    Margin="0,14,0,0">
+                <Grid ColumnDefinitions="Auto,*">
+                    <Border Grid.Column="0"
+                            BackgroundColor="White"
+                            StrokeShape="Ellipse"
+                            Stroke="Transparent"
+                            WidthRequest="44"
+                            HeightRequest="44">
+                        <Label Text="&#10006;"
+                               FontSize="18"
+                               TextColor="#CC1A0F"
+                               HorizontalOptions="Center"
+                               VerticalOptions="Center" />
+                    </Border>
+                    <Label Grid.Column="1"
+                           Text="Slide to dismiss"
+                           FontSize="16"
+                           TextColor="White"
+                           HorizontalOptions="Center"
+                           VerticalOptions="Center" />
+                </Grid>
+                <Border.GestureRecognizers>
+                    <TapGestureRecognizer Tapped="OnSlideToStopTapped" />
+                </Border.GestureRecognizers>
+            </Border>
+
+        </VerticalStackLayout>
+
+        <!-- Tracking only (no alarm stage) - show back button -->
+        <VerticalStackLayout VerticalOptions="End"
+                             HorizontalOptions="Fill"
+                             Padding="28,0,28,48"
+                             Spacing="10"
+                             IsVisible="{Binding IsNotAlarmActive}">
+
+            <Label Text="{Binding DistanceToDestinationText}"
+                   FontSize="20"
+                   FontAttributes="Bold"
+                   TextColor="White"
+                   HorizontalOptions="Center" />
+            <Label Text="{Binding DestinationSummaryText}"
+                   FontSize="14"
+                   TextColor="#C8B8E8"
+                   HorizontalOptions="Center"
+                   LineBreakMode="TailTruncation" />
+            <Button Text="Stop Trip"
+                    BackgroundColor="#4A3570"
+                    TextColor="White"
+                    CornerRadius="24"
+                    FontSize="16"
+                    Padding="0,14"
+                    Clicked="OnStopTripClicked" />
+
+        </VerticalStackLayout>
+
+    </Grid>
+</ContentPage>

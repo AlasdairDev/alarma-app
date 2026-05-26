@@ -67,7 +67,7 @@ public class HomeController : INotifyPropertyChanged
     private string _connectivityText = string.Empty;
     private string _lastActionText = string.Empty;
     private string _destinationQuery = string.Empty;
-    private string _destinationSummaryText = "No destination selected.";
+    private string _destinationSummaryText = "Search";
     private string _distanceToDestinationText = string.Empty;
     private string _availabilityStatusText = string.Empty;
     private string _batteryOptimizationStatusText = string.Empty;
@@ -622,28 +622,6 @@ public class HomeController : INotifyPropertyChanged
             {
                 return;
             }
-
-#if !DEBUG
-            StatusText = "Authenticating...";
-            using var authTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
-            bool authenticated;
-            try
-            {
-                authenticated = await _biometricAuthService.AuthenticateAsync(
-                    "Unlock Alarma to continue.",
-                    authTimeout.Token);
-            }
-            catch (OperationCanceledException)
-            {
-                StatusText = "Authentication timed out. Restart the app to try again.";
-                return;
-            }
-            if (!authenticated)
-            {
-                StatusText = "Authentication required to continue.";
-                return;
-            }
-#endif
 
             _hasInitialized = true;
             StatusText = "Ready to configure an offline-first trip.";
@@ -1741,7 +1719,7 @@ public class HomeController : INotifyPropertyChanged
     private void ClearDestination()
     {
         _lastDestinationResult = null;
-        DestinationSummaryText = "No destination selected.";
+        DestinationSummaryText = "Search";
         DistanceToDestinationText = string.Empty;
         ClearMapTile();
         _minDistanceToDestination = double.MaxValue;

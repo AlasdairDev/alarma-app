@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+        API 31+ splash: icon background matches the splash background exactly so the
+        mandatory circle frame is invisible. The logo is sized to fit fully inside the
+        circle bounds — no wing clipping. Result: logo appears to float centred on the
+        dark-purple background with no visible circle border.
+    -->
+    <style name="Maui.SplashTheme" parent="Maui.MainTheme.NoActionBar">
+        <item name="maui_splash">true</item>
+        <item name="android:windowBackground">@drawable/maui_splash</item>
+        <item name="android:windowSplashScreenBackground">@color/maui_splash_color</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/alarma_splash_icon</item>
+        <item name="android:windowSplashScreenIconBackgroundColor">@color/maui_splash_color</item>
+    </style>
+</resources>
