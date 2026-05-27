@@ -6,7 +6,7 @@
              Shell.TabBarIsVisible="False"
              BackgroundColor="#1A0F35">
 
-    <Grid x:Name="RootGrid" Opacity="0" RowDefinitions="Auto,*,Auto">
+    <Grid x:Name="RootGrid" Opacity="0" HorizontalOptions="Fill" VerticalOptions="Fill" RowDefinitions="Auto,*,Auto">
 
         <!-- Header -->
         <VerticalStackLayout Grid.Row="0"
@@ -71,7 +71,7 @@
                                 ThumbColor="#9B6FBF"
                                 OnColor="#7B3FA0"
                                 VerticalOptions="Center"
-                                IsEnabled="False" />
+                                Toggled="OnNotificationSwitchToggled" />
                     </Grid>
                 </Border>
 
@@ -104,7 +104,7 @@
                                 ThumbColor="#9B6FBF"
                                 OnColor="#7B3FA0"
                                 VerticalOptions="Center"
-                                IsEnabled="False" />
+                                Toggled="OnLocationSwitchToggled" />
                     </Grid>
                 </Border>
 
@@ -137,7 +137,7 @@
                                 ThumbColor="#9B6FBF"
                                 OnColor="#7B3FA0"
                                 VerticalOptions="Center"
-                                IsEnabled="False" />
+                                Toggled="OnBluetoothSwitchToggled" />
                     </Grid>
                 </Border>
 
@@ -170,7 +170,7 @@
                                 ThumbColor="#9B6FBF"
                                 OnColor="#7B3FA0"
                                 VerticalOptions="Center"
-                                IsEnabled="False" />
+                                Toggled="OnBatterySwitchToggled" />
                     </Grid>
                 </Border>
 

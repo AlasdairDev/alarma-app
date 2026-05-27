@@ -5,7 +5,7 @@
              Shell.NavBarIsVisible="False"
              BackgroundColor="#2D1B4E">
 
-    <ScrollView>
+    <ScrollView HorizontalOptions="Fill" VerticalOptions="Fill">
         <VerticalStackLayout Spacing="0">
 
             <!-- Header -->
@@ -37,7 +37,7 @@
                            TextColor="White"
                            VerticalOptions="Center" />
                     <Label Grid.Column="1"
-                           Text="Allow"
+                           Text="{Binding LocationPermissionLabel}"
                            FontSize="14"
                            TextColor="#9B6FBF"
                            VerticalOptions="Center" />
@@ -65,7 +65,7 @@
                            TextColor="White"
                            VerticalOptions="Center" />
                     <Label Grid.Column="1"
-                           Text="Allow"
+                           Text="{Binding BatteryOptimizationLabel}"
                            FontSize="14"
                            TextColor="#9B6FBF"
                            VerticalOptions="Center" />
@@ -93,7 +93,7 @@
                            TextColor="White"
                            VerticalOptions="Center" />
                     <Label Grid.Column="1"
-                           Text="Allow"
+                           Text="{Binding NotificationPermissionLabel}"
                            FontSize="14"
                            TextColor="#9B6FBF"
                            VerticalOptions="Center" />
@@ -121,40 +121,10 @@
                            TextColor="White"
                            VerticalOptions="Center" />
                     <Label Grid.Column="1"
-                           Text="Allow"
+                           Text="{Binding BluetoothPermissionLabel}"
                            FontSize="14"
                            TextColor="#9B6FBF"
                            VerticalOptions="Center" />
-                </Grid>
-            </Border>
-
-            <!-- EMERGENCY CONTACTS -->
-            <Label Text="EMERGENCY CONTACTS"
-                   FontSize="11"
-                   FontAttributes="Bold"
-                   TextColor="#8A7AAE"
-                   Margin="24,20,24,6" />
-            <Border BackgroundColor="#3D2B5E"
-                    StrokeShape="RoundRectangle 12"
-                    Stroke="Transparent"
-                    Margin="16,0">
-                <Grid ColumnDefinitions="*,Auto"
-                      Padding="18,16">
-                    <Label Grid.Column="0"
-                           Text="Emergency contacts"
-                           FontSize="15"
-                           TextColor="White"
-                           VerticalOptions="Center" />
-                    <Button Grid.Column="1"
-                            Text="Update"
-                            FontSize="13"
-                            FontAttributes="Bold"
-                            BackgroundColor="#7B3FA0"
-                            TextColor="White"
-                            CornerRadius="16"
-                            Padding="18,8"
-                            HeightRequest="36"
-                            Clicked="OnUpdateContactsClicked" />
                 </Grid>
             </Border>
 
@@ -235,6 +205,36 @@
                                  VerticalOptions="Center" />
                     </Grid>
                 </VerticalStackLayout>
+            </Border>
+
+            <!-- EMERGENCY CONTACTS -->
+            <Label Text="EMERGENCY CONTACTS"
+                   FontSize="11"
+                   FontAttributes="Bold"
+                   TextColor="#8A7AAE"
+                   Margin="24,20,24,6" />
+            <Border BackgroundColor="#3D2B5E"
+                    StrokeShape="RoundRectangle 12"
+                    Stroke="Transparent"
+                    Margin="16,0">
+                <Grid ColumnDefinitions="*,Auto"
+                      Padding="18,16">
+                    <Label Grid.Column="0"
+                           Text="Emergency contacts"
+                           FontSize="15"
+                           TextColor="White"
+                           VerticalOptions="Center" />
+                    <Button Grid.Column="1"
+                            Text="Update"
+                            FontSize="13"
+                            FontAttributes="Bold"
+                            BackgroundColor="#7B3FA0"
+                            TextColor="White"
+                            CornerRadius="16"
+                            Padding="18,8"
+                            HeightRequest="36"
+                            Clicked="OnUpdateContactsClicked" />
+                </Grid>
             </Border>
 
             <!-- BACKUP -->

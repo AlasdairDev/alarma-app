@@ -1,37 +1,37 @@
-﻿Act as a Senior DevSecOps Engineer and Lead Developer. You are authorized to take full control of the emulator. Your sole objective is to audit, repair, and maintain the binding between backend logic, UI layers, and Android permissions for EVERY feature listed in the README.md, achieving 100% pixel-perfect fidelity to the design files provided in the /GUI_FROM_FIGMA folder.
+﻿Act as an Elite QA Automation Engineer and Senior .NET MAUI Developer.
 
-# 1. ROLE & SECURITY OBJECTIVES
-- You are a Senior DevSecOps Engineer. Your primary goal is to write robust, secure, and compliant application code while strictly adhering to the project's security guardrails.
-- NEVER hardcode secrets; use secure vaults or env variables.
-- Rigorously sanitize all user inputs (PH phone format, name length ≤ 50) against XSS, SQLi, and Injection.
-- Do not leak stack traces or PII in logs or error responses.
-- Before writing code, explain the threat model for the feature you are implementing.
-- Before finishing, analyze your code against OWASP Top 10 guidelines.
+# 1. OPERATION: TOTAL SYSTEM INTEGRATION TESTING & PIXEL-PERFECT REPAIR
+- PURPOSE: Execute a comprehensive, end-to-end evaluation of all application modules, business logic, network fallbacks, and local storage layers against the core mandates of the `README.md`.
+- CRITICAL FIX INSTRUCTION: If any functional feature, database operation, or UI transition fails to execute exactly as described in the documentation, you are explicitly ordered to IMMEDIATELY FIX IT on the spot. Do not just report the issue—rewrite the code and fix it.
+- THE 1-TO-1 VISUAL RULE: Every single UI view, element boundary, color scheme, font weight, padding value, and state layout variation MUST match the "GUI FROM FIGMA" directory specification with absolute, pixel-perfect accuracy. You are strictly forbidden from altering or diverging from these design metrics.
 
-# 2. PIXEL-PERFECT GUI & FEATURE FIDELITY
-- Visual Parity: Every View (Launch, Home, Search, History, Favorites, Emergency, Settings, SOS, Alarm Stages, Trip History, Onboarding, Update Contacts, Active Trip) must match the provided Figma reference designs 1-to-1. 
-- Mandatory Gating: Implement "Privacy Policy" and "Terms & Conditions" scrollable modules. Onboarding must include the mandatory "I agree" checkbox. The "Proceed" button MUST be disabled (IsEnabled = False) until this checkbox is validated.
-- SOS Simplification: Strictly remove all "Fake Call" logic. Focus exclusively on hold-to-activate triggering and contact management.
+# 2. STRICT SYSTEM CODE FREEZE (ZERO ACCIDENTAL DELETIONS OR BREAKAGES)
+- KEEP REPOSITIONING CONSTRAINTS: Under no circumstances are you allowed to alter the instant page-cut button navigation loops established in the onboarding carousel.
+- QUARANTINED MODULES:
+  1. You are STRICTLY FORBIDDEN from modifying or editing `OnboardingView.xaml` or `OnboardingView.xaml.cs`.
+  2. You are STRICTLY FORBIDDEN from modifying or editing `EmergencyView.xaml` or `EmergencyView.xaml.cs`.
+  - Both the tutorial onboarding flow and the emergency SOS contact management/layout matrices are 100% production-ready, verified, and must remain completely untouched to preserve their working states.
 
-# 3. PERMISSION ORCHESTRATION & SYNC (STRICT)
-- Mapping: Every interactive feature's Controller MUST perform a hard-check via `IPermissionsService` before execution.
-- UX Flow: If a permission is missing: Redirect to the OS Permission Dialog immediately. State Recovery: Upon granting, the app MUST auto-resume the feature's entry point without requiring a second user tap.
-- Validation: Zero silent failures or "dead clicks" are permitted.
+# 3. COMPREHENSIVE TESTING MATRIX (VERIFY & IMMEDIATE REPAIR)
 
-# 4. CONNECTIVITY & BINDING AUDIT (README.md)
-Systematically verify every feature from the README.md:
-- HOME: Map + Location permissions.
-- SEARCH: Debounced autocomplete + UI feedback.
-- HISTORY: Persistence + badge rendering.
-- EMERGENCY: SOS hold-to-activate (2s timer) + CRUD contact management.
-- SETTINGS: Alarm adjustments + Battery exemptions.
-- ALARM STAGES: Alarm 1, 2, 3 progression + slide-to-stop logic.
-- LAUNCH/ONBOARDING: Splash + 4-slide Tutorial (w/ checkbox-gated Privacy/T&C).
+## A. GEOLOCATION, MAPPING, & LOOKUP PIPELINES
+- LEAFLET WORKSPACE: Verify the offline-first map layer (`MapWebView` in `HomeView.xaml`) initializes correctly using Leaflet.js and CartOdb dark tiles under a strict Content Security Policy (CSP). Ensure custom overlays stack seamlessly over the canvas without capturing touch inputs.
+- DUAL-SOURCE AUTOMATION: Test that typing into the search box triggers a 500ms debounced lookup to the Photon API with a client-side dictionary expanding local abbreviations (e.g., "pup" to "Polytechnic University of the Philippines"). Confirm it cleanly falls back to Nominatim if fewer than 3 results are returned.
+- COORDINATE IMMUTABILITY: Ensure all latitude/longitude data payloads utilize `InvariantCulture` formatting to prevent rendering crashes on regional emulators.
 
-# 5. OUTPUT, SELF-TESTING & CONTINUOUS REPAIR
-- Self-Testing Directive: BEFORE notifying me, perform a comprehensive, end-to-end "Live-System" test of every feature yourself in the emulator. Verify that the UI, backend, and permission-sync work as a user would experience them.
-- Status Table: Feature Name | Status | Logic Triggered | Binding Fixed | Figma Visual Match | Permissions Synced | Gating Functional | Self-Test Result.
-- DIRECTIVE: Notify me once completion and your internal self-test are confirmed, so I can validate the interaction personally.
-- CRITICAL: I am delegating 'Flawless Sync' to you. If I report that any feature is not in sync, is un-tappable, fails the T&C gate, or fails the permission-flow, you are required to immediately re-audit, trace the failure, and apply the necessary fix until it is perfect.
+## B. DATA PERSISTENCE & ANALYTICS INTERPRETATION
+- DB ENCRYPTION HANDSHAKE: Assert that the local SQLCipher instance is reading and writing records securely via an AES-256 key architecture.
+- COMPLIANCE AUDIT: Test that the `HistoryView.xaml` controller correctly processes and maps exactly the last 20 commute entries from the database. Immediately repair any missing data-bindings for the essential metadata status badges (Alarm Stage reached, total duration, total kilometers, and the "Missed Stop" overshoot badge).
 
-DO NOT generate APKs or clean artifacts until every single feature is fully responsive, permission-synchronized, matches the Figma designs, verified by your own self-test, AND I have verified it personally.
+## C. LOCAL PREFERENCES & CELL WRAPPERS
+- SETTINGS GRID AGGREGATION: Audit `SettingsView.xaml` to verify all permission cells link cleanly to their platform services (Location, Battery Optimization, Notifications, Bluetooth). 
+- DROPDOWN CORRECTIONS: Verify that the full-width alarm sound picker dropdown and the lead-time minute steppers match the styling guidelines from your Figma source files.
+
+# 4. EXECUTION & VALIDATION PIPELINE
+1. WIPE INTERMEDIATE ARTIFACTS: Delete the target project `/bin` and `/obj` directories to eliminate stale cached binaries.
+2. COMPILE AUDIT: Run a full debug and release build targeting Android 15 (API 35) via .NET 9 tools.
+3. TEST ENGINE EXECUTION: Execute the complete testing assembly project (`AlarmaApp.Tests`) using the CLI command: `dotnet test`. Verify all boundary parameters—including phone number regex matching, coordinate bounding-box guards, and backup length caps—pass validation.
+
+# FINAL DIRECTIVE
+- Report back ONLY after every system feature has been comprehensively tested and verified as operational.
+- Your output must explicitly confirm in a code-free summary: "All operational features validated against the README.md specifications, broken bindings repaired on the spot, layout aesthetics brought to a 1-to-1 match with the GUI From Figma files, and both OnboardingView and EmergencyView modules left completely untouched."

@@ -84,6 +84,9 @@ public class HomeController : INotifyPropertyChanged
     private bool _hasArrivedAtDestination;
     private bool _overshootAlerted;
     private bool _routeDeviationAlerted;
+    private bool _isOvershootPending;
+    private bool _isOvershootConfirmed;
+    private string _overshootDistanceText = string.Empty;
     private AlarmStage _currentAlarmStage = AlarmStage.None;
 
     public AlarmStage CurrentAlarmStage
@@ -99,10 +102,31 @@ public class HomeController : INotifyPropertyChanged
                 OnPropertyChanged(nameof(IsAlarmActive));
                 OnPropertyChanged(nameof(IsNotAlarmActive));
                 OnPropertyChanged(nameof(IsStage3Active));
+                OnPropertyChanged(nameof(IsStage3Wake));
                 OnPropertyChanged(nameof(IsStage1Active));
                 OnPropertyChanged(nameof(IsStage1Or2Active));
             }
         }
+    }
+
+    public bool IsOvershootPending
+    {
+        get => _isOvershootPending;
+        private set { if (SetProperty(ref _isOvershootPending, value)) OnPropertyChanged(nameof(IsStage3Wake)); }
+    }
+
+    public bool IsOvershootConfirmed
+    {
+        get => _isOvershootConfirmed;
+        private set { if (SetProperty(ref _isOvershootConfirmed, value)) OnPropertyChanged(nameof(IsStage3Wake)); }
+    }
+
+    public bool IsStage3Wake => IsStage3Active && !_isOvershootPending && !_isOvershootConfirmed;
+
+    public string OvershootDistanceText
+    {
+        get => _overshootDistanceText;
+        private set => SetProperty(ref _overshootDistanceText, value);
     }
     private double _lastSpeedMetersPerSecond;
     private double _minDistanceToDestination = double.MaxValue;
@@ -140,6 +164,9 @@ public class HomeController : INotifyPropertyChanged
     private const int MaxDisplayNameLength = 200;
 
     private string _authStatusText = string.Empty;
+    private string _locationPermissionLabel = "Check";
+    private string _notificationPermissionLabel = "Check";
+    private string _bluetoothPermissionLabel = "Settings";
 
     private DateTime _lastMapLocationUpdate = DateTime.MinValue;
     private static readonly TimeSpan MapLocationUpdateInterval = TimeSpan.FromSeconds(5);
@@ -223,7 +250,11 @@ public class HomeController : INotifyPropertyChanged
     public string DestinationSummaryText
     {
         get => _destinationSummaryText;
-        private set => SetProperty(ref _destinationSummaryText, value);
+        private set
+        {
+            if (SetProperty(ref _destinationSummaryText, value))
+                OnPropertyChanged(nameof(DestinationShortNameText));
+        }
     }
 
     public string DistanceToDestinationText
@@ -231,6 +262,10 @@ public class HomeController : INotifyPropertyChanged
         get => _distanceToDestinationText;
         private set => SetProperty(ref _distanceToDestinationText, value);
     }
+
+    public string DestinationShortNameText => _lastDestinationResult is { DisplayName: var n }
+        ? (n.Length > 28 ? n[..28] + "…" : n)
+        : string.Empty;
 
     public string AvailabilityStatusText
     {
@@ -298,6 +333,27 @@ public class HomeController : INotifyPropertyChanged
     {
         get => _authStatusText;
         private set => SetProperty(ref _authStatusText, value);
+    }
+
+    public string LocationPermissionLabel
+    {
+        get => _locationPermissionLabel;
+        private set => SetProperty(ref _locationPermissionLabel, value);
+    }
+
+    public string NotificationPermissionLabel
+    {
+        get => _notificationPermissionLabel;
+        private set => SetProperty(ref _notificationPermissionLabel, value);
+    }
+
+    public string BatteryOptimizationLabel =>
+        _batteryOptimizationService.IsIgnoringOptimizations() ? "Allowed" : "Required";
+
+    public string BluetoothPermissionLabel
+    {
+        get => _bluetoothPermissionLabel;
+        private set => SetProperty(ref _bluetoothPermissionLabel, value);
     }
 
     public string BackupStatusText
@@ -502,6 +558,9 @@ public class HomeController : INotifyPropertyChanged
     public ICommand RequestLocationPermissionCommand { get; }
     public ICommand RequestNotificationPermissionCommand { get; }
     public ICommand RequestBluetoothPermissionCommand { get; }
+    public ICommand ConfirmOvershootCommand { get; }
+    public ICommand DismissOvershootCommand { get; }
+    public ICommand OpenInGMapsCommand { get; }
 
     public HomeController(
         DatabaseService databaseService,
@@ -586,6 +645,27 @@ public class HomeController : INotifyPropertyChanged
         RequestLocationPermissionCommand = new Command(async () => await RequestLocationPermissionAsync());
         RequestNotificationPermissionCommand = new Command(async () => await RequestNotificationPermissionAsync());
         RequestBluetoothPermissionCommand = new Command(OpenBluetoothSettings);
+        ConfirmOvershootCommand = new Command(() =>
+        {
+            IsOvershootPending = false;
+            IsOvershootConfirmed = true;
+        });
+        DismissOvershootCommand = new Command(() =>
+        {
+            IsOvershootPending = false;
+            IsOvershootConfirmed = false;
+            _overshootAlerted = false;
+            CurrentAlarmStage = AlarmStage.None;
+        });
+        OpenInGMapsCommand = new Command(async () =>
+        {
+            IsOvershootConfirmed = false;
+            CurrentAlarmStage = AlarmStage.None;
+            if (_lastDestinationResult is not null)
+                await _googleMapsLauncher.OpenRerouteAsync(
+                    _lastDestinationResult.Latitude,
+                    _lastDestinationResult.Longitude);
+        });
 
         _locationService.LocationUpdated += OnLocationUpdated;
         _emergencyContacts.CollectionChanged += (_, _) =>
@@ -631,6 +711,7 @@ public class HomeController : INotifyPropertyChanged
             UpdateEarphoneStatus();
             UpdateBackupStatus();
             UpdateAuthStatus();
+            await UpdatePermissionLabelsAsync();
             await InitializeDatabaseAsync();
             TrackingStatusText = "Tracking inactive.";
         }
@@ -685,6 +766,39 @@ public class HomeController : INotifyPropertyChanged
         BatteryOptimizationStatusText = _batteryOptimizationService.IsIgnoringOptimizations()
             ? "Battery optimization: ignored (recommended for tracking)."
             : "Battery optimization: active. Consider allowing ignore to keep tracking stable.";
+        OnPropertyChanged(nameof(BatteryOptimizationLabel));
+    }
+
+    private async Task UpdatePermissionLabelsAsync()
+    {
+        try
+        {
+            var locStatus = await Permissions.CheckStatusAsync<Permissions.LocationWhenInUse>();
+            LocationPermissionLabel = locStatus == PermissionStatus.Granted ? "Granted" : "Required";
+
+            var notifStatus = await Permissions.CheckStatusAsync<PostNotificationsPermission>();
+            NotificationPermissionLabel = notifStatus == PermissionStatus.Granted ? "Granted" : "Required";
+
+            OnPropertyChanged(nameof(BatteryOptimizationLabel));
+
+#if ANDROID
+            try
+            {
+                var btManager = Android.App.Application.Context
+                    .GetSystemService(Android.Content.Context.BluetoothService)
+                    as Android.Bluetooth.BluetoothManager;
+                BluetoothPermissionLabel = btManager?.Adapter?.IsEnabled == true ? "On" : "Off";
+            }
+            catch
+            {
+                BluetoothPermissionLabel = "Settings";
+            }
+#endif
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[HomeController] UpdatePermissionLabelsAsync failed: {ex}");
+        }
     }
 
     private void UpdateEarphoneStatus()
@@ -789,6 +903,7 @@ public class HomeController : INotifyPropertyChanged
         try
         {
             var granted = await _permissionsService.EnsureLocationPermissionsAsync(requireBackground: false);
+            LocationPermissionLabel = granted ? "Granted" : "Required";
             AvailabilityStatusText = granted
                 ? "Location permission granted."
                 : "Location permission denied. Enable it in Android Settings → Apps → Alarma → Permissions.";
@@ -806,6 +921,7 @@ public class HomeController : INotifyPropertyChanged
         try
         {
             var granted = await _permissionsService.EnsureNotificationPermissionAsync();
+            NotificationPermissionLabel = granted ? "Granted" : "Required";
             LastActionText = granted
                 ? "Notification permission granted."
                 : "Notification permission denied. Enable it in Android Settings → Apps → Alarma → Permissions.";
@@ -1024,7 +1140,7 @@ public class HomeController : INotifyPropertyChanged
         try
         {
             DestinationQuery = query;
-            var results = await _geocodingService.SearchAsync(query, token);
+            var results = await Task.Run(() => _geocodingService.SearchAsync(query, token), token);
             ReplaceCollection(_searchResults, results);
             LastActionText = results.Any()
                 ? $"{results.Count} result(s) found. Tap one to select."
@@ -1584,11 +1700,15 @@ public class HomeController : INotifyPropertyChanged
         if (_hasArrivedAtDestination && !_overshootAlerted && distanceToDestination >= overshootThreshold)
         {
             _overshootAlerted = true;
+            OvershootDistanceText = distanceToDestination >= 1000
+                ? $"{distanceToDestination / 1000:F1} km away"
+                : $"{(int)distanceToDestination} m away";
+            IsOvershootPending = true;
             await TriggerAlarmStageAsync(
                 AlarmStage.Stage3,
-                "Alarm stage 3",
-                "Overshoot detected. Rerouting to destination.",
-                reroute: true,
+                "Overshoot Detected",
+                "You might have passed your destination.",
+                reroute: false,
                 allowRepeat: false);
             return;
         }
@@ -1804,6 +1924,8 @@ public class HomeController : INotifyPropertyChanged
     //   user strings reach the eval context.
     // A05 Security Misconfiguration: CSP now explicitly allows CartoDB tile domains on connect-src
     //   (Leaflet 1.9.x may use XHR/fetch for retina-tile probing); img-src covers actual tile images.
+    //   Both *.cartocdn.com and *.basemaps.cartocdn.com are listed because CSP wildcards only match
+    //   one subdomain level — a.basemaps.cartocdn.com is two levels under cartocdn.com.
     //   The map HTML is constructed once and never replaced — eliminating the full-WebView-reload
     //   that caused gray tiles when the user panned or tapped Center-on-me.
     private static HtmlWebViewSource BuildDefaultMapHtml()
@@ -1813,10 +1935,10 @@ public class HomeController : INotifyPropertyChanged
             <html>
             <head>
               <meta charset="utf-8"/>
-              <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src https://unpkg.com 'unsafe-inline'; style-src https://unpkg.com 'unsafe-inline'; img-src https://*.cartocdn.com https://*.openstreetmap.org data: blob:; connect-src https://*.cartocdn.com https://unpkg.com"/>
+              <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src file: 'unsafe-inline'; style-src file: 'unsafe-inline'; img-src https: data: blob:; connect-src https:"/>
               <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"/>
-              <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
-              <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+              <link rel="stylesheet" href="leaflet.css"/>
+              <script src="leaflet.js"></script>
               <style>
                 html,body,#map{margin:0;padding:0;width:100%;height:100%}
                 .leaflet-tile{filter:sepia(0.8) hue-rotate(250deg) saturate(2.5) brightness(0.75)}
@@ -1826,7 +1948,7 @@ public class HomeController : INotifyPropertyChanged
               <div id="map"></div>
               <script>
                 var map = L.map('map',{zoomControl:false}).setView([14.5995,120.9842],12);
-                L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{attribution:'&copy; OSM &copy; CARTO',subdomains:'abcd',maxZoom:19}).addTo(map);
+                var _layer=L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{attribution:'&copy; OSM &copy; CARTO',subdomains:'abcd',maxZoom:19}).addTo(map);
                 var _userMarker=null;
                 var _destMarker=null;
                 function updateUserLocation(lat,lon){
@@ -1847,7 +1969,7 @@ public class HomeController : INotifyPropertyChanged
             </body>
             </html>
             """;
-        return new HtmlWebViewSource { Html = html, BaseUrl = "https://unpkg.com" };
+        return new HtmlWebViewSource { Html = html, BaseUrl = "file:///android_asset/" };
     }
 
     private static readonly System.Text.RegularExpressions.Regex PhoneRegex =

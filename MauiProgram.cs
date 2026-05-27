@@ -37,6 +37,12 @@ public static class MauiProgram
         builder.Services.AddSingleton<Views.LaunchView>();
 
 #if ANDROID
+        Microsoft.Maui.Handlers.WebViewHandler.Mapper.AppendToMapping("AndroidWebViewConfig", (handler, view) =>
+        {
+            handler.PlatformView.Settings.JavaScriptEnabled = true;
+            handler.PlatformView.Settings.DomStorageEnabled = true;
+        });
+
         builder.Services.AddSingleton<ILocationService, AndroidLocationService>();
         builder.Services.AddSingleton<ISmsService, AndroidSmsService>();
         builder.Services.AddSingleton<IAlarmAudioService, AndroidAlarmAudioService>();
