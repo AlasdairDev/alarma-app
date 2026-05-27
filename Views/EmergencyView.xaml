@@ -5,7 +5,7 @@
              Shell.NavBarIsVisible="False"
              BackgroundColor="#1A0F35">
 
-    <Grid>
+    <Grid HorizontalOptions="Fill" VerticalOptions="Fill">
 
     <Grid RowDefinitions="Auto,*">
 

@@ -1,4 +1,9 @@
 <?xml version="1.0" encoding="utf-8" ?>
+<!-- Security (OWASP)
+     A04 Insecure Design: IsOvershootPending / IsOvershootConfirmed are controller-driven server-side
+       state — the UI only renders them; no user input can set them directly.
+     A03 Injection: All JS forwarded via MapJsRequested uses InvariantCulture F6 numeric strings or
+       JsonSerializer.Serialize — no user-supplied text reaches EvaluateJavaScriptAsync. -->
 <ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
              x:Class="AlarmaApp.Views.AlarmStageView"
@@ -6,20 +11,20 @@
              Shell.TabBarIsVisible="False"
              BackgroundColor="#1A0F35">
 
-    <Grid>
-        <!-- Map background — JS-updated in OnAppearing via MapJsRequested event -->
+    <Grid HorizontalOptions="Fill" VerticalOptions="Fill">
+        <!-- Map background -->
         <WebView x:Name="AlarmMapWebView"
                  Source="{Binding MapHtmlSource}"
                  HorizontalOptions="Fill"
                  VerticalOptions="Fill" />
 
-        <!-- Stage 3 red tint overlay -->
+        <!-- Stage 3 WAKE UP red tint — hidden during overshoot dialogs (Figma 17 has clear map) -->
         <BoxView BackgroundColor="#881A0000"
-                 IsVisible="{Binding IsStage3Active}"
+                 IsVisible="{Binding IsStage3Wake}"
                  HorizontalOptions="Fill"
                  VerticalOptions="Fill" />
 
-        <!-- Alarm stage label (top center) -->
+        <!-- Stage label (top centre) -->
         <Label Text="{Binding AlarmStageLabel}"
                FontSize="18"
                FontAttributes="Italic"
@@ -28,7 +33,7 @@
                VerticalOptions="Start"
                Margin="0,56,0,0" />
 
-        <!-- Distance chip -->
+        <!-- Distance + destination name chip -->
         <Border HorizontalOptions="Center"
                 VerticalOptions="Start"
                 Margin="0,86,0,0"
@@ -41,14 +46,21 @@
                        FontSize="14"
                        TextColor="#9B6FBF"
                        VerticalOptions="Center" />
-                <Label Text="{Binding DistanceToDestinationText}"
-                       FontSize="14"
-                       TextColor="White"
-                       VerticalOptions="Center" />
+                <VerticalStackLayout Spacing="1"
+                                     VerticalOptions="Center">
+                    <Label Text="{Binding DistanceToDestinationText}"
+                           FontSize="14"
+                           FontAttributes="Bold"
+                           TextColor="White" />
+                    <Label Text="{Binding DestinationShortNameText}"
+                           FontSize="11"
+                           TextColor="#C8B8E8"
+                           IsVisible="{Binding IsTracking}" />
+                </VerticalStackLayout>
             </HorizontalStackLayout>
         </Border>
 
-        <!-- Bottom alarm card background -->
+        <!-- Bottom card background -->
         <Border VerticalOptions="End"
                 HorizontalOptions="Fill"
                 BackgroundColor="#F21A0F35"
@@ -56,7 +68,7 @@
                 Stroke="Transparent"
                 HeightRequest="300" />
 
-        <!-- Stage 1/2 content -->
+        <!-- ── Stage 1 / 2 content ──────────────────────────────────── -->
         <VerticalStackLayout VerticalOptions="End"
                              HorizontalOptions="Fill"
                              Padding="28,0,28,48"
@@ -107,23 +119,17 @@
                 </Border.GestureRecognizers>
             </Border>
 
-            <!-- Snooze button (Stage 1 and Stage 2) -->
-            <Border BackgroundColor="#3D2B5E"
-                    StrokeShape="RoundRectangle 20"
-                    Stroke="#5A4580"
-                    StrokeThickness="1"
-                    Padding="0,12"
-                    Margin="0,4,0,0">
-                <Border.GestureRecognizers>
-                    <TapGestureRecognizer Command="{Binding SnoozeAlarmCommand}" />
-                </Border.GestureRecognizers>
-                <Label Text="Snooze"
-                       FontSize="15"
-                       TextColor="#C8B8E8"
-                       HorizontalOptions="Center" />
-            </Border>
+            <!-- Snooze button (Stage 1/2 only; command no-ops on Stage 3) -->
+            <Button Text="Snooze"
+                    BackgroundColor="#3D2B5E"
+                    TextColor="#C8B8E8"
+                    FontSize="14"
+                    CornerRadius="20"
+                    Padding="0,10"
+                    Command="{Binding SnoozeAlarmCommand}"
+                    Margin="0,4,0,0" />
 
-            <!-- Reminder items (Stage 1 only) -->
+            <!-- Reminder checklist (Stage 1 only) — matches Figma 14 -->
             <VerticalStackLayout Spacing="8"
                                  Margin="0,8,0,0"
                                  IsVisible="{Binding IsStage1Active}">
@@ -151,12 +157,13 @@
 
         </VerticalStackLayout>
 
-        <!-- Stage 3 content -->
+        <!-- ── Stage 3 — WAKE UP (Figma 16) ───────────────────────────── -->
+        <!-- Only when Stage3 fires but overshoot dialog is NOT showing -->
         <VerticalStackLayout VerticalOptions="End"
                              HorizontalOptions="Fill"
                              Padding="28,0,28,48"
                              Spacing="10"
-                             IsVisible="{Binding IsStage3Active}">
+                             IsVisible="{Binding IsStage3Wake}">
 
             <Label Text="{Binding AlarmStageTitle}"
                    FontSize="48"
@@ -171,7 +178,7 @@
                    HorizontalOptions="Center"
                    HorizontalTextAlignment="Center" />
 
-            <!-- Slide to Dismiss pill (red) -->
+            <!-- Slide to Dismiss (red) — Figma 16 -->
             <Border BackgroundColor="#CC1A0F"
                     StrokeShape="RoundRectangle 28"
                     Stroke="#FF3B30"
@@ -205,7 +212,111 @@
 
         </VerticalStackLayout>
 
-        <!-- Tracking only (no alarm stage) - show back button -->
+        <!-- ── Overshoot Pending — "Did you miss your stop?" (Figma 17) ── -->
+        <VerticalStackLayout VerticalOptions="End"
+                             HorizontalOptions="Fill"
+                             Padding="28,0,28,48"
+                             Spacing="12"
+                             IsVisible="{Binding IsOvershootPending}">
+
+            <Label Text="Overshoot Detected"
+                   FontSize="22"
+                   FontAttributes="Bold"
+                   TextColor="White"
+                   HorizontalOptions="Center" />
+
+            <Label Text="Did you miss your stop?"
+                   FontSize="18"
+                   FontAttributes="Bold"
+                   TextColor="White"
+                   HorizontalOptions="Center"
+                   HorizontalTextAlignment="Center" />
+
+            <Label Text="{Binding OvershootDistanceText, StringFormat='You might have passed your destination by {0}.'}"
+                   FontSize="14"
+                   TextColor="#C8B8E8"
+                   HorizontalOptions="Center"
+                   HorizontalTextAlignment="Center"
+                   LineBreakMode="WordWrap" />
+
+            <Grid ColumnDefinitions="*,*"
+                  ColumnSpacing="12"
+                  Margin="0,6,0,0">
+                <Button Grid.Column="0"
+                        Text="No"
+                        BackgroundColor="#3D2B5E"
+                        TextColor="White"
+                        FontSize="16"
+                        FontAttributes="Bold"
+                        CornerRadius="24"
+                        Padding="0,14"
+                        Command="{Binding DismissOvershootCommand}" />
+                <Button Grid.Column="1"
+                        Text="Yes"
+                        BackgroundColor="#7B3FA0"
+                        TextColor="White"
+                        FontSize="16"
+                        FontAttributes="Bold"
+                        CornerRadius="24"
+                        Padding="0,14"
+                        Command="{Binding ConfirmOvershootCommand}" />
+            </Grid>
+
+        </VerticalStackLayout>
+
+        <!-- ── Overshoot Confirmed — "You missed your stop." (Figma 17.5) ── -->
+        <VerticalStackLayout VerticalOptions="End"
+                             HorizontalOptions="Fill"
+                             Padding="28,0,28,48"
+                             Spacing="12"
+                             IsVisible="{Binding IsOvershootConfirmed}">
+
+            <Label Text="Overshoot Detected"
+                   FontSize="22"
+                   FontAttributes="Bold"
+                   TextColor="White"
+                   HorizontalOptions="Center" />
+
+            <Label Text="You missed your stop."
+                   FontSize="18"
+                   FontAttributes="Bold"
+                   TextColor="White"
+                   HorizontalOptions="Center"
+                   HorizontalTextAlignment="Center" />
+
+            <Label Text="{Binding OvershootDistanceText, StringFormat='You passed your destination by {0}.'}"
+                   FontSize="14"
+                   TextColor="#C8B8E8"
+                   HorizontalOptions="Center"
+                   HorizontalTextAlignment="Center"
+                   LineBreakMode="WordWrap" />
+
+            <Grid ColumnDefinitions="*,*"
+                  ColumnSpacing="12"
+                  Margin="0,6,0,0">
+                <Button Grid.Column="0"
+                        Text="Close"
+                        BackgroundColor="#3D2B5E"
+                        TextColor="White"
+                        FontSize="16"
+                        FontAttributes="Bold"
+                        CornerRadius="24"
+                        Padding="0,14"
+                        Command="{Binding DismissOvershootCommand}" />
+                <Button Grid.Column="1"
+                        Text="Open in GMaps"
+                        BackgroundColor="#7B3FA0"
+                        TextColor="White"
+                        FontSize="15"
+                        FontAttributes="Bold"
+                        CornerRadius="24"
+                        Padding="0,14"
+                        Command="{Binding OpenInGMapsCommand}" />
+            </Grid>
+
+        </VerticalStackLayout>
+
+        <!-- ── No alarm active — tracking only ──────────────────────────── -->
         <VerticalStackLayout VerticalOptions="End"
                              HorizontalOptions="Fill"
                              Padding="28,0,28,48"

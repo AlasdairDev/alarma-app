@@ -5,7 +5,7 @@
              Shell.NavBarIsVisible="False"
              BackgroundColor="#2D1B4E">
 
-    <Grid RowDefinitions="Auto,Auto,*">
+    <Grid HorizontalOptions="Fill" VerticalOptions="Fill" RowDefinitions="Auto,Auto,*">
 
         <!-- Header -->
         <VerticalStackLayout Grid.Row="0"
@@ -56,7 +56,7 @@
                                 IsVisible="{Binding HasTripHistory}">
                     <CollectionView.ItemTemplate>
                         <DataTemplate>
-                            <Border BackgroundColor="#3D2B5E"
+                            <Border BackgroundColor="#2D2D44"
                                     StrokeShape="RoundRectangle 16"
                                     Stroke="Transparent"
                                     Margin="16,6"

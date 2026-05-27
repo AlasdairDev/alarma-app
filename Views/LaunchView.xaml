@@ -6,7 +6,7 @@
              Shell.TabBarIsVisible="False"
              BackgroundColor="#0D0D1A">
 
-    <Grid x:Name="RootContent" Opacity="0">
+    <Grid x:Name="RootContent" Opacity="0" HorizontalOptions="Fill" VerticalOptions="Fill">
 
         <!-- Full-screen background image -->
         <Image Source="launch_bg.jpg"

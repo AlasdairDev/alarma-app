@@ -31,9 +31,6 @@ public partial class LaunchView : ContentPage
 
     private async void OnAppearing(object? sender, EventArgs e)
     {
-        // Opacity is already 0 (XAML default + PrepareForAppearance).
-        // Starting the animation directly removes the one-frame white flash
-        // that occurred when Content.Opacity was set in C# after first render.
         await RootContent.FadeTo(1, 300, Easing.CubicOut);
         await Task.Delay(1200);
         await NavigateForwardAsync();
@@ -48,7 +45,9 @@ public partial class LaunchView : ContentPage
     {
         if (_navigated) return;
         _navigated = true;
-        await RootContent.FadeTo(0, 220, Easing.CubicIn);
+        // Fire while the surface is still visible — fading to 0 before the swap
+        // causes Android to hide the window surface, which blocks all touch input
+        // on the incoming Shell page.
         Completed?.Invoke(this, EventArgs.Empty);
     }
 }

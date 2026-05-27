@@ -1,32 +1,61 @@
-// Security Considerations (OWASP Top 10)
-// A01 Broken Access Control: HasSeenTutorial and HasAgreedToTerms are set only on explicit
-//   completion of the last slide with the checkbox validated — not on any intermediate step.
-// A04 Insecure Design: _finishing flag prevents double-navigation; _isAnimating prevents
-//   concurrent slide animations from corrupting _currentPage state.
-
 using AlarmaApp.Services;
-using Microsoft.Maui.Controls.Shapes;
+using System.Collections.ObjectModel;
+using System.Windows.Input;
 
 namespace AlarmaApp.Views;
+
+public class OnboardingSlide
+{
+    public string ImageSource { get; set; } = "";
+    public bool IsLastSlide { get; set; }
+}
+
+public class OnboardingTemplateSelector : DataTemplateSelector
+{
+    public DataTemplate ImageTemplate { get; set; } = null!;
+    public DataTemplate CardTemplate { get; set; } = null!;
+
+    protected override DataTemplate OnSelectTemplate(object item, BindableObject container)
+        => item is OnboardingSlide { IsLastSlide: true } ? CardTemplate : ImageTemplate;
+}
 
 public partial class OnboardingView : ContentPage
 {
     private readonly PreferencesService _preferencesService;
-
-    private int _currentPage;
-    private const int TotalPages = 4;
-    private bool _isAnimating;
     private bool _finishing;
+    private bool _isAgreed;
 
-    private readonly View[] _slides;
-    private readonly Ellipse[] _dots;
+    public ObservableCollection<OnboardingSlide> Slides { get; } = new()
+    {
+        new OnboardingSlide { ImageSource = "tutorial1.png" },
+        new OnboardingSlide { ImageSource = "tutorial2.png" },
+        new OnboardingSlide { ImageSource = "tutorial3.png" },
+        new OnboardingSlide { ImageSource = "tutorial4.png", IsLastSlide = true },
+    };
+
+    public bool IsAgreed
+    {
+        get => _isAgreed;
+        set { _isAgreed = value; OnPropertyChanged(); }
+    }
+
+    public ICommand NextCommand { get; }
+    public ICommand SkipCommand { get; }
 
     public OnboardingView(PreferencesService preferencesService)
     {
         _preferencesService = preferencesService;
+        NextCommand = new Command(() =>
+        {
+            if (OnboardingCarousel.Position < 3)
+                OnboardingCarousel.ScrollTo(OnboardingCarousel.Position + 1, position: ScrollToPosition.Center, animate: false);
+        });
+        SkipCommand = new Command(() =>
+        {
+            OnboardingCarousel.ScrollTo(3, position: ScrollToPosition.Center, animate: false);
+        });
+        BindingContext = this;
         InitializeComponent();
-        _slides = [Slide0, Slide1, Slide2, Slide3];
-        _dots = [Dot0, Dot1, Dot2, Dot3];
     }
 
     protected override async void OnAppearing()
@@ -36,88 +65,17 @@ public partial class OnboardingView : ContentPage
         await Content.FadeTo(1, 500, Easing.CubicOut);
     }
 
-    private async void OnNextClicked(object? sender, EventArgs e)
-    {
-        if (_currentPage < TotalPages - 1)
-            await ShowPageAsync(_currentPage + 1);
-        else
-            await FinishOnboardingAsync();
-    }
-
-    // Skip jumps to the last slide so the T&C gate is always shown
-    private void OnSkipTapped(object? sender, TappedEventArgs e) => _ = ShowPageAsync(TotalPages - 1);
-
-    private void OnSwipedLeft(object? sender, SwipedEventArgs e)
-    {
-        if (_currentPage < TotalPages - 1)
-            _ = ShowPageAsync(_currentPage + 1);
-    }
-
-    private void OnSwipedRight(object? sender, SwipedEventArgs e)
-    {
-        if (_currentPage > 0)
-            _ = ShowPageAsync(_currentPage - 1);
-    }
-
     private void OnAgreeCheckChanged(object? sender, CheckedChangedEventArgs e)
-    {
-        if (_currentPage == TotalPages - 1)
-            NextButton.IsEnabled = e.Value;
-    }
+        => IsAgreed = e.Value;
 
-    private async void OnPolicyLinkTapped(object? sender, TappedEventArgs e)
-    {
-        await DisplayAlert(
-            "Privacy Policy & Terms",
-            "Privacy Policy: We collect your GPS location solely to power trip-tracking and proximity alarms. All data is stored locally on your device and never shared with third parties.\n\n" +
-            "Terms & Conditions: (1) This app provides travel-assistance only and is not a substitute for personal safety. (2) Emergency SOS requires valid phone numbers and active mobile service. (3) Alarm accuracy depends on GPS signal quality. (4) You are responsible for your own safety and departure decisions.",
-            "Close");
-    }
+    private async void OnTermsLinkTapped(object? sender, TappedEventArgs e)
+        => await Navigation.PushModalAsync(new TermsAndPrivacyView(initialTab: 0), animated: false);
 
-    private async Task ShowPageAsync(int toIndex)
-    {
-        if (_isAnimating || toIndex < 0 || toIndex >= TotalPages || toIndex == _currentPage)
-            return;
+    private async void OnPrivacyPolicyLinkTapped(object? sender, TappedEventArgs e)
+        => await Navigation.PushModalAsync(new TermsAndPrivacyView(initialTab: 1), animated: false);
 
-        _isAnimating = true;
-        try
-        {
-            var outgoing = _slides[_currentPage];
-            var incoming = _slides[toIndex];
-
-            incoming.Opacity = 0;
-            incoming.IsVisible = true;
-
-            await Task.WhenAll(
-                outgoing.FadeTo(0, 200),
-                incoming.FadeTo(1, 200));
-
-            outgoing.IsVisible = false;
-            outgoing.Opacity = 1;
-
-            _currentPage = toIndex;
-            UpdateDots(_currentPage);
-            SkipLabel.IsVisible = _currentPage < TotalPages - 1;
-            NextButton.Text = _currentPage == TotalPages - 1 ? "Get Started" : "Next";
-            // Disable "Get Started" until the agree checkbox is ticked
-            NextButton.IsEnabled = _currentPage != TotalPages - 1 || AgreeCheckBox.IsChecked;
-        }
-        finally
-        {
-            _isAnimating = false;
-        }
-    }
-
-    private void UpdateDots(int activePage)
-    {
-        for (int i = 0; i < _dots.Length; i++)
-        {
-            _dots[i].Fill = new SolidColorBrush(i == activePage
-                ? Color.FromArgb("#9B6FBF")
-                : Color.FromArgb("#4A3570"));
-            _dots[i].WidthRequest = i == activePage ? 24 : 8;
-        }
-    }
+    private async void OnGetStartedClicked(object? sender, EventArgs e)
+        => await FinishOnboardingAsync();
 
     private async Task FinishOnboardingAsync()
     {
@@ -126,7 +84,6 @@ public partial class OnboardingView : ContentPage
         _preferencesService.HasSeenTutorial = true;
         _preferencesService.HasAgreedToTerms = true;
         await Content.FadeTo(0, 300, Easing.CubicIn);
-        // Navigate to the permissions setup screen (Figma Page 3) before entering the app.
         await Shell.Current.GoToAsync("permissions-setup", animate: false);
     }
 }

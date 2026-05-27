@@ -35,6 +35,7 @@ public class GeocodingService
     private static readonly Dictionary<string, string> PhAliases =
         new(StringComparer.OrdinalIgnoreCase)
         {
+            ["pup"]           = "Polytechnic University of the Philippines",
             ["bgc"]           = "Bonifacio Global City",
             ["fort"]          = "Bonifacio Global City",
             ["fort boni"]     = "Bonifacio Global City",
