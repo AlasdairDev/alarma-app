@@ -16,21 +16,27 @@ public partial class LaunchView : ContentPage
     public LaunchView()
     {
         InitializeComponent();
-        Appearing += OnAppearing;
+        // NOTE: do NOT subscribe Appearing here — the event is unreliable when a modal is
+        // pushed from within another page's OnAppearing lifecycle callback. Use the virtual
+        // OnAppearing override instead, which the MAUI framework always calls.
     }
 
-    // Called by App.CreateWindow before each Window creation so activity
-    // recreation (rotation, back-stack restore) always shows a clean entry
-    // animation rather than a frozen page caused by _navigated=true persisting
-    // in the singleton instance.
+    // Called by App.CreateWindow before each Window creation so Activity recreation
+    // (rotation, back-stack restore) always shows a clean entry animation rather than
+    // a frozen page caused by _navigated=true persisting in the singleton instance.
     public void PrepareForAppearance()
     {
         _navigated = false;
         RootContent.Opacity = 0;
     }
 
-    private async void OnAppearing(object? sender, EventArgs e)
+    protected override async void OnAppearing()
     {
+        base.OnAppearing();
+        // A short delay lets the Android native renderer attach and complete its first
+        // draw pass before the opacity animation starts. Without this, FadeTo may fire
+        // before the view has a compositor layer and the animation is lost.
+        await Task.Delay(60);
         await RootContent.FadeTo(1, 300, Easing.CubicOut);
         await Task.Delay(1200);
         await NavigateForwardAsync();

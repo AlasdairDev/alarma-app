@@ -87,6 +87,7 @@ public class HomeController : INotifyPropertyChanged
     private bool _isOvershootPending;
     private bool _isOvershootConfirmed;
     private string _overshootDistanceText = string.Empty;
+    private string _chipDistanceText = string.Empty;
     private AlarmStage _currentAlarmStage = AlarmStage.None;
 
     public AlarmStage CurrentAlarmStage
@@ -105,6 +106,8 @@ public class HomeController : INotifyPropertyChanged
                 OnPropertyChanged(nameof(IsStage3Wake));
                 OnPropertyChanged(nameof(IsStage1Active));
                 OnPropertyChanged(nameof(IsStage1Or2Active));
+                OnPropertyChanged(nameof(IsChipVisible));
+                OnPropertyChanged(nameof(TopStatusLabel));
             }
         }
     }
@@ -112,13 +115,29 @@ public class HomeController : INotifyPropertyChanged
     public bool IsOvershootPending
     {
         get => _isOvershootPending;
-        private set { if (SetProperty(ref _isOvershootPending, value)) OnPropertyChanged(nameof(IsStage3Wake)); }
+        private set
+        {
+            if (SetProperty(ref _isOvershootPending, value))
+            {
+                OnPropertyChanged(nameof(IsStage3Wake));
+                OnPropertyChanged(nameof(IsChipVisible));
+                OnPropertyChanged(nameof(TopStatusLabel));
+            }
+        }
     }
 
     public bool IsOvershootConfirmed
     {
         get => _isOvershootConfirmed;
-        private set { if (SetProperty(ref _isOvershootConfirmed, value)) OnPropertyChanged(nameof(IsStage3Wake)); }
+        private set
+        {
+            if (SetProperty(ref _isOvershootConfirmed, value))
+            {
+                OnPropertyChanged(nameof(IsStage3Wake));
+                OnPropertyChanged(nameof(IsChipVisible));
+                OnPropertyChanged(nameof(TopStatusLabel));
+            }
+        }
     }
 
     public bool IsStage3Wake => IsStage3Active && !_isOvershootPending && !_isOvershootConfirmed;
@@ -128,6 +147,18 @@ public class HomeController : INotifyPropertyChanged
         get => _overshootDistanceText;
         private set => SetProperty(ref _overshootDistanceText, value);
     }
+
+    public string ChipDistanceText
+    {
+        get => _chipDistanceText;
+        private set => SetProperty(ref _chipDistanceText, value);
+    }
+
+    public bool IsChipVisible => !IsStage3Wake;
+
+    public string TopStatusLabel => (IsOvershootPending || IsOvershootConfirmed)
+        ? "Overshoot Detected"
+        : AlarmStageLabel;
     private double _lastSpeedMetersPerSecond;
     private double _minDistanceToDestination = double.MaxValue;
 
@@ -1037,11 +1068,7 @@ public class HomeController : INotifyPropertyChanged
     {
         try
         {
-            var history = await _databaseService.GetTripHistoryAsync();
-            var orderedHistory = history
-                .OrderByDescending(entry => entry.StartedAt)
-                .Take(TripHistoryLimit)
-                .ToList();
+            var orderedHistory = await _databaseService.GetTripHistoryAsync(TripHistoryLimit);
             ReplaceCollection(_tripHistoryEntries, orderedHistory);
         }
         catch (Exception ex)
@@ -1674,6 +1701,9 @@ public class HomeController : INotifyPropertyChanged
         var adaptiveLeadThreshold = adaptiveLeadDistance + accuracyBuffer;
         _minDistanceToDestination = Math.Min(_minDistanceToDestination, distanceToDestination);
         DistanceToDestinationText = $"Destination is {distanceToDestination / MetersPerKilometer:F2} km away.";
+        ChipDistanceText = distanceToDestination >= 1000
+            ? $"{distanceToDestination / MetersPerKilometer:F0} km away"
+            : $"{(int)distanceToDestination} m away";
 
         if (_currentAlarmStage == AlarmStage.None && distanceToDestination <= adaptiveLeadThreshold)
         {
@@ -1935,12 +1965,12 @@ public class HomeController : INotifyPropertyChanged
             <html>
             <head>
               <meta charset="utf-8"/>
-              <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src file: 'unsafe-inline'; style-src file: 'unsafe-inline'; img-src https: data: blob:; connect-src https:"/>
+              <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src file: 'unsafe-inline'; style-src file: 'unsafe-inline'; img-src https://*.basemaps.cartocdn.com data: blob:; connect-src https://*.basemaps.cartocdn.com"/>
               <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"/>
               <link rel="stylesheet" href="leaflet.css"/>
               <script src="leaflet.js"></script>
               <style>
-                html,body,#map{margin:0;padding:0;width:100%;height:100%}
+                html,body,#map{margin:0;padding:0;width:100%;height:100%;will-change:transform}
                 .leaflet-tile{filter:sepia(0.8) hue-rotate(250deg) saturate(2.5) brightness(0.75)}
               </style>
             </head>
@@ -1951,6 +1981,9 @@ public class HomeController : INotifyPropertyChanged
                 var _layer=L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{attribution:'&copy; OSM &copy; CARTO',subdomains:'abcd',maxZoom:19}).addTo(map);
                 var _userMarker=null;
                 var _destMarker=null;
+                // SVG data-URI pin — avoids broken-image from missing default Leaflet marker PNGs
+                var _pinUri='data:image/svg+xml;utf8,'+encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="40" height="40"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z" fill="#8B5CF6" stroke="#1E1E2E" stroke-width="1.5"/></svg>');
+                var _pinIcon=L.icon({iconUrl:_pinUri,iconSize:[40,40],iconAnchor:[20,40],popupAnchor:[0,-40]});
                 function updateUserLocation(lat,lon){
                   var ll=[lat,lon];
                   if(_userMarker){_userMarker.setLatLng(ll);return;}
@@ -1959,7 +1992,7 @@ public class HomeController : INotifyPropertyChanged
                 function centerOnUser(lat,lon){updateUserLocation(lat,lon);map.flyTo([lat,lon],16);}
                 function setDestination(lat,lon,label){
                   clearDestination();
-                  _destMarker=L.marker([lat,lon]).addTo(map).bindPopup(label).openPopup();
+                  _destMarker=L.marker([lat,lon],{icon:_pinIcon}).addTo(map).bindPopup(label).openPopup();
                   map.flyTo([lat,lon],15);
                 }
                 function clearDestination(){

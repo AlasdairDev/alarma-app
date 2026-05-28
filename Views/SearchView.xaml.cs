@@ -44,7 +44,7 @@ public partial class SearchView : ContentPage
         try
         {
             await Task.Delay(500, token);
-            if ((e.NewTextValue?.Length ?? 0) >= 3)
+            if (!token.IsCancellationRequested && (e.NewTextValue?.Length ?? 0) >= 3)
                 _controller.SearchDestinationCommand.Execute(null);
         }
         catch (OperationCanceledException) { }

@@ -1,37 +1,44 @@
-﻿Act as an Elite QA Automation Engineer and Senior .NET MAUI Developer.
+﻿Act as an Elite Principal DevOps, Software Architect, and Senior .NET MAUI Engineer.
 
-# 1. OPERATION: TOTAL SYSTEM INTEGRATION TESTING & PIXEL-PERFECT REPAIR
-- PURPOSE: Execute a comprehensive, end-to-end evaluation of all application modules, business logic, network fallbacks, and local storage layers against the core mandates of the `README.md`.
-- CRITICAL FIX INSTRUCTION: If any functional feature, database operation, or UI transition fails to execute exactly as described in the documentation, you are explicitly ordered to IMMEDIATELY FIX IT on the spot. Do not just report the issue—rewrite the code and fix it.
-- THE 1-TO-1 VISUAL RULE: Every single UI view, element boundary, color scheme, font weight, padding value, and state layout variation MUST match the "GUI FROM FIGMA" directory specification with absolute, pixel-perfect accuracy. You are strictly forbidden from altering or diverging from these design metrics.
+# 1. OPERATION: ARCHITECTURAL HYGIENE, AUTOMATED REPAIR, & OPTIMIZATION AUDIT
+- PURPOSE: Perform a full-scale audit of the workspace to clean up the `AlarmaApp` file tree, enforce a strict Model-View-Controller (MVC) architecture, integrate the programmatic SVG Leaflet map marker patch, and deploy an autonomous self-repair utility.
+- CRITICAL OBJECTIVE: You must retain 100% of existing application business logic and functions. Absolutely zero features or configuration dependencies can be dropped or broken during this consolidation pass.
+- THE ZERO-TOLERANCE 1-TO-1 VISUAL RULE: Every single user interface element, border container, hex color definition, typographic weight, margin, and padding constraint MUST strictly adhere to the "GUI FROM FIGMA" design system metrics. You are completely prohibited from introducing structural changes that drift away from the approved design ecosystem.
 
-# 2. STRICT SYSTEM CODE FREEZE (ZERO ACCIDENTAL DELETIONS OR BREAKAGES)
-- KEEP REPOSITIONING CONSTRAINTS: Under no circumstances are you allowed to alter the instant page-cut button navigation loops established in the onboarding carousel.
-- QUARANTINED MODULES:
-  1. You are STRICTLY FORBIDDEN from modifying or editing `OnboardingView.xaml` or `OnboardingView.xaml.cs`.
-  2. You are STRICTLY FORBIDDEN from modifying or editing `EmergencyView.xaml` or `EmergencyView.xaml.cs`.
-  - Both the tutorial onboarding flow and the emergency SOS contact management/layout matrices are 100% production-ready, verified, and must remain completely untouched to preserve their working states.
+# 2. STRICT SYSTEM CODE FREEZE (QUARANTINE ENFORCEMENT)
+- DO NOT TOUCH THE TUTORIAL & EMERGENCY MODULES:
+  1. You are STRICTLY FORBIDDEN from modifying, refactoring, opening, or changing `OnboardingView.xaml` or `OnboardingView.xaml.cs`.
+  2. You are STRICTLY FORBIDDEN from modifying, refactoring, opening, or changing `EmergencyView.xaml` or `EmergencyView.xaml.cs`.
+  - Both of these domains are locked down in a finalized, production-ready state to protect their working touch listeners, secure timers, direct cellular SMS tracking systems, and local SQLite data boundaries.
 
-# 3. COMPREHENSIVE TESTING MATRIX (VERIFY & IMMEDIATE REPAIR)
+# 3. WORKSPACE TRANSFORMATION & MAINTENANCE TASKS
 
-## A. GEOLOCATION, MAPPING, & LOOKUP PIPELINES
-- LEAFLET WORKSPACE: Verify the offline-first map layer (`MapWebView` in `HomeView.xaml`) initializes correctly using Leaflet.js and CartOdb dark tiles under a strict Content Security Policy (CSP). Ensure custom overlays stack seamlessly over the canvas without capturing touch inputs.
-- DUAL-SOURCE AUTOMATION: Test that typing into the search box triggers a 500ms debounced lookup to the Photon API with a client-side dictionary expanding local abbreviations (e.g., "pup" to "Polytechnic University of the Philippines"). Confirm it cleanly falls back to Nominatim if fewer than 3 results are returned.
-- COORDINATE IMMUTABILITY: Ensure all latitude/longitude data payloads utilize `InvariantCulture` formatting to prevent rendering crashes on regional emulators.
+## A. REORGANIZING TO A STRICT MVC PATTERN
+- Clean the workspace folder layout by mapping all components directly into clear architectural namespaces without altering existing functional dependencies or class behaviors:
+    - `Controllers/`: Must cleanly enclose `HomeController.cs` containing all transactional business logic, `INotifyPropertyChanged` notifications, and input command operations.
+    - `Models/`: Must strictly isolate data schemas and object contracts (`SavedRoute.cs`, `EmergencyContact.cs`, `TripHistory.cs`, etc.).
+    - `Views/`: Must strictly isolate layout layers (`LaunchView`, `HomeView`, `SearchView`, `HistoryView`, `SettingsView`, and `AlarmStageView`).
+    - `Services/`: Must retain local platform utility engines (SQLCipher local database engines, AES-GCM backup/restore managers, and dual-source geocoders).
 
-## B. DATA PERSISTENCE & ANALYTICS INTERPRETATION
-- DB ENCRYPTION HANDSHAKE: Assert that the local SQLCipher instance is reading and writing records securely via an AES-256 key architecture.
-- COMPLIANCE AUDIT: Test that the `HistoryView.xaml` controller correctly processes and maps exactly the last 20 commute entries from the database. Immediately repair any missing data-bindings for the essential metadata status badges (Alarm Stage reached, total duration, total kilometers, and the "Missed Stop" overshoot badge).
+## B. CONSOLIDATING GRAPHICS & LOCKING THE MAP PIN FIX
+- KEEP CAPTURED ARTIFACTS: Do NOT delete the `GUI FROM FIGMA` folder under any circumstances; it must remain in the project root as your baseline design reference.
+- FIX CODES PRESERVATION: Ensure your map-rendering routine inside the `MapWebView` HTML template uses the inline, base64-encoded purple SVG path string for the `L.icon` mapping definition. This completely removes external asset dependencies and locks down the pixel-perfect purple map locator pin, permanently preventing the standard green leaf asset fallback.
+- ASSET PIPELINE HYGIENE: Verify all other user interface layout icons and background assets are safely duplicated into `AlarmaApp/Resources/Images/` and linked via uniform resource identifiers (e.g., `Source="main_logo.png"`).
 
-## C. LOCAL PREFERENCES & CELL WRAPPERS
-- SETTINGS GRID AGGREGATION: Audit `SettingsView.xaml` to verify all permission cells link cleanly to their platform services (Location, Battery Optimization, Notifications, Bluetooth). 
-- DROPDOWN CORRECTIONS: Verify that the full-width alarm sound picker dropdown and the lead-time minute steppers match the styling guidelines from your Figma source files.
+## C. DEPLOYING THE WORKSPACE SELF-REPAIR UTILITY TOOL
+- Create a lightweight automation tool (e.g., `repair_build.sh` or `repair_build.ps1`) in the solution root directory. The script must execute the following operations sequentially when fired:
+    1. **Cache Purge**: Hard-delete all local `bin/` and `obj/` subdirectories throughout the solution workspace to eliminate stale, corrupt compilation artifacts.
+    2. **Workload Alignment**: Trigger `dotnet workload restore` to assert the target `maui-android` compilation ecosystem is healthy.
+    3. **Dependency Integrity Verification**: Execute `dotnet restore` to reconstruct the project package tree and enforce SQLCipher/SQLite cryptographic layer bindings.
+    4. **Compilation Output validation**: Execute a clean build targeting Android 15 (API 35) to guarantee compilation stability.
 
-# 4. EXECUTION & VALIDATION PIPELINE
-1. WIPE INTERMEDIATE ARTIFACTS: Delete the target project `/bin` and `/obj` directories to eliminate stale cached binaries.
-2. COMPILE AUDIT: Run a full debug and release build targeting Android 15 (API 35) via .NET 9 tools.
-3. TEST ENGINE EXECUTION: Execute the complete testing assembly project (`AlarmaApp.Tests`) using the CLI command: `dotnet test`. Verify all boundary parameters—including phone number regex matching, coordinate bounding-box guards, and backup length caps—pass validation.
+# 4. ARCHITECTURAL OPTIMIZATION PERFORMANCE AUDIT
+- Analyze the codebase and implement production-safe performance or security optimizations **strictly inside approved boundaries without changing any user functionality, existing features, or visual behaviors**. Focus exclusively on:
+    - **WebView Render Acceleration**: Optimize the local caching policy and viewport layout layer configuration for the Leaflet.js `WebView` canvas inside `HomeView.xaml` to improve frame rates on lower-end devices.
+    - **Debounce Efficiency Optimization**: Tighten memory allocation and prevent thread thrashing within the 500ms search input debounce thread pooling handler.
+    - **Data virtualization**: Optimize query execution inside the SQLite data provider to accelerate list indexing when inflating records onto the `HistoryView` page.
 
 # FINAL DIRECTIVE
-- Report back ONLY after every system feature has been comprehensively tested and verified as operational.
-- Your output must explicitly confirm in a code-free summary: "All operational features validated against the README.md specifications, broken bindings repaired on the spot, layout aesthetics brought to a 1-to-1 match with the GUI From Figma files, and both OnboardingView and EmergencyView modules left completely untouched."
+- Run your new self-repair tool to clean the project structure, compile the codebase, and verify runtime execution.
+- Report back with a brief summary detailing the cleaned MVC folder tree, the operational status of the custom map marker pin, and the newly applied stability improvements.
+- Your output must explicitly confirm in a code-free summary: "Workspace folder structure cleaned and aligned to strict MVC design patterns, figma graphics verified, permanent SVG Leaflet pin fix locked down, self-repair utility script created, safe internal pipeline optimizations applied, and both OnboardingView and EmergencyView modules left completely untouched."

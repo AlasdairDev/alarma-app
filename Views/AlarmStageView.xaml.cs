@@ -9,6 +9,8 @@
 //   is never stranded on AlarmStageView after a trip ends with no alarm active.
 //   MapJsRequested is subscribed on OnAppearing (unsubscribed on OnDisappearing) so the trip map
 //   receives live-location updates and destination replay without full WebView reload.
+//   The slide-to-stop/dismiss gesture requires a horizontal drag of ≥75 % of the track width to
+//   trigger, preventing accidental tap-through dismissals (A04 defense-in-depth).
 // A03 Injection: All JS values forwarded via MapJsRequested use InvariantCulture F6 numeric
 //   strings or JsonSerializer.Serialize — no user-supplied strings reach the JS eval context.
 
@@ -21,6 +23,9 @@ namespace AlarmaApp.Views;
 public partial class AlarmStageView : ContentPage
 {
     private readonly HomeController _controller;
+    private double _panStartX;
+    private bool _isPanning;
+    private bool _isDismissing;
 
     public AlarmStageView(HomeController controller)
     {
@@ -69,8 +74,45 @@ public partial class AlarmStageView : ContentPage
         return true;
     }
 
-    private async void OnSlideToStopTapped(object? sender, TappedEventArgs e)
-        => await DismissAndExitAsync();
+    // Stage 1/2 — "Slide to Stop" pan handler
+    private void OnSlideToStopPanUpdated(object? sender, PanUpdatedEventArgs e)
+        => HandleSliderPan(e, SlideToStopThumb, SlideToStopTrack);
+
+    // Stage 3 — "Slide to dismiss" pan handler
+    private void OnSlideToDismissPanUpdated(object? sender, PanUpdatedEventArgs e)
+        => HandleSliderPan(e, SlideToDismissThumb, SlideToDismissTrack);
+
+    private void HandleSliderPan(PanUpdatedEventArgs e, View thumb, View track)
+    {
+        switch (e.StatusType)
+        {
+            case GestureStatus.Started:
+                _panStartX = thumb.TranslationX;
+                _isPanning = true;
+                break;
+
+            case GestureStatus.Running:
+                if (!_isPanning) return;
+                var maxX = Math.Max(0, track.Width - thumb.Width);
+                thumb.TranslationX = Math.Clamp(_panStartX + e.TotalX, 0, maxX);
+                break;
+
+            case GestureStatus.Completed:
+            case GestureStatus.Canceled:
+                if (!_isPanning) return;
+                _isPanning = false;
+                var maxSlide = Math.Max(0, track.Width - thumb.Width);
+                if (maxSlide > 0 && thumb.TranslationX >= maxSlide * 0.75)
+                {
+                    _ = DismissAndExitAsync();
+                }
+                else
+                {
+                    _ = thumb.TranslateTo(0, 0, 200, Easing.SpringOut);
+                }
+                break;
+        }
+    }
 
     // "Stop Trip" button — shown when tracking is active but no alarm stage is firing.
     // Stops the trip then exits so the user is not stranded on this view.
@@ -85,6 +127,8 @@ public partial class AlarmStageView : ContentPage
 
     private async Task DismissAndExitAsync()
     {
+        if (_isDismissing) return;
+        _isDismissing = true;
         _controller.DismissAlarmCommand.Execute(null);
         await Task.WhenAll(
             Content.FadeTo(0, 200, Easing.CubicIn),
