@@ -79,51 +79,64 @@ public class AndroidLocationService : ILocationService
         return Task.CompletedTask;
     }
 
-    public Task<LocationSnapshot?> GetLastKnownLocationAsync()
+    public async Task<LocationSnapshot?> GetLastKnownLocationAsync()
     {
         if (LocationTrackingService.LastKnownLocation is not null)
-        {
-            return Task.FromResult<LocationSnapshot?>(LocationTrackingService.LastKnownLocation);
-        }
+            return LocationTrackingService.LastKnownLocation;
 
         var manager = AndroidApplication.Context.GetSystemService(Context.LocationService) as LocationManager;
-        if (manager is null)
+        if (manager is not null)
         {
-            return Task.FromResult<LocationSnapshot?>(null);
-        }
-
-        AndroidLocation? bestLocation = null;
-        try
-        {
-            foreach (var provider in manager.GetProviders(true) ?? new List<string>())
+            AndroidLocation? bestLocation = null;
+            try
             {
-                var location = manager.GetLastKnownLocation(provider);
-                if (location is null)
+                foreach (var provider in manager.GetProviders(true) ?? new List<string>())
                 {
-                    continue;
-                }
-
-                if (bestLocation is null || location.Time > bestLocation.Time)
-                {
-                    bestLocation = location;
+                    var location = manager.GetLastKnownLocation(provider);
+                    if (location is null) continue;
+                    if (bestLocation is null || location.Time > bestLocation.Time)
+                        bestLocation = location;
                 }
             }
-        }
-        catch (SecurityException)
-        {
-            System.Diagnostics.Debug.WriteLine("Location permission denied when reading last known location.");
-            return Task.FromResult<LocationSnapshot?>(null);
+            catch (SecurityException)
+            {
+                System.Diagnostics.Debug.WriteLine("Location permission denied when reading last known location.");
+            }
+
+            if (bestLocation is not null)
+            {
+                var ts = DateTimeOffset.FromUnixTimeMilliseconds(bestLocation.Time);
+                var acc = bestLocation.HasAccuracy ? bestLocation.Accuracy : 0f;
+                return new LocationSnapshot(bestLocation.Latitude, bestLocation.Longitude, acc, ts);
+            }
         }
 
-        if (bestLocation is null)
+        try
         {
-            return Task.FromResult<LocationSnapshot?>(null);
+            var loc = await Microsoft.Maui.Devices.Sensors.Geolocation.GetLastKnownLocationAsync();
+            if (loc is not null)
+                return new LocationSnapshot(loc.Latitude, loc.Longitude, (float)(loc.Accuracy ?? 0), loc.Timestamp);
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[AndroidLocationService] MAUI GetLastKnown failed: {ex.Message}");
         }
 
-        var timestamp = DateTimeOffset.FromUnixTimeMilliseconds(bestLocation.Time);
-        var accuracy = bestLocation.HasAccuracy ? bestLocation.Accuracy : 0f;
-        var snapshot = new LocationSnapshot(bestLocation.Latitude, bestLocation.Longitude, accuracy, timestamp);
-        return Task.FromResult<LocationSnapshot?>(snapshot);
+        try
+        {
+            var request = new Microsoft.Maui.Devices.Sensors.GeolocationRequest(
+                Microsoft.Maui.Devices.Sensors.GeolocationAccuracy.Medium,
+                TimeSpan.FromSeconds(5));
+            var loc = await Microsoft.Maui.Devices.Sensors.Geolocation.GetLocationAsync(request);
+            if (loc is not null)
+                return new LocationSnapshot(loc.Latitude, loc.Longitude, (float)(loc.Accuracy ?? 0), loc.Timestamp);
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[AndroidLocationService] MAUI GetLocation failed: {ex.Message}");
+        }
+
+        return null;
     }
 
     private void OnLocationUpdated(object? sender, LocationSnapshot snapshot)
