@@ -90,8 +90,12 @@ public class DatabaseService
         }
     }
 
-    public async Task<List<TripHistory>> GetTripHistoryAsync() =>
-        await (await GetConnectionAsync()).Table<TripHistory>().ToListAsync();
+    public async Task<List<TripHistory>> GetTripHistoryAsync(int limit = 20) =>
+        await (await GetConnectionAsync())
+            .Table<TripHistory>()
+            .OrderByDescending(t => t.StartedAt)
+            .Take(limit)
+            .ToListAsync();
 
     public async Task<int> SaveTripHistoryAsync(TripHistory item)
     {
