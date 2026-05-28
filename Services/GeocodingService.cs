@@ -105,6 +105,33 @@ public class GeocodingService
         _nominatimClient.DefaultRequestHeaders.AcceptLanguage.ParseAdd("en");
     }
 
+    // Offline fallback: well-known PH landmarks returned when both APIs are unreachable.
+    // Keyed by the expanded alias (case-insensitive).
+    private static readonly Dictionary<string, GeocodingResult> LocalFallback =
+        new(StringComparer.OrdinalIgnoreCase)
+        {
+            ["Polytechnic University of the Philippines"] =
+                new("Polytechnic University of the Philippines, Manila", 14.5995, 120.9867, "University"),
+            ["Bonifacio Global City"] =
+                new("Bonifacio Global City, Taguig",    14.5505, 121.0497, "Landmark"),
+            ["Mall of Asia"] =
+                new("SM Mall of Asia, Pasay",           14.5355, 120.9830, "Shopping Mall"),
+            ["SM Mall of Asia"] =
+                new("SM Mall of Asia, Pasay",           14.5355, 120.9830, "Shopping Mall"),
+            ["Ninoy Aquino International Airport"] =
+                new("Ninoy Aquino International Airport, Pasay", 14.5086, 121.0194, "Airport"),
+            ["Rizal Park Manila"] =
+                new("Rizal Park (Luneta), Manila",      14.5831, 120.9794, "Park"),
+            ["University of the Philippines Diliman"] =
+                new("University of the Philippines Diliman, Quezon City", 14.6548, 121.0653, "University"),
+            ["De La Salle University"] =
+                new("De La Salle University, Manila",   14.5647, 120.9932, "University"),
+            ["Ateneo de Manila University"] =
+                new("Ateneo de Manila University, Quezon City", 14.6401, 121.0773, "University"),
+            ["University of Santo Tomas"] =
+                new("University of Santo Tomas, Manila", 14.6097, 120.9895, "University"),
+        };
+
     public async Task<IReadOnlyList<GeocodingResult>> SearchAsync(
         string query, CancellationToken cancellationToken)
     {
@@ -117,7 +144,14 @@ public class GeocodingService
         if (photon.Count < 3)
         {
             var nominatim = await SearchNominatimAsync(expanded, cancellationToken);
-            return Merge(photon, nominatim, maxCount: 10);
+            var merged = Merge(photon, nominatim, maxCount: 10);
+            if (merged.Count > 0) return merged;
+
+            // Both APIs unreachable or returned nothing — try the local fallback table.
+            if (LocalFallback.TryGetValue(expanded, out var local))
+                return [local];
+
+            return merged;
         }
 
         return photon;
