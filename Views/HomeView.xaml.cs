@@ -12,13 +12,11 @@
 //   called while the view was off-screen (e.g. returning from SearchView or FavoritesView).
 // A03 Injection: All values forwarded to EvaluateJavaScriptAsync use InvariantCulture F6
 //   numeric strings or JsonSerializer.Serialize — no user-supplied strings reach the JS context.
-// A01 Broken Access Control: Onboarding, permissions, and biometric gates are enforced here
-//   before InitializeAsync so location/SMS init cannot be bypassed by navigating directly to //home.
-//   Gate 3 (biometric) runs in release builds only (#if !DEBUG) via IBiometricAuthService.
+// A01 Broken Access Control: Onboarding and permissions gates are enforced here before
+//   InitializeAsync so location/SMS init cannot be bypassed by navigating directly to //home.
 
 using AlarmaApp.Controllers;
 using AlarmaApp.Services;
-using AlarmaApp.Services.Interfaces;
 using System.Globalization;
 using System.Text.Json;
 
@@ -28,14 +26,12 @@ public partial class HomeView : ContentPage
 {
     private readonly HomeController _controller;
     private readonly PreferencesService _preferencesService;
-    private readonly IBiometricAuthService _biometricAuthService;
     private readonly LaunchView _launchView;
 
-    public HomeView(HomeController controller, PreferencesService preferencesService, IBiometricAuthService biometricAuthService, LaunchView launchView)
+    public HomeView(HomeController controller, PreferencesService preferencesService, LaunchView launchView)
     {
         _controller = controller;
         _preferencesService = preferencesService;
-        _biometricAuthService = biometricAuthService;
         _launchView = launchView;
         BindingContext = _controller;
         InitializeComponent();
@@ -72,20 +68,6 @@ public partial class HomeView : ContentPage
             await Shell.Current.GoToAsync("permissions-setup", animate: false);
             return;
         }
-
-        // Gate 3: Biometric / PIN authentication (release builds only).
-#if !DEBUG
-        {
-            var authenticated = await _biometricAuthService.AuthenticateAsync(
-                "Verify your identity to access Alarma",
-                CancellationToken.None);
-            if (!authenticated)
-            {
-                Content.Opacity = 0;
-                return;
-            }
-        }
-#endif
 
         _ = Content.FadeTo(1, 220, Easing.CubicOut);
 

@@ -1,7 +1,6 @@
 // Security Considerations (OWASP Top 10)
-// A01 Broken Access Control: InitializeAsync is gated by BiometricPrompt in release builds
-//   (#if !DEBUG); SOS dispatch is rate-limited to 30 s cooldown; onboarding gate enforced by
-//   HomeView.OnAppearing before InitializeAsync is ever called.
+// A01 Broken Access Control: SOS dispatch is rate-limited to 30 s cooldown; onboarding and
+//   permissions gates are enforced by HomeView.OnAppearing before InitializeAsync is called.
 // A03 Injection: DestinationQuery capped at 200 chars; NewContactName capped at 50 chars;
 //   phone numbers validated by compiled PhoneRegex ^(09\d{9}|\+639\d{9})$; external API
 //   DisplayName capped at 200 chars; map popup labels passed through JsonSerializer.Serialize
@@ -986,11 +985,11 @@ public class HomeController : INotifyPropertyChanged
             {
                 await _databaseService.InitializeAsync();
                 _isDatabaseInitialized = true;
-                LastActionText = "Local SQLite database ready.";
+                LastActionText = string.Empty;
             }
             else
             {
-                LastActionText = "Local data refreshed.";
+                LastActionText = string.Empty;
             }
 
             await LoadLocalDataAsync();
@@ -1972,6 +1971,8 @@ public class HomeController : INotifyPropertyChanged
               <style>
                 html,body,#map{margin:0;padding:0;width:100%;height:100%;will-change:transform}
                 .leaflet-tile{filter:sepia(0.8) hue-rotate(250deg) saturate(2.5) brightness(0.75)}
+                .leaflet-zoom-animated{transition:transform 0.4s cubic-bezier(0,0,0.25,1)!important}
+                .leaflet-interactive{will-change:transform;transition:none!important}
               </style>
             </head>
             <body>
@@ -1986,14 +1987,20 @@ public class HomeController : INotifyPropertyChanged
                 var _pinIcon=L.icon({iconUrl:_pinUri,iconSize:[40,40],iconAnchor:[20,40],popupAnchor:[0,-40]});
                 function updateUserLocation(lat,lon){
                   var ll=[lat,lon];
-                  if(_userMarker){_userMarker.setLatLng(ll);return;}
-                  _userMarker=L.circleMarker(ll,{radius:8,color:'#fff',weight:2,fillColor:'#4A90D9',fillOpacity:0.9}).addTo(map).bindTooltip('You',{permanent:false,direction:'top'});
+                  if(_userMarker){_userMarker.setLatLng(ll);}
+                  else{_userMarker=L.circleMarker(ll,{radius:8,color:'#fff',weight:2,fillColor:'#4A90D9',fillOpacity:0.9}).addTo(map).bindTooltip('You',{permanent:false,direction:'top'});}
+                  map.panTo(ll,{animate:false});
                 }
-                function centerOnUser(lat,lon){updateUserLocation(lat,lon);map.flyTo([lat,lon],16);}
+                function centerOnUser(lat,lon){
+                  var ll=[lat,lon];
+                  if(_userMarker){_userMarker.setLatLng(ll);}
+                  else{_userMarker=L.circleMarker(ll,{radius:8,color:'#fff',weight:2,fillColor:'#4A90D9',fillOpacity:0.9}).addTo(map).bindTooltip('You',{permanent:false,direction:'top'});}
+                  map.flyTo(ll,16,{animate:true,duration:0.4,easeLinearity:0.25});
+                }
                 function setDestination(lat,lon,label){
                   clearDestination();
                   _destMarker=L.marker([lat,lon],{icon:_pinIcon}).addTo(map).bindPopup(label).openPopup();
-                  map.flyTo([lat,lon],15);
+                  map.flyTo([lat,lon],15,{animate:true,duration:0.4,easeLinearity:0.25});
                 }
                 function clearDestination(){
                   if(_destMarker){map.removeLayer(_destMarker);_destMarker=null;}
