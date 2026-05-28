@@ -5,7 +5,7 @@
              Shell.NavBarIsVisible="False"
              BackgroundColor="#2D1B4E">
 
-    <Grid HorizontalOptions="Fill" VerticalOptions="Fill" RowDefinitions="Auto,*,Auto">
+    <Grid HorizontalOptions="Fill" VerticalOptions="Fill" RowDefinitions="Auto,*">
 
         <!-- Header -->
         <Grid Grid.Row="0"
@@ -131,15 +131,6 @@
             </ScrollView>
 
         </Grid>
-
-        <!-- Action feedback -->
-        <Label Grid.Row="2"
-               Text="{Binding LastActionText}"
-               FontSize="12"
-               TextColor="#8A7AAE"
-               HorizontalOptions="Center"
-               HorizontalTextAlignment="Center"
-               Margin="16,8,16,16" />
 
     </Grid>
 </ContentPage>
