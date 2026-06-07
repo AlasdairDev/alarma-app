@@ -851,7 +851,7 @@ public class HomeController : INotifyPropertyChanged
             return;
         }
 
-        LastBackupText = $"Last backup: {_preferencesService.LastBackupUtc.Value.LocalDateTime:g}";
+        LastBackupText = $"Last backup: {_preferencesService.LastBackupUtc.Value.ToOffset(TimeSpan.FromHours(8)):g} PHT";
         OnPropertyChanged(nameof(HasBackupAvailable));
     }
 
@@ -997,6 +997,12 @@ public class HomeController : INotifyPropertyChanged
         try
         {
             var orderedHistory = await _databaseService.GetTripHistoryAsync(TripHistoryLimit);
+            foreach (var trip in orderedHistory)
+            {
+                trip.StartedAt = DateTime.SpecifyKind(trip.StartedAt, DateTimeKind.Utc).AddHours(8);
+                if (trip.EndedAt.HasValue)
+                    trip.EndedAt = DateTime.SpecifyKind(trip.EndedAt.Value, DateTimeKind.Utc).AddHours(8);
+            }
             ReplaceCollection(_tripHistoryEntries, orderedHistory);
         }
         catch (Exception ex)
@@ -1514,7 +1520,8 @@ public class HomeController : INotifyPropertyChanged
         {
             var lat = location.Latitude.ToString("F5", System.Globalization.CultureInfo.InvariantCulture);
             var lon = location.Longitude.ToString("F5", System.Globalization.CultureInfo.InvariantCulture);
-            message = $"Alarma SOS: I may need help. https://maps.google.com/?q={lat},{lon} — {location.Timestamp:t}";
+            var phtTime = location.Timestamp.ToOffset(TimeSpan.FromHours(8));
+            message = $"Alarma SOS: I may need help. https://maps.google.com/?q={lat},{lon} — {phtTime:hh:mm tt} PHT";
         }
 
         try

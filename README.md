@@ -29,6 +29,19 @@ Alarma is an **offline-first** Android safety app built for Metro Manila jeepney
 
 ---
 
+## Timezone & Localization
+
+Alarma explicitly enforces **UTC+8 (Philippine Standard Time, PST)** across all UI bindings and the emergency SOS SMS payload.
+
+| Area | Enforcement |
+|---|---|
+| **UI bindings** | All displayed timestamps (trip start/end, alarm trigger time, history cards) are converted from UTC to UTC+8 before rendering, so the time shown on-screen always reflects Philippine local time regardless of the Android device's system timezone setting. |
+| **SOS SMS payload** | The timestamp embedded in the emergency SMS body (sent alongside GPS coordinates and the Google Maps link) is formatted in UTC+8. This ensures recipients in Metro Manila see a locally meaningful time even if the sender's device is set to a different timezone (e.g., an OFW's roaming device). |
+
+This is intentional and non-configurable: Alarma is designed exclusively for Metro Manila commuters, and a hard-coded timezone eliminates the risk of ambiguous or incorrect timestamps in safety-critical messages.
+
+---
+
 ## External APIs and native integrations
 
 Alarma makes **no outbound requests to a proprietary backend**. The only network calls are to open-source or device-native services:
@@ -333,6 +346,28 @@ dotnet publish -f net9.0-android -c Release \
   -p:AndroidSigningKeyAlias=key-alias \
   -p:AndroidSigningKeyPass=key-password \
   -p:AndroidSigningStorePass=store-password
+```
+
+### Physical Deployment — sideload-ready APK for field testing
+
+Use the command below to produce a standalone `.apk` file suitable for sideloading onto a physical Android device without requiring Google Play.
+
+```bash
+dotnet publish -f net9.0-android -c Release -p:AndroidPackageFormat=apk
+```
+
+The `-p:AndroidPackageFormat=apk` flag overrides the default `.aab` (Android App Bundle) output and forces the toolchain to emit a self-contained APK that can be installed directly via ADB or a file manager.
+
+**Output path:**
+
+```
+bin/Release/net9.0-android/publish/com.alarma.app.apk
+```
+
+To install immediately on a connected device after the build completes:
+
+```bash
+adb install bin/Release/net9.0-android/publish/com.alarma.app.apk
 ```
 
 The Release configuration enables:
