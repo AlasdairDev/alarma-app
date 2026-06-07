@@ -165,7 +165,7 @@ public class LocationTrackingService : Service, ILocationListener
         }
 
         var distanceKm = _totalDistanceMeters / 1000.0;
-        var timestamp = snapshot.Timestamp.ToLocalTime().ToString("HH:mm zzz", CultureInfo.InvariantCulture);
+        var timestamp = snapshot.Timestamp.ToOffset(TimeSpan.FromHours(8)).ToString("hh:mm tt", CultureInfo.InvariantCulture);
         var contentText = $"Tracking active · {distanceKm:F2} km · last fix {timestamp}.";
         manager.Notify(NotificationId, BuildNotification(contentText));
     }
