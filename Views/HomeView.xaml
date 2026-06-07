@@ -16,8 +16,10 @@
                  VerticalOptions="Fill"
                  Navigating="OnMapNavigating" />
 
-        <!-- Layer 1: Top foreground — greeting header + rounded search pill -->
-        <VerticalStackLayout VerticalOptions="Start"
+        <!-- Layer 1a: Greeting header (Phase 1 — no destination set) -->
+        <VerticalStackLayout x:Name="GreetingHeader"
+                             IsVisible="{Binding ShowGreetingHeader}"
+                             VerticalOptions="Start"
                              BackgroundColor="#2D1B4E"
                              Padding="24,48,24,20"
                              InputTransparent="False">
@@ -35,7 +37,9 @@
                     StrokeShape="RoundRectangle 28"
                     Stroke="Transparent"
                     Padding="16,13"
-                    InputTransparent="False">
+                    InputTransparent="False"
+                    SemanticProperties.Description="Search for a destination"
+                    SemanticProperties.Hint="Double tap to open destination search">
                 <Grid ColumnDefinitions="Auto,*">
                     <Label Grid.Column="0"
                            Text="&#128269;"
@@ -43,7 +47,7 @@
                            TextColor="#888888"
                            VerticalOptions="Center" />
                     <Label Grid.Column="1"
-                           Text="{Binding DestinationSummaryText}"
+                           Text="Search"
                            TextColor="#888888"
                            FontSize="14"
                            Margin="10,0,0,0"
@@ -55,7 +59,7 @@
                 </Border.GestureRecognizers>
             </Border>
 
-            <!-- Offline banner — appears inline beneath search bar when network is lost -->
+            <!-- Offline banner -->
             <Border IsVisible="{Binding IsOffline}"
                     BackgroundColor="#4A3570"
                     Stroke="Transparent"
@@ -68,6 +72,98 @@
                        FontSize="12"
                        HorizontalOptions="Center" />
             </Border>
+        </VerticalStackLayout>
+
+        <!-- Layer 1b: Phase 3 route overview card (slides down when destination is set) -->
+        <VerticalStackLayout x:Name="DestinationCard"
+                             IsVisible="{Binding ShowStartTripCard}"
+                             VerticalOptions="Start"
+                             BackgroundColor="#2D1B4E"
+                             Padding="20,48,20,18"
+                             InputTransparent="False">
+
+            <!-- Header row: back chevron + greeting -->
+            <Grid ColumnDefinitions="Auto,*" Margin="0,0,0,14">
+                <Label Grid.Column="0"
+                       Text="&#8249;"
+                       FontSize="28"
+                       TextColor="White"
+                       VerticalOptions="Center"
+                       Margin="0,0,6,0">
+                    <Label.GestureRecognizers>
+                        <TapGestureRecognizer Tapped="OnSearchTapped" />
+                    </Label.GestureRecognizers>
+                </Label>
+                <Label Grid.Column="1"
+                       Text="Hello, there!"
+                       FontSize="20"
+                       FontAttributes="Bold"
+                       TextColor="White"
+                       VerticalOptions="Center" />
+            </Grid>
+
+            <!-- Node timeline: current location → destination + star -->
+            <Grid ColumnDefinitions="24,*" RowDefinitions="Auto,18,Auto">
+
+                <!-- White node: origin -->
+                <Ellipse Grid.Row="0" Grid.Column="0"
+                         WidthRequest="9" HeightRequest="9"
+                         Fill="White"
+                         HorizontalOptions="Center"
+                         VerticalOptions="Center" />
+                <Label Grid.Row="0" Grid.Column="1"
+                       Text="{Binding CurrentLocationText}"
+                       TextColor="#C8B8E8"
+                       FontSize="13"
+                       Margin="10,0"
+                       VerticalOptions="Center" />
+
+                <!-- Connector line -->
+                <BoxView Grid.Row="1" Grid.Column="0"
+                         WidthRequest="2"
+                         Color="#7B3FA0"
+                         HorizontalOptions="Center"
+                         VerticalOptions="Fill" />
+
+                <!-- Purple node: destination + star toggle -->
+                <Ellipse Grid.Row="2" Grid.Column="0"
+                         WidthRequest="9" HeightRequest="9"
+                         Fill="#9B6FBF"
+                         HorizontalOptions="Center"
+                         VerticalOptions="Center" />
+                <Grid Grid.Row="2" Grid.Column="1"
+                      ColumnDefinitions="*,Auto"
+                      Margin="10,0,0,0">
+                    <Label Grid.Column="0"
+                           Text="{Binding DestinationShortNameText}"
+                           TextColor="White"
+                           FontSize="13"
+                           FontAttributes="Bold"
+                           VerticalOptions="Center"
+                           LineBreakMode="TailTruncation" />
+                    <Label Grid.Column="1"
+                           FontSize="20"
+                           VerticalOptions="Center"
+                           Margin="8,0,0,0"
+                           Text="&#9734;"
+                           TextColor="#9B6FBF"
+                           SemanticProperties.Description="Save or remove destination from favorites"
+                           SemanticProperties.Hint="Double tap to toggle favorite status">
+                        <Label.GestureRecognizers>
+                            <TapGestureRecognizer Command="{Binding ToggleFavoriteCommand}" />
+                        </Label.GestureRecognizers>
+                        <Label.Triggers>
+                            <DataTrigger TargetType="Label"
+                                         Binding="{Binding IsDestinationSaved}"
+                                         Value="True">
+                                <Setter Property="Text" Value="&#9733;" />
+                                <Setter Property="TextColor" Value="#FFD700" />
+                            </DataTrigger>
+                        </Label.Triggers>
+                    </Label>
+                </Grid>
+            </Grid>
+
         </VerticalStackLayout>
 
         <!-- Layer 2: Action FAB (lower-right quadrant) + bottom overlay stack -->
@@ -88,6 +184,8 @@
                     TextColor="#7B3FA0"
                     Margin="0,0,20,0"
                     Padding="0"
+                    SemanticProperties.Description="Center map on your location"
+                    SemanticProperties.Hint="Double tap to center the map on your current GPS position"
                     Command="{Binding CenterOnUserCommand}" />
 
             <!-- View Active Trip pill (shown while tracking) -->
@@ -96,7 +194,9 @@
                     Stroke="Transparent"
                     StrokeShape="RoundRectangle 28"
                     Padding="24,14"
-                    HorizontalOptions="Center">
+                    HorizontalOptions="Center"
+                    SemanticProperties.Description="View Active Trip"
+                    SemanticProperties.Hint="Double tap to open the active trip monitor">
                 <Label Text="&#128205;  View Active Trip"
                        TextColor="White"
                        FontSize="15"
@@ -146,7 +246,9 @@
                                FontSize="20"
                                TextColor="#9B6FBF"
                                VerticalOptions="Center"
-                               Margin="8,0,0,0">
+                               Margin="8,0,0,0"
+                               SemanticProperties.Description="Save or remove destination from favorites"
+                               SemanticProperties.Hint="Double tap to toggle favorite status">
                             <Label.GestureRecognizers>
                                 <TapGestureRecognizer Command="{Binding ToggleFavoriteCommand}" />
                             </Label.GestureRecognizers>
@@ -177,6 +279,8 @@
                                 CornerRadius="20"
                                 Padding="20,10"
                                 IsVisible="{Binding IsNotTracking}"
+                                SemanticProperties.Description="Start Trip"
+                                SemanticProperties.Hint="Double tap to begin tracking your journey to the selected destination"
                                 Command="{Binding StartTrackingCommand}" />
                     </Grid>
                 </VerticalStackLayout>
@@ -216,6 +320,8 @@
                             FontAttributes="Bold"
                             CornerRadius="24"
                             Padding="0,12"
+                            SemanticProperties.Description="Close SOS Warning dialog"
+                            SemanticProperties.Hint="Double tap to dismiss this warning"
                             Clicked="OnSosWarningClosed" />
                 </VerticalStackLayout>
             </Border>

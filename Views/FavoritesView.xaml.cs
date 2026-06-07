@@ -21,6 +21,7 @@ public partial class FavoritesView : ContentPage
         _controller = controller;
         BindingContext = controller;
         InitializeComponent();
+        _controller.NavigateToAddFavoriteRequested += OnNavigateToAddFavoriteRequested;
     }
 
     protected override void OnAppearing()
@@ -28,6 +29,12 @@ public partial class FavoritesView : ContentPage
         Content.Opacity = 0;
         base.OnAppearing();
         Content.FadeTo(1, 220, Easing.CubicOut);
+        _ = _controller.RefreshFavoritesAsync();
+    }
+
+    private async void OnNavigateToAddFavoriteRequested(object? sender, EventArgs e)
+    {
+        await Shell.Current.GoToAsync("add-favorite", animate: false);
     }
 
     private async void OnFavoriteRouteTapped(object? sender, TappedEventArgs e)

@@ -27,6 +27,8 @@ public partial class EmergencyView : ContentPage
         Content.Opacity = 0;
         base.OnAppearing();
         Content.FadeTo(1, 220, Easing.CubicOut);
+        _controller.SosDispatched += OnSosDispatched;
+        _controller.SmsDenied += OnSmsDenied;
     }
 
     protected override void OnDisappearing()
@@ -35,6 +37,8 @@ public partial class EmergencyView : ContentPage
         _holdTimer?.Stop();
         _holdTimer = null;
         SosButton.BackgroundColor = Color.FromArgb("#FF3B30");
+        _controller.SosDispatched -= OnSosDispatched;
+        _controller.SmsDenied -= OnSmsDenied;
     }
 
     private void OnSosPressed(object? sender, EventArgs e)
@@ -62,8 +66,28 @@ public partial class EmergencyView : ContentPage
             _holdTimer = null;
             _controller.TriggerSosCommand.Execute(null);
             SosButton.BackgroundColor = Color.FromArgb("#FF3B30");
-            ShowSosSentOverlay();
         });
+    }
+
+    private void OnSosDispatched(object? sender, EventArgs e)
+    {
+        MainThread.BeginInvokeOnMainThread(ShowSosSentOverlay);
+    }
+
+    private void OnSmsDenied(object? sender, EventArgs e)
+    {
+        MainThread.BeginInvokeOnMainThread(() => SmsDeniedOverlay.IsVisible = true);
+    }
+
+    private void OnSmsDeniedOverlayDismissed(object? sender, TappedEventArgs e)
+    {
+        SmsDeniedOverlay.IsVisible = false;
+    }
+
+    private void OnOpenSmsSettingsClicked(object? sender, EventArgs e)
+    {
+        SmsDeniedOverlay.IsVisible = false;
+        try { AppInfo.Current.ShowSettingsUI(); } catch { }
     }
 
     private void ShowSosSentOverlay()

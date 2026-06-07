@@ -95,7 +95,9 @@
                     Stroke="#6A5590"
                     StrokeThickness="1"
                     Padding="8"
-                    Margin="0,10,0,0">
+                    Margin="0,10,0,0"
+                    SemanticProperties.Description="Slide to stop alarm"
+                    SemanticProperties.Hint="Swipe right across the pill to dismiss the alarm and stop the trip">
                 <Grid x:Name="SlideToStopTrack" ColumnDefinitions="Auto,*">
                     <Border x:Name="SlideToStopThumb"
                             Grid.Column="0"
@@ -130,7 +132,9 @@
                     CornerRadius="20"
                     Padding="0,10"
                     Command="{Binding SnoozeAlarmCommand}"
-                    Margin="0,4,0,0" />
+                    Margin="0,4,0,0"
+                    SemanticProperties.Description="Snooze alarm"
+                    SemanticProperties.Hint="Double tap to snooze the alarm temporarily" />
 
             <!-- Reminder checklist (Stage 1 only) — matches Figma 14 -->
             <VerticalStackLayout Spacing="8"
@@ -204,7 +208,9 @@
                     Stroke="#FF3B30"
                     StrokeThickness="1"
                     Padding="8"
-                    Margin="0,14,0,0">
+                    Margin="0,14,0,0"
+                    SemanticProperties.Description="Slide to dismiss WAKE UP alarm"
+                    SemanticProperties.Hint="Swipe right across the pill to dismiss the critical wake-up alarm">
                 <Grid x:Name="SlideToDismissTrack" ColumnDefinitions="Auto,*">
                     <Border x:Name="SlideToDismissThumb"
                             Grid.Column="0"
@@ -266,6 +272,8 @@
                         FontAttributes="Bold"
                         CornerRadius="24"
                         Padding="0,14"
+                        SemanticProperties.Description="No, I did not miss my stop"
+                        SemanticProperties.Hint="Double tap to dismiss the overshoot warning"
                         Command="{Binding DismissOvershootCommand}" />
                 <Button Grid.Column="1"
                         Text="Yes"
@@ -275,6 +283,8 @@
                         FontAttributes="Bold"
                         CornerRadius="24"
                         Padding="0,14"
+                        SemanticProperties.Description="Yes, I missed my stop"
+                        SemanticProperties.Hint="Double tap to confirm you passed your destination"
                         Command="{Binding ConfirmOvershootCommand}" />
             </Grid>
 
@@ -313,6 +323,8 @@
                         FontAttributes="Bold"
                         CornerRadius="24"
                         Padding="0,14"
+                        SemanticProperties.Description="Close overshoot notification"
+                        SemanticProperties.Hint="Double tap to close and continue tracking"
                         Command="{Binding DismissOvershootCommand}" />
                 <Button Grid.Column="1"
                         Text="Open in GMaps"
@@ -322,6 +334,8 @@
                         FontAttributes="Bold"
                         CornerRadius="24"
                         Padding="0,14"
+                        SemanticProperties.Description="Open reroute in Google Maps"
+                        SemanticProperties.Hint="Double tap to open Google Maps with directions back to your destination"
                         Command="{Binding OpenInGMapsCommand}" />
             </Grid>
 
@@ -350,6 +364,8 @@
                     CornerRadius="24"
                     FontSize="16"
                     Padding="0,14"
+                    SemanticProperties.Description="Stop current trip"
+                    SemanticProperties.Hint="Double tap to stop tracking and return to the home screen"
                     Clicked="OnStopTripClicked" />
 
         </VerticalStackLayout>

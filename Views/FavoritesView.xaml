@@ -1,9 +1,10 @@
 <?xml version="1.0" encoding="utf-8" ?>
 <ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:models="clr-namespace:AlarmaApp.Models"
              x:Class="AlarmaApp.Views.FavoritesView"
              Shell.NavBarIsVisible="False"
-             BackgroundColor="#2D1B4E">
+             BackgroundColor="#1A0F35">
 
     <Grid HorizontalOptions="Fill" VerticalOptions="Fill" RowDefinitions="Auto,*">
 
@@ -11,7 +12,7 @@
         <Grid Grid.Row="0"
               ColumnDefinitions="*,Auto"
               Padding="24,52,20,16"
-              BackgroundColor="#2D1B4E">
+              BackgroundColor="#1A0F35">
             <Label Grid.Column="0"
                    Text="Favorites"
                    FontSize="28"
@@ -27,7 +28,7 @@
                     HeightRequest="44"
                     CornerRadius="22"
                     Padding="0"
-                    Command="{Binding SaveDestinationCommand}" />
+                    Command="{Binding AddRouteToFavoritesCommand}" />
         </Grid>
 
         <!-- Content area -->
@@ -81,7 +82,7 @@
                 <VerticalStackLayout Spacing="0">
                     <CollectionView ItemsSource="{Binding SavedRoutes}">
                         <CollectionView.ItemTemplate>
-                            <DataTemplate>
+                            <DataTemplate x:DataType="models:SavedRoute">
                                 <Grid ColumnDefinitions="Auto,*,Auto"
                                       Padding="16,14"
                                       BackgroundColor="Transparent">
@@ -90,7 +91,9 @@
                                             StrokeShape="Ellipse"
                                             Stroke="Transparent"
                                             WidthRequest="44"
-                                            HeightRequest="44">
+                                            HeightRequest="44"
+                                            VerticalOptions="Start"
+                                            Margin="0,2,0,0">
                                         <Label Text="&#128205;"
                                                FontSize="18"
                                                TextColor="#9B6FBF"
@@ -99,11 +102,11 @@
                                     </Border>
 
                                     <Label Grid.Column="1"
-                                           Text="{Binding Name}"
-                                           FontSize="14"
+                                           Text="{Binding FullAddress}"
+                                           FontSize="13"
                                            TextColor="White"
-                                           FontAttributes="Bold"
-                                           LineBreakMode="TailTruncation"
+                                           LineBreakMode="WordWrap"
+                                           MaxLines="3"
                                            Margin="14,0,0,0"
                                            VerticalOptions="Center" />
 
@@ -111,11 +114,12 @@
                                            Text="&#11088;"
                                            FontSize="20"
                                            TextColor="#9B6FBF"
-                                           VerticalOptions="Center"
-                                           Margin="8,0,0,0">
+                                           VerticalOptions="Start"
+                                           Margin="8,4,0,0">
                                         <Label.GestureRecognizers>
-                                            <TapGestureRecognizer Command="{Binding Source={RelativeSource AncestorType={x:Type ContentPage}}, Path=BindingContext.RemoveSavedRouteCommand}"
-                                                                   CommandParameter="{Binding .}" />
+                                            <TapGestureRecognizer
+                                                Command="{Binding Source={RelativeSource AncestorType={x:Type ContentPage}}, Path=BindingContext.RemoveSavedRouteCommand}"
+                                                CommandParameter="{Binding .}" />
                                         </Label.GestureRecognizers>
                                     </Label>
 

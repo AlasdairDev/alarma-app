@@ -1,17 +1,23 @@
 // Security Considerations (OWASP Top 10)
 // A03 Injection: User queries are encoded via Uri.EscapeDataString before appending to request
-//   URIs — no raw user input reaches the network layer unescaped.
+//   URIs — no raw user input reaches the network layer unescaped. Cache keys use
+//   ToLowerInvariant() on the alias-expanded query — no raw user string is stored directly.
+//   Cache reads use parameterized sqlite-net-pcl queries — no raw SQL string construction.
 // A10 Server-Side Request Forgery (SSRF): HttpClient base addresses are hardcoded to
 //   photon.komoot.io and nominatim.openstreetmap.org — there is no user-controllable URL
 //   construction. A Philippines bounding box (bbox parameter) further restricts result scope.
 // A05 Security Misconfiguration: HttpClient.Timeout = 15 s prevents indefinite hang on slow
 //   or adversarial network; coordinates parsed with TryParseLatitude/TryParseLongitude with
 //   strict ±90/±180 range guards before any result is returned to the caller.
+// A02 Cryptographic Failures: Geocode cache is stored in the same AES-256-encrypted SQLCipher
+//   database as all other app data — cached coordinates and place names are encrypted at rest.
 // No credentials, no API keys, no user PII are transmitted or logged by this service.
 
 using System.Globalization;
 using System.Net.Http.Json;
+using System.Text.Json;
 using System.Text.Json.Serialization;
+using AlarmaApp.Models;
 using Microsoft.Maui.ApplicationModel;
 
 namespace AlarmaApp.Services;
@@ -21,6 +27,7 @@ public class GeocodingService
     private static readonly TimeSpan RequestTimeout = TimeSpan.FromSeconds(15);
     private readonly HttpClient _photonClient;
     private readonly HttpClient _nominatimClient;
+    private readonly DatabaseService _db;
 
     private const double PhLatMin = 4.5;
     private const double PhLatMax = 21.1;
@@ -84,8 +91,9 @@ public class GeocodingService
             ["sm north edsa"] = "SM City North EDSA",
         };
 
-    public GeocodingService()
+    public GeocodingService(DatabaseService db)
     {
+        _db = db;
         var version = AppInfo.VersionString;
         var ua = $"AlarmaApp/{version} (offline-first)";
 
@@ -136,6 +144,23 @@ public class GeocodingService
         string query, CancellationToken cancellationToken)
     {
         var expanded = ExpandAlias(query.Trim());
+        var cacheKey = expanded.ToLowerInvariant();
+
+        // ── Cache intercept (offline-first) ───────────────────────────────────
+        var cached = await _db.GetGeocodeCacheAsync(cacheKey);
+        if (cached is not null)
+        {
+            var cachedResults = DeserializeCacheResults(cached.ResultsJson);
+            if (cachedResults.Count > 0)
+            {
+                // Refresh LRU timestamp on every hit.
+                cached.LastUsedUtc = DateTime.UtcNow;
+                await _db.UpsertGeocodeCacheAsync(cached);
+                return cachedResults;
+            }
+        }
+
+        // ── Online path ───────────────────────────────────────────────────────
 
         // Photon: Elasticsearch-backed fuzzy search, faster and more forgiving than Nominatim
         var photon = await SearchPhotonAsync(expanded, cancellationToken);
@@ -145,7 +170,12 @@ public class GeocodingService
         {
             var nominatim = await SearchNominatimAsync(expanded, cancellationToken);
             var merged = Merge(photon, nominatim, maxCount: 10);
-            if (merged.Count > 0) return merged;
+
+            if (merged.Count > 0)
+            {
+                await SaveToCacheAsync(cacheKey, merged, cached);
+                return merged;
+            }
 
             // Both APIs unreachable or returned nothing — try the local fallback table.
             if (LocalFallback.TryGetValue(expanded, out var local))
@@ -154,7 +184,34 @@ public class GeocodingService
             return merged;
         }
 
+        await SaveToCacheAsync(cacheKey, photon, cached);
         return photon;
+    }
+
+    // Serializes the top 3 results and upserts into the encrypted cache table.
+    private async Task SaveToCacheAsync(
+        string cacheKey,
+        IReadOnlyList<GeocodingResult> results,
+        GeocodeCache? existing)
+    {
+        var top3 = results.Take(3).ToList();
+        var json = JsonSerializer.Serialize(top3);
+        var entry = existing ?? new GeocodeCache { QueryKey = cacheKey };
+        entry.ResultsJson = json;
+        entry.LastUsedUtc = DateTime.UtcNow;
+        await _db.UpsertGeocodeCacheAsync(entry);
+    }
+
+    private static List<GeocodingResult> DeserializeCacheResults(string json)
+    {
+        try
+        {
+            return JsonSerializer.Deserialize<List<GeocodingResult>>(json) ?? [];
+        }
+        catch
+        {
+            return [];
+        }
     }
 
     // ── Photon (primary) ──────────────────────────────────────────────────────

@@ -3,14 +3,14 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
              x:Class="AlarmaApp.Views.HistoryView"
              Shell.NavBarIsVisible="False"
-             BackgroundColor="#2D1B4E">
+             BackgroundColor="#1A0F35">
 
     <Grid HorizontalOptions="Fill" VerticalOptions="Fill" RowDefinitions="Auto,Auto,*">
 
         <!-- Header -->
         <VerticalStackLayout Grid.Row="0"
                              Padding="24,52,24,12"
-                             BackgroundColor="#2D1B4E">
+                             BackgroundColor="#1A0F35">
             <Label Text="Trip History"
                    FontSize="28"
                    FontAttributes="Bold"
@@ -56,7 +56,7 @@
                                 IsVisible="{Binding HasTripHistory}">
                     <CollectionView.ItemTemplate>
                         <DataTemplate>
-                            <Border BackgroundColor="#2D2D44"
+                            <Border BackgroundColor="#261C40"
                                     StrokeShape="RoundRectangle 16"
                                     Stroke="Transparent"
                                     Margin="16,6"

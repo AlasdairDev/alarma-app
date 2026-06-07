@@ -129,11 +129,11 @@ public class BackupService
             .ToList();
 
         var routesToRestore = payload.SavedRoutes
-            .Where(r => !string.IsNullOrWhiteSpace(r.Name)
-                        && r.Name.Length >= MinRouteNameLength
-                        && r.Name.Length <= MaxRouteNameLength
-                        && r.DestinationLatitude >= PhLatMin && r.DestinationLatitude <= PhLatMax
-                        && r.DestinationLongitude >= PhLonMin && r.DestinationLongitude <= PhLonMax)
+            .Where(r => !string.IsNullOrWhiteSpace(r.DisplayName)
+                        && r.DisplayName.Length >= MinRouteNameLength
+                        && r.DisplayName.Length <= MaxRouteNameLength
+                        && r.Latitude >= PhLatMin && r.Latitude <= PhLatMax
+                        && r.Longitude >= PhLonMin && r.Longitude <= PhLonMax)
             .Take(MaxRestoreRoutes)
             .ToList();
 

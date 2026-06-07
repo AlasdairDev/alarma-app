@@ -22,6 +22,7 @@ public partial class AppShell : Shell
     {
         InitializeComponent();
         Routing.RegisterRoute("search", typeof(Views.SearchView));
+        Routing.RegisterRoute("add-favorite", typeof(Views.AddFavoriteView));
         Routing.RegisterRoute("alarmstage", typeof(Views.AlarmStageView));
         Routing.RegisterRoute("onboarding", typeof(Views.OnboardingView));
         Routing.RegisterRoute("permissions-setup", typeof(Views.PermissionsSetupView));

@@ -18,15 +18,22 @@
     <UseInterpreter Condition="'$(Configuration)' == 'Debug'">true</UseInterpreter>
   </PropertyGroup>
 
-  <!-- Release: AOT compilation + SDK-only linker for a smaller, faster production APK -->
+  <!-- Release: AOT + full IL trimming for a hardened, obfuscated production APK -->
   <PropertyGroup Condition="'$(Configuration)' == 'Release'">
     <RunAOTCompilation>true</RunAOTCompilation>
+    <AndroidEnableProfiledAot>true</AndroidEnableProfiledAot>
+    <PublishTrimmed>true</PublishTrimmed>
+    <TrimMode>full</TrimMode>
     <AndroidLinkMode>SdkOnly</AndroidLinkMode>
     <Optimize>true</Optimize>
-    <AndroidEnableProfiledAot>true</AndroidEnableProfiledAot>
     <DebugType>none</DebugType>
     <DebugSymbols>false</DebugSymbols>
   </PropertyGroup>
+
+  <!-- Preserve Models/ namespace and SQLite ORM reflection roots from the IL trimmer -->
+  <ItemGroup Condition="'$(Configuration)' == 'Release'">
+    <TrimmerRootDescriptor Include="TrimmerRoots.xml" />
+  </ItemGroup>
 
   <ItemGroup>
     <Compile Remove="AlarmaApp.Tests\**" />
@@ -56,7 +63,6 @@
     <PackageReference Include="Microsoft.Extensions.Logging.Debug" Version="9.0.0" />
     <PackageReference Include="sqlite-net-pcl" Version="1.8.116" />
     <PackageReference Include="SQLitePCLRaw.bundle_e_sqlcipher" Version="2.1.8" />
-    <PackageReference Include="Xamarin.AndroidX.Biometric" Version="1.1.0.11" />
     <PackageReference Include="Xamarin.AndroidX.Core.SplashScreen" Version="1.2.0.2" />
   </ItemGroup>
 

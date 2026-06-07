@@ -10,6 +10,19 @@ public static class MauiProgram
 {
     public static MauiApp CreateMauiApp()
     {
+        // Black-box crash handlers — subscribed before any app code runs so that
+        // unhandled exceptions on any thread are captured to the encrypted log.
+        AppDomain.CurrentDomain.UnhandledException += (_, e) =>
+            BlackBoxLogger.WriteCrashLog(e.ExceptionObject as Exception,
+                $"AppDomain.UnhandledException (terminating={e.IsTerminating})");
+
+        TaskScheduler.UnobservedTaskException += (_, e) =>
+        {
+            BlackBoxLogger.WriteCrashLog(e.Exception,
+                "TaskScheduler.UnobservedTaskException");
+            e.SetObserved(); // prevent process termination for unobserved async faults
+        };
+
         var builder = MauiApp.CreateBuilder();
         builder.UseMauiApp<App>();
 
@@ -31,6 +44,7 @@ public static class MauiProgram
 
         // Navigation views — transient, new instance per navigation
         builder.Services.AddTransient<Views.SearchView>();
+        builder.Services.AddTransient<Views.AddFavoriteView>();
         builder.Services.AddTransient<Views.AlarmStageView>();
         builder.Services.AddTransient<Views.OnboardingView>();
         builder.Services.AddTransient<Views.PermissionsSetupView>();
@@ -47,7 +61,6 @@ public static class MauiProgram
         builder.Services.AddSingleton<ISmsService, AndroidSmsService>();
         builder.Services.AddSingleton<IAlarmAudioService, AndroidAlarmAudioService>();
         builder.Services.AddSingleton<IAlarmNotificationService, AndroidAlarmNotificationService>();
-        builder.Services.AddSingleton<IBiometricAuthService, AndroidBiometricAuthService>();
         builder.Services.AddSingleton<IConnectivityService, AndroidConnectivityService>();
         builder.Services.AddSingleton<IGoogleMapsLauncher, AndroidGoogleMapsLauncher>();
         builder.Services.AddSingleton<IBatteryOptimizationService, AndroidBatteryOptimizationService>();

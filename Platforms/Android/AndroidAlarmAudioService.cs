@@ -35,7 +35,7 @@ public class AndroidAlarmAudioService : IAlarmAudioService
             return Task.CompletedTask;
         }
 
-        _savedRingerMode ??= audioManager.RingerMode;
+        lock (_ringtoneLock) { _savedRingerMode ??= audioManager.RingerMode; }
         audioManager.RingerMode = RingerMode.Normal;
         var maxVolume = audioManager.GetStreamMaxVolume(AndroidStream.Alarm);
         audioManager.SetStreamVolume(AndroidStream.Alarm, maxVolume, VolumeNotificationFlags.ShowUi);
@@ -49,19 +49,20 @@ public class AndroidAlarmAudioService : IAlarmAudioService
 
     public Task DisableCriticalAudioAsync()
     {
+        RingerMode? saved;
         lock (_ringtoneLock)
         {
             if (_ringtone?.IsPlaying == true)
-            {
                 _ringtone.Stop();
-            }
+            saved = _savedRingerMode;
+            _savedRingerMode = null;
         }
 
-        var audioManager = AndroidApplication.Context.GetSystemService(Context.AudioService) as AudioManager;
-        if (audioManager is not null && _savedRingerMode.HasValue)
+        if (saved.HasValue)
         {
-            audioManager.RingerMode = _savedRingerMode.Value;
-            _savedRingerMode = null;
+            var audioManager = AndroidApplication.Context.GetSystemService(Context.AudioService) as AudioManager;
+            if (audioManager is not null)
+                audioManager.RingerMode = saved.Value;
         }
 
         return Task.CompletedTask;
@@ -80,13 +81,13 @@ public class AndroidAlarmAudioService : IAlarmAudioService
         {
             if (stage >= AlarmStage.Stage2)
             {
-                _savedRingerMode ??= audioManager.RingerMode;
+                lock (_ringtoneLock) { _savedRingerMode ??= audioManager.RingerMode; }
                 audioManager.RingerMode = RingerMode.Vibrate;
             }
         }
         else if (stage >= AlarmStage.Stage2)
         {
-            _savedRingerMode ??= audioManager.RingerMode;
+            lock (_ringtoneLock) { _savedRingerMode ??= audioManager.RingerMode; }
             audioManager.RingerMode = RingerMode.Normal;
             var maxVolume = audioManager.GetStreamMaxVolume(AndroidStream.Alarm);
             var targetVolume = GetStageVolume(stage, maxVolume);
