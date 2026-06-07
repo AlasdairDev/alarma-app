@@ -50,7 +50,6 @@ public class HomeController : INotifyPropertyChanged
     private readonly IGoogleMapsLauncher _googleMapsLauncher;
     private readonly IAlarmNotificationService _notificationService;
     private readonly IAlarmAudioService _alarmAudioService;
-    private readonly IBiometricAuthService _biometricAuthService;
     private readonly BackupService _backupService;
     private readonly IBatteryOptimizationService _batteryOptimizationService;
     private readonly IEarphoneService _earphoneService;
@@ -172,6 +171,7 @@ public class HomeController : INotifyPropertyChanged
     private bool _isOnboardingComplete;
     private bool _isDatabaseInitialized;
     private bool _hasInitialized;
+    private string _currentLocationText = "Fetching location...";
     private readonly SemaphoreSlim _initializeSemaphore = new(1, 1);
     private readonly SemaphoreSlim _databaseInitSemaphore = new(1, 1);
     private readonly ObservableCollection<string> _alarmSoundOptions = new()
@@ -193,7 +193,6 @@ public class HomeController : INotifyPropertyChanged
     private const int MaxContactNameLength = 50;
     private const int MaxDisplayNameLength = 200;
 
-    private string _authStatusText = string.Empty;
     private string _locationPermissionLabel = "Check";
     private string _notificationPermissionLabel = "Check";
     private string _bluetoothPermissionLabel = "Settings";
@@ -209,6 +208,10 @@ public class HomeController : INotifyPropertyChanged
     // Fires a JS string to be executed against the live WebView map; HomeView calls
     // EvaluateJavaScriptAsync. On re-appear, HomeView replays state via LastDestinationResult.
     public event EventHandler<string>? MapJsRequested;
+    public event EventHandler? NavigateToAddFavoriteRequested;
+    public event EventHandler? FavoriteSaved;
+    public event EventHandler? SosDispatched;
+    public event EventHandler? SmsDenied;
 
     public string StatusText
     {
@@ -253,6 +256,7 @@ public class HomeController : INotifyPropertyChanged
             {
                 OnPropertyChanged(nameof(IsNotTracking));
                 OnPropertyChanged(nameof(ShowStartTripCard));
+                OnPropertyChanged(nameof(ShowGreetingHeader));
             }
         }
     }
@@ -260,6 +264,8 @@ public class HomeController : INotifyPropertyChanged
     public bool IsNotTracking => !IsTracking;
 
     public bool ShowStartTripCard => HasDestination && !IsTracking;
+
+    public bool ShowGreetingHeader => !ShowStartTripCard;
 
     public string TrackingStatusText
     {
@@ -296,6 +302,12 @@ public class HomeController : INotifyPropertyChanged
     public string DestinationShortNameText => _lastDestinationResult is { DisplayName: var n }
         ? (n.Length > 28 ? n[..28] + "…" : n)
         : string.Empty;
+
+    public string CurrentLocationText
+    {
+        get => _currentLocationText;
+        private set => SetProperty(ref _currentLocationText, value);
+    }
 
     public string AvailabilityStatusText
     {
@@ -358,12 +370,6 @@ public class HomeController : INotifyPropertyChanged
     public bool IsStage3Active => CurrentAlarmStage == AlarmStage.Stage3;
     public bool IsStage1Active => CurrentAlarmStage == AlarmStage.Stage1;
     public bool IsStage1Or2Active => CurrentAlarmStage == AlarmStage.Stage1 || CurrentAlarmStage == AlarmStage.Stage2;
-
-    public string AuthStatusText
-    {
-        get => _authStatusText;
-        private set => SetProperty(ref _authStatusText, value);
-    }
 
     public string LocationPermissionLabel
     {
@@ -572,6 +578,8 @@ public class HomeController : INotifyPropertyChanged
     public ICommand RemoveEmergencyContactCommand { get; }
     public ICommand SaveDestinationCommand { get; }
     public ICommand ToggleFavoriteCommand { get; }
+    public ICommand AddRouteToFavoritesCommand { get; }
+    public ICommand SaveSelectedRouteToFavoritesCommand { get; }
     public ICommand ApplySavedRouteCommand { get; }
     public ICommand RemoveSavedRouteCommand { get; }
     public ICommand CompleteOnboardingCommand { get; }
@@ -583,8 +591,6 @@ public class HomeController : INotifyPropertyChanged
     public ICommand DismissAlarmCommand { get; }
     public ICommand SnoozeAlarmCommand { get; }
     public ICommand CenterOnUserCommand { get; }
-    public ICommand OpenBiometricEnrollmentCommand { get; }
-    public ICommand OpenChangePinCommand { get; }
     public ICommand RequestLocationPermissionCommand { get; }
     public ICommand RequestNotificationPermissionCommand { get; }
     public ICommand RequestBluetoothPermissionCommand { get; }
@@ -603,7 +609,6 @@ public class HomeController : INotifyPropertyChanged
         IGoogleMapsLauncher googleMapsLauncher,
         IAlarmNotificationService notificationService,
         IAlarmAudioService alarmAudioService,
-        IBiometricAuthService biometricAuthService,
         BackupService backupService,
         IBatteryOptimizationService batteryOptimizationService,
         IEarphoneService earphoneService)
@@ -618,7 +623,6 @@ public class HomeController : INotifyPropertyChanged
         _googleMapsLauncher = googleMapsLauncher;
         _notificationService = notificationService;
         _alarmAudioService = alarmAudioService;
-        _biometricAuthService = biometricAuthService;
         _backupService = backupService;
         _batteryOptimizationService = batteryOptimizationService;
         _earphoneService = earphoneService;
@@ -643,7 +647,7 @@ public class HomeController : INotifyPropertyChanged
 
         InitializeCommand = new Command(async () => await InitializeDatabaseAsync());
         SearchDestinationCommand = new Command(async () => await SearchDestinationAsync());
-        SelectResultCommand = new Command<GeocodingResult>(SelectSearchResult);
+        SelectResultCommand = new Command<GeocodingResult>(async result => await SelectSearchResultAsync(result));
         OpenMapsCommand = new Command(async () => await OpenMapsAsync());
         TriggerSosCommand = new Command(async () => await SendSosAsync());
         StartTrackingCommand = new Command(async () => await StartTrackingAsync());
@@ -653,6 +657,8 @@ public class HomeController : INotifyPropertyChanged
         RemoveEmergencyContactCommand = new Command<EmergencyContact>(async contact => await RemoveEmergencyContactAsync(contact));
         SaveDestinationCommand = new Command(async () => await SaveDestinationAsync());
         ToggleFavoriteCommand = new Command(async () => await ToggleFavoriteAsync());
+        AddRouteToFavoritesCommand = new Command(async () => await AddRouteToFavoritesAsync());
+        SaveSelectedRouteToFavoritesCommand = new Command<GeocodingResult>(async result => await SaveSelectedRouteToFavoritesAsync(result));
         ApplySavedRouteCommand = new Command<SavedRoute>(async route => await ApplySavedRouteAsync(route));
         RemoveSavedRouteCommand = new Command<SavedRoute>(async route => await RemoveSavedRouteAsync(route));
         CompleteOnboardingCommand = new Command(CompleteOnboarding);
@@ -670,8 +676,6 @@ public class HomeController : INotifyPropertyChanged
         });
         SnoozeAlarmCommand = new Command(async () => await SnoozeAlarmAsync());
         CenterOnUserCommand = new Command(async () => await CenterOnUserAsync());
-        OpenBiometricEnrollmentCommand = new Command(OpenBiometricEnrollment);
-        OpenChangePinCommand = new Command(OpenChangePin);
         RequestLocationPermissionCommand = new Command(async () => await RequestLocationPermissionAsync());
         RequestNotificationPermissionCommand = new Command(async () => await RequestNotificationPermissionAsync());
         RequestBluetoothPermissionCommand = new Command(OpenBluetoothSettings);
@@ -740,7 +744,6 @@ public class HomeController : INotifyPropertyChanged
             UpdateBatteryOptimizationStatus();
             UpdateEarphoneStatus();
             UpdateBackupStatus();
-            UpdateAuthStatus();
             await UpdatePermissionLabelsAsync();
             await InitializeDatabaseAsync();
             TrackingStatusText = "Tracking inactive.";
@@ -850,82 +853,6 @@ public class HomeController : INotifyPropertyChanged
 
         LastBackupText = $"Last backup: {_preferencesService.LastBackupUtc.Value.LocalDateTime:g}";
         OnPropertyChanged(nameof(HasBackupAvailable));
-    }
-
-    public void UpdateAuthStatus()
-    {
-#if ANDROID
-        try
-        {
-            var activity = Microsoft.Maui.ApplicationModel.Platform.CurrentActivity
-                as AndroidX.Fragment.App.FragmentActivity;
-            if (activity is null)
-            {
-                AuthStatusText = "Authentication status unavailable.";
-                return;
-            }
-            var mgr = AndroidX.Biometric.BiometricManager.From(activity);
-            bool deviceCredentialSupported =
-                Android.OS.Build.VERSION.SdkInt >= Android.OS.BuildVersionCodes.R;
-            int auth = deviceCredentialSupported
-                ? AndroidX.Biometric.BiometricManager.Authenticators.BiometricStrong
-                  | AndroidX.Biometric.BiometricManager.Authenticators.DeviceCredential
-                : AndroidX.Biometric.BiometricManager.Authenticators.BiometricWeak;
-            AuthStatusText = mgr.CanAuthenticate(auth) ==
-                AndroidX.Biometric.BiometricManager.BiometricSuccess
-                ? "Biometric or PIN is set up."
-                : "No biometric or PIN enrolled.";
-        }
-        catch
-        {
-            AuthStatusText = "Authentication status unavailable.";
-        }
-#else
-        AuthStatusText = "Biometric auth is Android-only.";
-#endif
-    }
-
-    private static void OpenBiometricEnrollment()
-    {
-#if ANDROID
-        try
-        {
-#pragma warning disable CA1416
-            Android.Content.Intent intent;
-            if (Android.OS.Build.VERSION.SdkInt >= Android.OS.BuildVersionCodes.R)
-            {
-                intent = new Android.Content.Intent(Android.Provider.Settings.ActionBiometricEnroll);
-                // Tell the enrollment screen which authenticators this app actually uses.
-                // "android.provider.extra.BIOMETRIC_AUTHENTICATORS_ALLOWED" — added in API 30,
-                // tells enrollment screen to show only the authenticators this app uses.
-                intent.PutExtra(
-                    "android.provider.extra.BIOMETRIC_AUTHENTICATORS_ALLOWED",
-                    AndroidX.Biometric.BiometricManager.Authenticators.BiometricStrong
-                    | AndroidX.Biometric.BiometricManager.Authenticators.DeviceCredential);
-            }
-            else
-            {
-                intent = new Android.Content.Intent(Android.Provider.Settings.ActionSecuritySettings);
-            }
-#pragma warning restore CA1416
-            intent.SetFlags(Android.Content.ActivityFlags.NewTask);
-            Android.App.Application.Context.StartActivity(intent);
-        }
-        catch { }
-#endif
-    }
-
-    private static void OpenChangePin()
-    {
-#if ANDROID
-        try
-        {
-            var intent = new Android.Content.Intent(Android.Provider.Settings.ActionSecuritySettings);
-            intent.SetFlags(Android.Content.ActivityFlags.NewTask);
-            Android.App.Application.Context.StartActivity(intent);
-        }
-        catch { }
-#endif
     }
 
     private async Task RequestLocationPermissionAsync()
@@ -1052,7 +979,7 @@ public class HomeController : INotifyPropertyChanged
         {
             var routes = await _databaseService.GetSavedRoutesAsync();
             var orderedRoutes = routes
-                .OrderBy(route => route.Name, StringComparer.OrdinalIgnoreCase)
+                .OrderBy(route => route.DisplayName, StringComparer.OrdinalIgnoreCase)
                 .ToList();
             ReplaceCollection(_savedRoutes, orderedRoutes);
         }
@@ -1062,6 +989,8 @@ public class HomeController : INotifyPropertyChanged
             LastActionText = "Failed to load saved routes.";
         }
     }
+
+    public Task RefreshFavoritesAsync() => LoadSavedRoutesAsync();
 
     private async Task LoadTripHistoryAsync()
     {
@@ -1190,15 +1119,100 @@ public class HomeController : INotifyPropertyChanged
         }
     }
 
-    private void SelectSearchResult(GeocodingResult result)
+    private Task SelectSearchResultAsync(GeocodingResult result)
     {
-        if (result is null) return;
+        if (result is null) return Task.CompletedTask;
         ReplaceCollection(_searchResults, Array.Empty<GeocodingResult>());
         var safeResult = result.DisplayName.Length > MaxDisplayNameLength
             ? result with { DisplayName = result.DisplayName[..MaxDisplayNameLength] }
             : result;
         SetDestination(safeResult, "Search result");
         LastActionText = $"Destination set: {safeResult.DisplayName}.";
+        return Task.CompletedTask;
+    }
+
+    private Task AddRouteToFavoritesAsync()
+    {
+        NavigateToAddFavoriteRequested?.Invoke(this, EventArgs.Empty);
+        return Task.CompletedTask;
+    }
+
+    public async Task RefreshCurrentLocationAsync()
+    {
+        try
+        {
+            var location = await _locationService.GetLastKnownLocationAsync();
+            if (location is not null)
+            {
+                var lat = location.Latitude.ToString("F5", System.Globalization.CultureInfo.InvariantCulture);
+                var lon = location.Longitude.ToString("F5", System.Globalization.CultureInfo.InvariantCulture);
+                CurrentLocationText = $"{lat}, {lon}";
+            }
+            else
+            {
+                CurrentLocationText = "Location unavailable";
+            }
+        }
+        catch
+        {
+            CurrentLocationText = "Location unavailable";
+        }
+    }
+
+    public void ResetSearchState()
+    {
+        DestinationQuery = string.Empty;
+        ReplaceCollection(_searchResults, Array.Empty<GeocodingResult>());
+    }
+
+    private async Task SaveSelectedRouteToFavoritesAsync(GeocodingResult result)
+    {
+        if (result is null) return;
+
+        var safeResult = result.DisplayName.Length > MaxDisplayNameLength
+            ? result with { DisplayName = result.DisplayName[..MaxDisplayNameLength] }
+            : result;
+
+        if (_savedRoutes.Count >= MaxSavedRoutes)
+        {
+            LastActionText = $"Saved route limit reached ({MaxSavedRoutes}). Remove a route to add another.";
+            return;
+        }
+
+        if (_savedRoutes.Any(r => IsSameDestination(r, safeResult)))
+        {
+            LastActionText = "This destination is already saved.";
+            return;
+        }
+
+        var rawName = safeResult.DisplayName;
+        var shortName = rawName.Length > 30 ? rawName[..30].TrimEnd() : rawName;
+        if (shortName.Length < 2) shortName = "Saved route";
+
+        if (_savedRoutes.Any(r => string.Equals(r.DisplayName, shortName, StringComparison.OrdinalIgnoreCase)))
+            shortName = shortName.Length <= 27 ? shortName + " (2)" : shortName[..27] + " (2)";
+
+        var route = new SavedRoute
+        {
+            DisplayName = shortName,
+            FullAddress = safeResult.DisplayName,
+            Latitude = safeResult.Latitude,
+            Longitude = safeResult.Longitude,
+            CreatedAt = DateTime.UtcNow
+        };
+
+        try
+        {
+            await _databaseService.SaveRouteAsync(route);
+            await LoadSavedRoutesAsync();
+            LastActionText = $"Saved: {route.DisplayName}.";
+            FavoriteSaved?.Invoke(this, EventArgs.Empty);
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[HomeController] SaveSelectedRouteToFavoritesAsync failed: {ex}");
+            LastActionText = "Failed to save route. Please try again.";
+        }
     }
 
     private async Task OpenMapsAsync()
@@ -1274,7 +1288,7 @@ public class HomeController : INotifyPropertyChanged
         if (routeName.Length < 2)
             routeName = "Saved route";
 
-        if (_savedRoutes.Any(route => string.Equals(route.Name, routeName, StringComparison.OrdinalIgnoreCase)))
+        if (_savedRoutes.Any(route => string.Equals(route.DisplayName, routeName, StringComparison.OrdinalIgnoreCase)))
         {
             // Append a short suffix to avoid collision while still saving.
             routeName = routeName.Length <= 27 ? routeName + " (2)" : routeName[..27] + " (2)";
@@ -1282,10 +1296,11 @@ public class HomeController : INotifyPropertyChanged
 
         var route = new SavedRoute
         {
-            Name = routeName,
-            DestinationLatitude = _lastDestinationResult.Latitude,
-            DestinationLongitude = _lastDestinationResult.Longitude,
-            Notes = $"Saved from search: {_lastDestinationResult.DisplayName}"
+            DisplayName = routeName,
+            FullAddress = _lastDestinationResult.DisplayName,
+            Latitude = _lastDestinationResult.Latitude,
+            Longitude = _lastDestinationResult.Longitude,
+            CreatedAt = DateTime.UtcNow
         };
 
         try
@@ -1293,7 +1308,7 @@ public class HomeController : INotifyPropertyChanged
             await _databaseService.SaveRouteAsync(route);
             NewRouteName = string.Empty;
             await LoadSavedRoutesAsync();
-            LastActionText = $"Saved: {route.Name}.";
+            LastActionText = $"Saved: {route.DisplayName}.";
         }
         catch (Exception ex)
         {
@@ -1309,9 +1324,10 @@ public class HomeController : INotifyPropertyChanged
             return Task.CompletedTask;
         }
 
-        var destination = new GeocodingResult(route.Name, route.DestinationLatitude, route.DestinationLongitude);
+        var label = string.IsNullOrWhiteSpace(route.FullAddress) ? route.DisplayName : route.FullAddress;
+        var destination = new GeocodingResult(label, route.Latitude, route.Longitude);
         SetDestination(destination, "Saved route");
-        LastActionText = $"Loaded saved route: {route.Name}.";
+        LastActionText = $"Loaded saved route: {route.DisplayName}.";
         return Task.CompletedTask;
     }
 
@@ -1326,7 +1342,7 @@ public class HomeController : INotifyPropertyChanged
         {
             await _databaseService.DeleteRouteAsync(route);
             await LoadSavedRoutesAsync();
-            LastActionText = $"Removed saved route: {route.Name}.";
+            LastActionText = $"Removed saved route: {route.DisplayName}.";
         }
         catch (Exception ex)
         {
@@ -1462,6 +1478,7 @@ public class HomeController : INotifyPropertyChanged
         if (!await _permissionsService.EnsureSmsPermissionAsync())
         {
             LastActionText = "SMS permission is required to send SOS alerts.";
+            SmsDenied?.Invoke(this, EventArgs.Empty);
             return;
         }
 
@@ -1505,6 +1522,7 @@ public class HomeController : INotifyPropertyChanged
             await _alarmAudioService.TriggerAlarmAsync(AlarmStage.Stage3, AlarmSound, VibrationOnly, VibrationIntensity);
             await _smsService.SendEmergencySmsAsync(message, recipients);
             _lastSosSentAt = DateTimeOffset.UtcNow;
+            SosDispatched?.Invoke(this, EventArgs.Empty);
             LastActionText = dndAccessGranted
                 ? $"SOS sent to {recipients.Count} contact(s)."
                 : $"SOS sent to {recipients.Count} contact(s). Grant DND access for critical audio.";
@@ -1659,6 +1677,7 @@ public class HomeController : INotifyPropertyChanged
         }
 
         _lastTrackedLocation = snapshot;
+        BlackBoxLogger.LastKnownCoords = (snapshot.Latitude, snapshot.Longitude);
         var distanceKm = _totalDistanceMeters / MetersPerKilometer;
         TrackingStatusText = $"Tracking active: {distanceKm:F2} km traveled.";
 
@@ -1845,6 +1864,7 @@ public class HomeController : INotifyPropertyChanged
         OnPropertyChanged(nameof(HasDestination));
         OnPropertyChanged(nameof(CanSaveRoute));
         OnPropertyChanged(nameof(ShowStartTripCard));
+        OnPropertyChanged(nameof(ShowGreetingHeader));
         OnPropertyChanged(nameof(IsDestinationSaved));
     }
 
@@ -1880,6 +1900,7 @@ public class HomeController : INotifyPropertyChanged
         OnPropertyChanged(nameof(HasDestination));
         OnPropertyChanged(nameof(CanSaveRoute));
         OnPropertyChanged(nameof(ShowStartTripCard));
+        OnPropertyChanged(nameof(ShowGreetingHeader));
         OnPropertyChanged(nameof(IsDestinationSaved));
     }
 
@@ -1908,8 +1929,8 @@ public class HomeController : INotifyPropertyChanged
     private static bool IsSameDestination(SavedRoute route, GeocodingResult destination)
     {
         const double tolerance = 0.0001;
-        return Math.Abs(route.DestinationLatitude - destination.Latitude) <= tolerance
-            && Math.Abs(route.DestinationLongitude - destination.Longitude) <= tolerance;
+        return Math.Abs(route.Latitude - destination.Latitude) <= tolerance
+            && Math.Abs(route.Longitude - destination.Longitude) <= tolerance;
     }
 
     private static string BuildTripSummary(TripHistory trip, double distanceKm)
@@ -1973,6 +1994,7 @@ public class HomeController : INotifyPropertyChanged
                 .leaflet-tile{filter:sepia(0.8) hue-rotate(250deg) saturate(2.5) brightness(0.75)}
                 .leaflet-zoom-animated{transition:transform 0.4s cubic-bezier(0,0,0.25,1)!important}
                 .leaflet-interactive{will-change:transform;transition:none!important}
+                .user-location-dot{will-change:transform,width,height;transition:transform 0.2s cubic-bezier(0.25,1,0.5,1),width 0.2s ease,height 0.2s ease}
               </style>
             </head>
             <body>
@@ -1988,13 +2010,13 @@ public class HomeController : INotifyPropertyChanged
                 function updateUserLocation(lat,lon){
                   var ll=[lat,lon];
                   if(_userMarker){_userMarker.setLatLng(ll);}
-                  else{_userMarker=L.circleMarker(ll,{radius:8,color:'#fff',weight:2,fillColor:'#4A90D9',fillOpacity:0.9}).addTo(map).bindTooltip('You',{permanent:false,direction:'top'});}
+                  else{_userMarker=L.circleMarker(ll,{radius:8,color:'#fff',weight:2,fillColor:'#4A90D9',fillOpacity:0.9,className:'user-location-dot'}).addTo(map).bindTooltip('You',{permanent:false,direction:'top'});}
                   map.panTo(ll,{animate:false});
                 }
                 function centerOnUser(lat,lon){
                   var ll=[lat,lon];
                   if(_userMarker){_userMarker.setLatLng(ll);}
-                  else{_userMarker=L.circleMarker(ll,{radius:8,color:'#fff',weight:2,fillColor:'#4A90D9',fillOpacity:0.9}).addTo(map).bindTooltip('You',{permanent:false,direction:'top'});}
+                  else{_userMarker=L.circleMarker(ll,{radius:8,color:'#fff',weight:2,fillColor:'#4A90D9',fillOpacity:0.9,className:'user-location-dot'}).addTo(map).bindTooltip('You',{permanent:false,direction:'top'});}
                   map.flyTo(ll,16,{animate:true,duration:0.4,easeLinearity:0.25});
                 }
                 function setDestination(lat,lon,label){

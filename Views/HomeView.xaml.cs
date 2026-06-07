@@ -17,6 +17,7 @@
 
 using AlarmaApp.Controllers;
 using AlarmaApp.Services;
+using System.ComponentModel;
 using System.Globalization;
 using System.Text.Json;
 
@@ -51,9 +52,23 @@ public partial class HomeView : ContentPage
             return; // OnAppearing fires again after the modal is dismissed
         }
 
+        // Unsubscribe before subscribing to prevent duplicate handlers if OnAppearing
+        // fires again before OnDisappearing completes (rapid tab re-entry).
+        _controller.LiveLocationUpdated -= OnLiveLocationUpdated;
+        _controller.CenterMapRequested -= OnCenterMapRequested;
+        _controller.MapJsRequested -= OnMapJsRequested;
+        _controller.PropertyChanged -= OnControllerPropertyChanged;
         _controller.LiveLocationUpdated += OnLiveLocationUpdated;
         _controller.CenterMapRequested += OnCenterMapRequested;
         _controller.MapJsRequested += OnMapJsRequested;
+        _controller.PropertyChanged += OnControllerPropertyChanged;
+
+        // Re-attach WebView to the root grid if CleanupWebViewAsync detached it on prior exit.
+        if (MapWebView.Parent is null && Content is Grid mapHost)
+        {
+            mapHost.Children.Insert(0, MapWebView);
+            MapWebView.Source = _controller.MapHtmlSource;
+        }
 
         // Gate 1: Tutorial + T&C must be completed first.
         if (!_preferencesService.HasSeenTutorial || !_preferencesService.HasAgreedToTerms)
@@ -92,6 +107,39 @@ public partial class HomeView : ContentPage
         _controller.LiveLocationUpdated -= OnLiveLocationUpdated;
         _controller.CenterMapRequested -= OnCenterMapRequested;
         _controller.MapJsRequested -= OnMapJsRequested;
+        _controller.PropertyChanged -= OnControllerPropertyChanged;
+        _ = CleanupWebViewAsync();
+    }
+
+    // Stops background Leaflet JS execution, severs the Source binding, and removes
+    // the WebView from its parent grid so the tile-loading XHR loop cannot continue
+    // off-screen. OnAppearing re-attaches and restores the source on the next entry.
+    private async Task CleanupWebViewAsync()
+    {
+        try { await MapWebView.EvaluateJavaScriptAsync("try{map.stop();}catch(e){}"); }
+        catch { }
+        if (MapWebView.Parent is Grid parentGrid)
+            parentGrid.Children.Remove(MapWebView);
+        MapWebView.Source = null;
+    }
+
+    private void OnControllerPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName != nameof(HomeController.ShowStartTripCard)) return;
+        MainThread.BeginInvokeOnMainThread(async () =>
+        {
+            if (_controller.ShowStartTripCard)
+            {
+                DestinationCard.TranslationY = -140;
+                DestinationCard.IsVisible = true;
+                await DestinationCard.TranslateTo(0, 0, 320, Easing.CubicOut);
+            }
+            else
+            {
+                await DestinationCard.TranslateTo(0, -140, 220, Easing.CubicIn);
+                DestinationCard.IsVisible = false;
+            }
+        });
     }
 
     private async Task SyncMapStateAsync()

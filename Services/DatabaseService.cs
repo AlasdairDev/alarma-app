@@ -72,6 +72,7 @@ public class DatabaseService
             await db.CreateTableAsync<SavedRoute>();
             await db.CreateTableAsync<EmergencyContact>();
             await db.CreateTableAsync<BehavioralProfile>();
+            await db.CreateTableAsync<GeocodeCache>();
         }
         catch (SQLiteException)
         {
@@ -87,6 +88,7 @@ public class DatabaseService
             await db.CreateTableAsync<SavedRoute>();
             await db.CreateTableAsync<EmergencyContact>();
             await db.CreateTableAsync<BehavioralProfile>();
+            await db.CreateTableAsync<GeocodeCache>();
         }
     }
 
@@ -153,4 +155,37 @@ public class DatabaseService
 
     public async Task<int> InsertAllAsync<T>(IEnumerable<T> items) where T : new() =>
         await (await GetConnectionAsync()).InsertAllAsync(items);
+
+    // ── Geocode cache (offline interceptor) ──────────────────────────────────
+
+    public async Task<GeocodeCache?> GetGeocodeCacheAsync(string queryKey) =>
+        await (await GetConnectionAsync())
+            .Table<GeocodeCache>()
+            .Where(c => c.QueryKey == queryKey)
+            .FirstOrDefaultAsync();
+
+    public async Task UpsertGeocodeCacheAsync(GeocodeCache entry)
+    {
+        var db = await GetConnectionAsync();
+        if (entry.Id == 0)
+            await db.InsertAsync(entry);
+        else
+            await db.UpdateAsync(entry);
+        await EvictGeocodeCacheOverflowAsync(db);
+    }
+
+    // Deletes the least-recently-used rows when the table exceeds 100 entries.
+    private static async Task EvictGeocodeCacheOverflowAsync(SQLiteAsyncConnection db)
+    {
+        const int MaxEntries = 100;
+        var count = await db.Table<GeocodeCache>().CountAsync();
+        if (count <= MaxEntries) return;
+        var excess = count - MaxEntries;
+        var toDelete = await db.Table<GeocodeCache>()
+            .OrderBy(c => c.LastUsedUtc)
+            .Take(excess)
+            .ToListAsync();
+        foreach (var e in toDelete)
+            await db.DeleteAsync(e);
+    }
 }

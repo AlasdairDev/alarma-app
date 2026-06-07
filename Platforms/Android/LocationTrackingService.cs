@@ -35,6 +35,7 @@ public class LocationTrackingService : Service, ILocationListener
     private const float MinDistanceMetersNetwork = 10f;
     private const double EarthRadiusMeters = 6_371_000;
     private LocationManager? _locationManager;
+    private PowerManager.WakeLock? _wakeLock;
     private bool _isStarted;
     private LocationSnapshot? _lastLocation;
     private double _totalDistanceMeters;
@@ -131,6 +132,7 @@ public class LocationTrackingService : Service, ILocationListener
             _lastLocation = null;
             _totalDistanceMeters = 0;
             _isStarted = true;
+            AcquireWakeLock();
         }
         catch (SecurityException)
         {
@@ -146,10 +148,12 @@ public class LocationTrackingService : Service, ILocationListener
         }
 
         _locationManager.RemoveUpdates(this);
+        _locationManager = null;
         _isStarted = false;
         _lastLocation = null;
         _totalDistanceMeters = 0;
         LastKnownLocation = null;
+        ReleaseWakeLock();
     }
 
     private void UpdateNotification(LocationSnapshot snapshot)
@@ -194,6 +198,21 @@ public class LocationTrackingService : Service, ILocationListener
             .SetSmallIcon(AndroidResource.Drawable.IcDialogMap)  // Fixed: explicit alias
             .SetOngoing(true)
             .Build();
+    }
+
+    private void AcquireWakeLock()
+    {
+        if (_wakeLock?.IsHeld == true) return;
+        var pm = GetSystemService(PowerService) as PowerManager;
+        _wakeLock = pm?.NewWakeLock(WakeLockFlags.Partial, "AlarmaApp:LocationTracking");
+        _wakeLock?.Acquire();
+    }
+
+    private void ReleaseWakeLock()
+    {
+        if (_wakeLock?.IsHeld == true)
+            _wakeLock.Release();
+        _wakeLock = null;
     }
 
     private static double CalculateDistanceMeters(LocationSnapshot start, LocationSnapshot end)

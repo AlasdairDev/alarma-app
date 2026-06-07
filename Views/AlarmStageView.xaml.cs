@@ -15,6 +15,7 @@
 //   strings or JsonSerializer.Serialize — no user-supplied strings reach the JS eval context.
 
 using AlarmaApp.Controllers;
+using System.ComponentModel;
 using System.Globalization;
 using System.Text.Json;
 
@@ -26,6 +27,7 @@ public partial class AlarmStageView : ContentPage
     private double _panStartX;
     private bool _isPanning;
     private bool _isDismissing;
+    private bool _stage3Announced;
 
     public AlarmStageView(HomeController controller)
     {
@@ -40,16 +42,44 @@ public partial class AlarmStageView : ContentPage
         Content.Opacity = 0;
         base.OnAppearing();
         _controller.MapJsRequested += OnMapJsRequested;
+        _controller.PropertyChanged += OnControllerPropertyChanged;
         await Task.WhenAll(
             Content.FadeTo(1, 280, Easing.CubicOut),
             Content.TranslateTo(0, 0, 280, Easing.CubicOut));
         await SyncMapStateAsync();
+
+        // Announce Stage 3 immediately if it was already active when the view appeared.
+        if (_controller.IsStage3Wake && !_stage3Announced)
+        {
+            _stage3Announced = true;
+            SemanticScreenReader.Announce(
+                "WAKE UP! You might miss your stop. Slide right to dismiss the alarm.");
+        }
     }
 
     protected override void OnDisappearing()
     {
         base.OnDisappearing();
         _controller.MapJsRequested -= OnMapJsRequested;
+        _controller.PropertyChanged -= OnControllerPropertyChanged;
+        _stage3Announced = false;
+    }
+
+    private void OnControllerPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName != nameof(HomeController.IsStage3Wake)) return;
+
+        if (!_controller.IsStage3Wake)
+        {
+            _stage3Announced = false;
+            return;
+        }
+
+        if (_stage3Announced) return;
+        _stage3Announced = true;
+        MainThread.BeginInvokeOnMainThread(() =>
+            SemanticScreenReader.Announce(
+                "WAKE UP! You might miss your stop. Slide right to dismiss the alarm."));
     }
 
     private async Task SyncMapStateAsync()

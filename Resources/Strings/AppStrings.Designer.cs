@@ -31,12 +31,6 @@ public class AppStrings
         get => resourceCulture;
         set => resourceCulture = value;
     }
-
-    public static string BiometricPromptTitle =>
-        ResourceManager.GetString("BiometricPromptTitle", resourceCulture) ?? "Authenticate";
-
-    public static string BiometricPromptCancel =>
-        ResourceManager.GetString("BiometricPromptCancel", resourceCulture) ?? "Cancel";
 }
 
 #nullable restore

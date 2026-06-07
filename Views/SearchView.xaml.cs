@@ -33,6 +33,7 @@ public partial class SearchView : ContentPage
             Content.FadeTo(1, 280, Easing.CubicOut),
             Content.TranslateTo(0, 0, 280, Easing.CubicOut));
         SearchEntry.Focus();
+        _ = _controller.RefreshCurrentLocationAsync();
     }
 
     private async void OnSearchTextChanged(object? sender, TextChangedEventArgs e)
@@ -48,6 +49,14 @@ public partial class SearchView : ContentPage
                 _controller.SearchDestinationCommand.Execute(null);
         }
         catch (OperationCanceledException) { }
+    }
+
+    protected override void OnDisappearing()
+    {
+        base.OnDisappearing();
+        _debounceCts?.Cancel();
+        _debounceCts?.Dispose();
+        _debounceCts = null;
     }
 
     protected override bool OnBackButtonPressed()

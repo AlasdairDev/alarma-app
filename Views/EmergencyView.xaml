@@ -39,6 +39,8 @@
                         CornerRadius="75"
                         HorizontalOptions="Center"
                         VerticalOptions="Center"
+                        SemanticProperties.Description="Emergency SOS Button"
+                        SemanticProperties.Hint="Double tap and hold for 2 seconds to alert contacts and send location"
                         Pressed="OnSosPressed"
                         Released="OnSosReleased" />
             </Grid>
@@ -91,7 +93,9 @@
                                         <!-- Primary star (tap to promote) -->
                                         <Label Grid.Column="0"
                                                FontSize="20"
-                                               VerticalOptions="Center">
+                                               VerticalOptions="Center"
+                                               SemanticProperties.Description="Set as primary contact"
+                                               SemanticProperties.Hint="Double tap to make this your primary emergency contact">
                                             <Label.Triggers>
                                                 <DataTrigger TargetType="Label"
                                                              Binding="{Binding IsPrimary}"
@@ -132,7 +136,9 @@
                                                Text="&#10005;"
                                                FontSize="16"
                                                TextColor="#FF6B6B"
-                                               VerticalOptions="Center">
+                                               VerticalOptions="Center"
+                                               SemanticProperties.Description="Remove contact"
+                                               SemanticProperties.Hint="Double tap to remove this emergency contact">
                                             <Label.GestureRecognizers>
                                                 <TapGestureRecognizer
                                                     Command="{Binding Source={RelativeSource AncestorType={x:Type ContentPage}}, Path=BindingContext.RemoveEmergencyContactCommand}"
@@ -165,7 +171,9 @@
                                BackgroundColor="Transparent"
                                FontSize="14"
                                MaxLength="50"
-                               Margin="18,12" />
+                               Margin="18,12"
+                               SemanticProperties.Description="Emergency contact name"
+                               SemanticProperties.Hint="Enter the name of your emergency contact, up to 50 characters" />
                         <BoxView HeightRequest="1" Color="#4A3570" Margin="18,0" />
                         <Entry Placeholder="09XXXXXXXXX or +639XXXXXXXXX"
                                Text="{Binding NewContactNumber}"
@@ -175,7 +183,9 @@
                                FontSize="14"
                                Keyboard="Telephone"
                                MaxLength="13"
-                               Margin="18,12" />
+                               Margin="18,12"
+                               SemanticProperties.Description="Emergency contact phone number"
+                               SemanticProperties.Hint="Enter a Philippine mobile number starting with 09 or plus 639" />
                         <BoxView HeightRequest="1" Color="#4A3570" Margin="18,0" />
                         <Button Text="Add Contact"
                                 Command="{Binding AddEmergencyContactCommand}"
@@ -184,7 +194,9 @@
                                 FontSize="15"
                                 FontAttributes="Bold"
                                 CornerRadius="10"
-                                Margin="12,8,12,12" />
+                                Margin="12,8,12,12"
+                                SemanticProperties.Description="Add emergency contact"
+                                SemanticProperties.Hint="Double tap to save the entered name and number as an emergency contact" />
                     </VerticalStackLayout>
                 </Border>
 
@@ -213,7 +225,9 @@
                            FontSize="18"
                            TextColor="#8A7AAE"
                            HorizontalOptions="End"
-                           VerticalOptions="Center">
+                           VerticalOptions="Center"
+                           SemanticProperties.Description="Dismiss SOS sent confirmation"
+                           SemanticProperties.Hint="Double tap to close this notification">
                         <Label.GestureRecognizers>
                             <TapGestureRecognizer Tapped="OnSosSentOverlayDismissed" />
                         </Label.GestureRecognizers>
@@ -255,7 +269,64 @@
                         FontAttributes="Bold"
                         CornerRadius="24"
                         Padding="0,14"
+                        SemanticProperties.Description="Call 911"
+                        SemanticProperties.Hint="Double tap to call emergency services"
                         Clicked="OnCall911Clicked" />
+
+            </VerticalStackLayout>
+        </Border>
+    </Grid>
+
+    <!-- SMS permission denied fallback overlay -->
+    <Grid x:Name="SmsDeniedOverlay"
+          IsVisible="False"
+          BackgroundColor="#AA000020">
+        <Border HorizontalOptions="Center"
+                VerticalOptions="Center"
+                BackgroundColor="#3D2B5E"
+                StrokeShape="RoundRectangle 20"
+                Stroke="#6A4590"
+                StrokeThickness="1"
+                Padding="28,24"
+                Margin="32,0">
+            <VerticalStackLayout Spacing="14">
+
+                <Grid>
+                    <Label Text="&#10005;"
+                           FontSize="18"
+                           TextColor="#8A7AAE"
+                           HorizontalOptions="End"
+                           VerticalOptions="Center"
+                           SemanticProperties.Description="Dismiss SMS permission notice"
+                           SemanticProperties.Hint="Double tap to close this notice">
+                        <Label.GestureRecognizers>
+                            <TapGestureRecognizer Tapped="OnSmsDeniedOverlayDismissed" />
+                        </Label.GestureRecognizers>
+                    </Label>
+                </Grid>
+
+                <Label Text="SMS Permission Required"
+                       FontSize="22"
+                       FontAttributes="Bold"
+                       TextColor="White"
+                       HorizontalOptions="Center" />
+                <Label Text="Alarma needs SMS permission to send SOS alerts to your emergency contacts. Please enable it in Android App Settings."
+                       FontSize="14"
+                       TextColor="#C8B8E8"
+                       HorizontalOptions="Center"
+                       HorizontalTextAlignment="Center"
+                       LineBreakMode="WordWrap" />
+
+                <Button Text="Open App Settings"
+                        BackgroundColor="#7B3FA0"
+                        TextColor="White"
+                        FontSize="15"
+                        FontAttributes="Bold"
+                        CornerRadius="24"
+                        Padding="0,14"
+                        SemanticProperties.Description="Open Android app settings to grant SMS permission"
+                        SemanticProperties.Hint="Double tap to open Android settings where you can enable SMS permission for Alarma"
+                        Clicked="OnOpenSmsSettingsClicked" />
 
             </VerticalStackLayout>
         </Border>
