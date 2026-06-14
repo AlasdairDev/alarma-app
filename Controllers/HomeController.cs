@@ -1,16 +1,10 @@
-// Security Considerations (OWASP Top 10)
-// A01 Broken Access Control: SOS dispatch is rate-limited to 30 s cooldown; onboarding and
-//   permissions gates are enforced by HomeView.OnAppearing before InitializeAsync is called.
-// A03 Injection: DestinationQuery capped at 200 chars; NewContactName capped at 50 chars;
-//   phone numbers validated by compiled PhoneRegex ^(09\d{9}|\+639\d{9})$; external API
-//   DisplayName capped at 200 chars; map popup labels passed through JsonSerializer.Serialize
-//   (XSS-safe); all JS coordinate injections use InvariantCulture F6 numeric strings only.
-// A04 Insecure Design: BackupService uses validate-before-clear — tampered backups with 0
-//   valid records do not wipe the existing database.
-// A05 Security Misconfiguration: AlarmSound whitelisted on read+write; AlarmLeadMinutes
-//   clamped to 1–60 on both input and post-restore; VibrationIntensity validated against
-//   the allowed options set; VehicleType validated against the allowed options set.
-// SQLi: sqlite-net-pcl uses parameterized queries for all CRUD — no raw SQL construction.
+// security notes:
+// SOS has a 30s cooldown so it can't be spammed. onboarding + perms are gated in
+// HomeView.OnAppearing before we init anything.
+// inputs are capped (query 200, contact name 50) and phone numbers run through PhoneRegex.
+// map labels go through JsonSerializer (no XSS), coords are always InvariantCulture F6.
+// backup validates before clearing, so a junk backup can't wipe real data.
+// alarm sound / lead mins / vibration / vehicle type are all checked against allowed values.
 
 using System.Collections.ObjectModel;
 using System.ComponentModel;
@@ -205,8 +199,8 @@ public class HomeController : INotifyPropertyChanged
     public event EventHandler<AlarmStage>? AlarmStageActivated;
     public event EventHandler<(double Lat, double Lon)>? LiveLocationUpdated;
     public event EventHandler<(double Lat, double Lon)>? CenterMapRequested;
-    // Fires a JS string to be executed against the live WebView map; HomeView calls
-    // EvaluateJavaScriptAsync. On re-appear, HomeView replays state via LastDestinationResult.
+    // JS string we run against the live WebView map. HomeView replays state on re-appear via
+    // LastDestinationResult.
     public event EventHandler<string>? MapJsRequested;
     public event EventHandler? NavigateToAddFavoriteRequested;
     public event EventHandler? FavoriteSaved;
@@ -243,8 +237,8 @@ public class HomeController : INotifyPropertyChanged
         private set => SetProperty(ref _mapHtmlSource, value);
     }
 
-    // Exposes the active destination so HomeView can replay setDestination() on re-appear
-    // without a full WebView reload — null means map should show no destination marker.
+    // lets HomeView replay setDestination() on re-appear without reloading the WebView.
+    // null = no destination marker.
     public GeocodingResult? LastDestinationResult => _lastDestinationResult;
 
     public bool IsTracking
@@ -750,7 +744,7 @@ public class HomeController : INotifyPropertyChanged
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[HomeController] InitializeAsync failed: {ex}");
+            BlackBoxLogger.RecordHandledException(ex, "[HomeController.InitializeAsync]");
             StatusText = "Initialization encountered an error.";
             LastActionText = "Initialization failed. Restart the app and try again.";
         }
@@ -830,7 +824,7 @@ public class HomeController : INotifyPropertyChanged
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[HomeController] UpdatePermissionLabelsAsync failed: {ex}");
+            BlackBoxLogger.RecordHandledException(ex, "[HomeController.UpdatePermissionLabelsAsync]");
         }
     }
 
@@ -868,7 +862,7 @@ public class HomeController : INotifyPropertyChanged
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[HomeController] RequestLocationPermissionAsync failed: {ex}");
+            BlackBoxLogger.RecordHandledException(ex, "[HomeController.RequestLocationPermissionAsync]");
             LastActionText = "Could not request location permission.";
         }
     }
@@ -885,7 +879,7 @@ public class HomeController : INotifyPropertyChanged
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[HomeController] RequestNotificationPermissionAsync failed: {ex}");
+            BlackBoxLogger.RecordHandledException(ex, "[HomeController.RequestNotificationPermissionAsync]");
             LastActionText = "Could not request notification permission.";
         }
     }
@@ -923,7 +917,7 @@ public class HomeController : INotifyPropertyChanged
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[HomeController] InitializeDatabaseAsync failed: {ex}");
+            BlackBoxLogger.RecordHandledException(ex, "[HomeController.InitializeDatabaseAsync]");
             LastActionText = "Database initialization failed. Restart the app and try again.";
         }
         finally
@@ -968,7 +962,7 @@ public class HomeController : INotifyPropertyChanged
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[HomeController] LoadEmergencyContactsAsync failed: {ex}");
+            BlackBoxLogger.RecordHandledException(ex, "[HomeController.LoadEmergencyContactsAsync]");
             LastActionText = "Failed to load emergency contacts.";
         }
     }
@@ -985,7 +979,7 @@ public class HomeController : INotifyPropertyChanged
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[HomeController] LoadSavedRoutesAsync failed: {ex}");
+            BlackBoxLogger.RecordHandledException(ex, "[HomeController.LoadSavedRoutesAsync]");
             LastActionText = "Failed to load saved routes.";
         }
     }
@@ -1007,7 +1001,7 @@ public class HomeController : INotifyPropertyChanged
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[HomeController] LoadTripHistoryAsync failed: {ex}");
+            BlackBoxLogger.RecordHandledException(ex, "[HomeController.LoadTripHistoryAsync]");
             LastActionText = "Failed to load trip history.";
         }
     }
@@ -1022,7 +1016,7 @@ public class HomeController : INotifyPropertyChanged
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[HomeController] ExportBackupAsync failed: {ex}");
+            BlackBoxLogger.RecordHandledException(ex, "[HomeController.ExportBackupAsync]");
             BackupStatusText = "Backup export failed. Check storage permissions and try again.";
         }
     }
@@ -1051,7 +1045,7 @@ public class HomeController : INotifyPropertyChanged
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[HomeController] RestoreBackupAsync failed: {ex}");
+            BlackBoxLogger.RecordHandledException(ex, "[HomeController.RestoreBackupAsync]");
             BackupStatusText = "Backup restore failed. The backup file may be corrupted or from a different device.";
         }
     }
@@ -1115,7 +1109,7 @@ public class HomeController : INotifyPropertyChanged
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[HomeController] SearchDestinationAsync failed: {ex}");
+            BlackBoxLogger.RecordHandledException(ex, "[HomeController.SearchDestinationAsync]");
             LastActionText = "Search failed. Check your internet connection and try again.";
             ClearDestination();
         }
@@ -1216,7 +1210,7 @@ public class HomeController : INotifyPropertyChanged
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[HomeController] SaveSelectedRouteToFavoritesAsync failed: {ex}");
+            BlackBoxLogger.RecordHandledException(ex, "[HomeController.SaveSelectedRouteToFavoritesAsync]");
             LastActionText = "Failed to save route. Please try again.";
         }
     }
@@ -1244,7 +1238,7 @@ public class HomeController : INotifyPropertyChanged
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[HomeController] OpenMapsAsync failed: {ex}");
+            BlackBoxLogger.RecordHandledException(ex, "[HomeController.OpenMapsAsync]");
             LastActionText = "Unable to open Google Maps. Please ensure it is installed.";
         }
     }
@@ -1283,8 +1277,8 @@ public class HomeController : INotifyPropertyChanged
             return;
         }
 
-        // Use custom name if provided, otherwise derive from display name.
-        // Clamp to 30 chars so long place names (e.g. universities) don't fail validation.
+        // custom name if given, else fall back to the display name.
+        // cap at 30 chars so long uni names don't fail validation.
         var rawName = string.IsNullOrWhiteSpace(NewRouteName)
             ? _lastDestinationResult.DisplayName
             : NewRouteName.Trim();
@@ -1318,7 +1312,7 @@ public class HomeController : INotifyPropertyChanged
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[HomeController] SaveDestinationAsync failed: {ex}");
+            BlackBoxLogger.RecordHandledException(ex, "[HomeController.SaveDestinationAsync]");
             LastActionText = "Failed to save route. Please try again.";
         }
     }
@@ -1352,7 +1346,7 @@ public class HomeController : INotifyPropertyChanged
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[HomeController] RemoveSavedRouteAsync failed: {ex}");
+            BlackBoxLogger.RecordHandledException(ex, "[HomeController.RemoveSavedRouteAsync]");
             LastActionText = "Failed to remove route. Please try again.";
         }
     }
@@ -1412,7 +1406,7 @@ public class HomeController : INotifyPropertyChanged
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[HomeController] AddEmergencyContactAsync failed: {ex}");
+            BlackBoxLogger.RecordHandledException(ex, "[HomeController.AddEmergencyContactAsync]");
             LastActionText = "Failed to save emergency contact. Please try again.";
         }
     }
@@ -1447,7 +1441,7 @@ public class HomeController : INotifyPropertyChanged
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[HomeController] SetPrimaryContactAsync failed: {ex}");
+            BlackBoxLogger.RecordHandledException(ex, "[HomeController.SetPrimaryContactAsync]");
             LastActionText = "Failed to update primary contact. Please try again.";
         }
     }
@@ -1467,7 +1461,7 @@ public class HomeController : INotifyPropertyChanged
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[HomeController] RemoveEmergencyContactAsync failed: {ex}");
+            BlackBoxLogger.RecordHandledException(ex, "[HomeController.RemoveEmergencyContactAsync]");
             LastActionText = "Failed to remove contact. Please try again.";
         }
     }
@@ -1536,7 +1530,7 @@ public class HomeController : INotifyPropertyChanged
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[HomeController] SendSosAsync failed: {ex}");
+            BlackBoxLogger.RecordHandledException(ex, "[HomeController.SendSosAsync]");
             LastActionText = "Failed to send SOS. Ensure SMS permission is granted and try again.";
         }
     }
@@ -1592,7 +1586,7 @@ public class HomeController : INotifyPropertyChanged
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[HomeController] StartTrackingAsync failed: {ex}");
+            BlackBoxLogger.RecordHandledException(ex, "[HomeController.StartTrackingAsync]");
             await _alarmAudioService.DisableCriticalAudioAsync();
             LastActionText = "Unable to start tracking. Check location permissions and try again.";
             IsTracking = false;
@@ -1612,7 +1606,7 @@ public class HomeController : INotifyPropertyChanged
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[HomeController] StopTrackingAsync failed: {ex}");
+            BlackBoxLogger.RecordHandledException(ex, "[HomeController.StopTrackingAsync]");
             LastActionText = "Unable to stop tracking cleanly.";
         }
 
@@ -1640,7 +1634,7 @@ public class HomeController : INotifyPropertyChanged
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"[HomeController] StopTrackingAsync save history failed: {ex}");
+                BlackBoxLogger.RecordHandledException(ex, "[HomeController.StopTrackingAsync.SaveHistory]");
                 LastActionText = "Failed to save trip history.";
             }
         }
@@ -1658,7 +1652,7 @@ public class HomeController : INotifyPropertyChanged
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"[HomeController] HandleLocationUpdateAsync failed: {ex}");
+                BlackBoxLogger.RecordHandledException(ex, "[HomeController.HandleLocationUpdateAsync]");
                 LastActionText = "Location update error.";
             }
         });
@@ -1815,7 +1809,7 @@ public class HomeController : INotifyPropertyChanged
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[HomeController] TriggerAlarmStageAsync failed: {ex}");
+            BlackBoxLogger.RecordHandledException(ex, "[HomeController.TriggerAlarmStageAsync]");
             LastActionText = "Alarm alert failed.";
         }
     }
@@ -1887,7 +1881,7 @@ public class HomeController : INotifyPropertyChanged
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[HomeController] CenterOnUserAsync failed: {ex}");
+            BlackBoxLogger.RecordHandledException(ex, "[HomeController.CenterOnUserAsync]");
             LastActionText = "Could not get current location. Ensure GPS is enabled.";
         }
     }
@@ -1975,16 +1969,11 @@ public class HomeController : INotifyPropertyChanged
         MapJsRequested?.Invoke(this, "clearDestination()");
     }
 
-    // Security Considerations (OWASP Top 10)
-    // A03 Injection: All dynamic values passed to JS functions (setDestination / updateUserLocation /
-    //   centerOnUser) use InvariantCulture F6 numeric strings or JsonSerializer.Serialize — no raw
-    //   user strings reach the eval context.
-    // A05 Security Misconfiguration: CSP now explicitly allows CartoDB tile domains on connect-src
-    //   (Leaflet 1.9.x may use XHR/fetch for retina-tile probing); img-src covers actual tile images.
-    //   Both *.cartocdn.com and *.basemaps.cartocdn.com are listed because CSP wildcards only match
-    //   one subdomain level — a.basemaps.cartocdn.com is two levels under cartocdn.com.
-    //   The map HTML is constructed once and never replaced — eliminating the full-WebView-reload
-    //   that caused gray tiles when the user panned or tapped Center-on-me.
+    // everything we push into JS (setDestination/updateUserLocation/centerOnUser) is either an
+    // F6 InvariantCulture number or JsonSerializer output, so no raw user string hits eval.
+    // CSP has to list both *.cartocdn.com and *.basemaps.cartocdn.com because the wildcard only
+    // matches one subdomain level (a.basemaps.cartocdn.com is two deep).
+    // build the map html once and never swap it - reloading it caused gray tiles on pan / center.
     private static HtmlWebViewSource BuildDefaultMapHtml()
     {
         var html = """

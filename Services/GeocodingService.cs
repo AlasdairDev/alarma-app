@@ -1,17 +1,8 @@
-// Security Considerations (OWASP Top 10)
-// A03 Injection: User queries are encoded via Uri.EscapeDataString before appending to request
-//   URIs — no raw user input reaches the network layer unescaped. Cache keys use
-//   ToLowerInvariant() on the alias-expanded query — no raw user string is stored directly.
-//   Cache reads use parameterized sqlite-net-pcl queries — no raw SQL string construction.
-// A10 Server-Side Request Forgery (SSRF): HttpClient base addresses are hardcoded to
-//   photon.komoot.io and nominatim.openstreetmap.org — there is no user-controllable URL
-//   construction. A Philippines bounding box (bbox parameter) further restricts result scope.
-// A05 Security Misconfiguration: HttpClient.Timeout = 15 s prevents indefinite hang on slow
-//   or adversarial network; coordinates parsed with TryParseLatitude/TryParseLongitude with
-//   strict ±90/±180 range guards before any result is returned to the caller.
-// A02 Cryptographic Failures: Geocode cache is stored in the same AES-256-encrypted SQLCipher
-//   database as all other app data — cached coordinates and place names are encrypted at rest.
-// No credentials, no API keys, no user PII are transmitted or logged by this service.
+// queries get Uri.EscapeDataString'd before they go in the URL, cache keys are lowercased.
+// base URLs are hardcoded (photon + nominatim) so no SSRF, and the PH bbox keeps results local.
+// 15s timeout so a slow/dead network can't hang us. lat/lon are range-checked before we trust them.
+// cache lives in the same encrypted db as everything else.
+// no keys / creds / PII sent or logged here.
 
 using System.Globalization;
 using System.Net.Http.Json;
@@ -34,11 +25,11 @@ public class GeocodingService
     private const double PhLonMin = 116.9;
     private const double PhLonMax = 126.6;
 
-    // Location bias: Metro Manila — biases Photon ranking toward the most-used commuter area
+    // bias Photon ranking toward Metro Manila (most commuters are here)
     private const double PhBiasLat = 14.5995;
     private const double PhBiasLon = 120.9842;
 
-    // Philippine abbreviations and local shorthand expanded before querying
+    // PH shorthand we expand before searching (people type "moa" not the full name)
     private static readonly Dictionary<string, string> PhAliases =
         new(StringComparer.OrdinalIgnoreCase)
         {
@@ -113,8 +104,7 @@ public class GeocodingService
         _nominatimClient.DefaultRequestHeaders.AcceptLanguage.ParseAdd("en");
     }
 
-    // Offline fallback: well-known PH landmarks returned when both APIs are unreachable.
-    // Keyed by the expanded alias (case-insensitive).
+    // offline fallback - hardcoded landmarks for when both APIs are down. keyed by expanded alias.
     private static readonly Dictionary<string, GeocodingResult> LocalFallback =
         new(StringComparer.OrdinalIgnoreCase)
         {
@@ -162,10 +152,10 @@ public class GeocodingService
 
         // ── Online path ───────────────────────────────────────────────────────
 
-        // Photon: Elasticsearch-backed fuzzy search, faster and more forgiving than Nominatim
+        // photon first - fuzzier + faster than nominatim
         var photon = await SearchPhotonAsync(expanded, cancellationToken);
 
-        // Nominatim supplements when Photon returns too few (e.g., very specific addresses)
+        // top up with nominatim if photon's a bit thin (happens on very specific addresses)
         if (photon.Count < 3)
         {
             var nominatim = await SearchNominatimAsync(expanded, cancellationToken);
@@ -177,7 +167,7 @@ public class GeocodingService
                 return merged;
             }
 
-            // Both APIs unreachable or returned nothing — try the local fallback table.
+            // both APIs gave us nothing - try the hardcoded table
             if (LocalFallback.TryGetValue(expanded, out var local))
                 return [local];
 
@@ -188,7 +178,7 @@ public class GeocodingService
         return photon;
     }
 
-    // Serializes the top 3 results and upserts into the encrypted cache table.
+    // cache the top 3
     private async Task SaveToCacheAsync(
         string cacheKey,
         IReadOnlyList<GeocodingResult> results,

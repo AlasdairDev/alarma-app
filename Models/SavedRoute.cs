@@ -8,8 +8,7 @@ public class SavedRoute
     [PrimaryKey, AutoIncrement]
     public int Id { get; set; }
 
-    // [Column("Name")] keeps the existing DB column name for zero-data-loss migration.
-    // [JsonPropertyName("Name")] keeps backup file compatibility with the old field name.
+    // keep the old "Name" column + json field so existing dbs and backups still load
     [Column("Name")]
     [JsonPropertyName("Name")]
     public string DisplayName { get; set; } = string.Empty;
