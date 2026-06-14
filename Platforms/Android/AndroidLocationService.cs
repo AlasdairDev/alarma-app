@@ -10,6 +10,7 @@
 using System.Diagnostics;
 using System.Security;
 using AlarmaApp.Models;
+using AlarmaApp.Services;
 using AlarmaApp.Services.Interfaces;
 using Android.Content;
 using Android.Locations;
@@ -98,9 +99,9 @@ public class AndroidLocationService : ILocationService
                         bestLocation = location;
                 }
             }
-            catch (SecurityException)
+            catch (SecurityException ex)
             {
-                System.Diagnostics.Debug.WriteLine("Location permission denied when reading last known location.");
+                BlackBoxLogger.RecordHandledException(ex, "[AndroidLocationService.GetLastKnownLocationAsync.PermissionDenied]");
             }
 
             if (bestLocation is not null)
@@ -119,7 +120,7 @@ public class AndroidLocationService : ILocationService
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[AndroidLocationService] MAUI GetLastKnown failed: {ex.Message}");
+            BlackBoxLogger.RecordHandledException(ex, "[AndroidLocationService.GetLastKnownLocationAsync.MauiGetLastKnown]");
         }
 
         try
@@ -133,7 +134,7 @@ public class AndroidLocationService : ILocationService
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[AndroidLocationService] MAUI GetLocation failed: {ex.Message}");
+            BlackBoxLogger.RecordHandledException(ex, "[AndroidLocationService.GetLastKnownLocationAsync.MauiGetLocation]");
         }
 
         return null;
