@@ -13,15 +13,6 @@ Alarma solves this with **location-aware, multi-stage alarms**. It tracks the co
 
 The application is built **offline-first** and **privacy-first**: all personal data — trip history, saved routes, emergency contacts — is stored only on the device, encrypted at rest, in keeping with Republic Act No. 10173 (Data Privacy Act of 2012). No proprietary backend exists, and no personal data is transmitted to any first-party server.
 
-**Development team**
-
-| Name | Role |
-|---|---|
-| Roje Alasdair T. Evangelista | Lead developer, security architecture |
-| Keith Justin S. Ababao | Developer |
-| Kyla J. Barbin | Developer |
-| Pauline R. Lacanilao | Developer |
-
 **Status:** Stable. Secured and audited against the OWASP Mobile/Top-10 categories. Compiled to a signed, trimmed, ahead-of-time-compiled Release APK for physical field testing.
 
 ---
