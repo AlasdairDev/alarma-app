@@ -1,7 +1,7 @@
 # Alarma — Adaptive Anti-Oversleep Destination Alarm and Emergency Safety System
 
 > An offline-first Android safety application for Metro Manila public-transport commuters.
-> Capstone project, Bachelor of Science in Information Technology, Polytechnic University of the Philippines.
+> Capstone and application-development project, Bachelor of Science in Information Technology, Polytechnic University of the Philippines.
 
 ---
 
