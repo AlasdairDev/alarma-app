@@ -53,7 +53,8 @@
                     </Border.GestureRecognizers>
                     <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="14">
                         <Label Grid.Column="0"
-                               Text="&#128276;"
+                               Text="notifications_active"
+                               FontFamily="MaterialSymbols"
                                FontSize="22"
                                VerticalOptions="Center" />
                         <VerticalStackLayout Grid.Column="1" Spacing="2" VerticalOptions="Center">
@@ -86,7 +87,8 @@
                     </Border.GestureRecognizers>
                     <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="14">
                         <Label Grid.Column="0"
-                               Text="&#128205;"
+                               Text="location_on"
+                               FontFamily="MaterialSymbols"
                                FontSize="22"
                                VerticalOptions="Center" />
                         <VerticalStackLayout Grid.Column="1" Spacing="2" VerticalOptions="Center">
@@ -119,7 +121,8 @@
                     </Border.GestureRecognizers>
                     <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="14">
                         <Label Grid.Column="0"
-                               Text="&#128268;"
+                               Text="bluetooth"
+                               FontFamily="MaterialSymbols"
                                FontSize="22"
                                VerticalOptions="Center" />
                         <VerticalStackLayout Grid.Column="1" Spacing="2" VerticalOptions="Center">
@@ -152,7 +155,8 @@
                     </Border.GestureRecognizers>
                     <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="14">
                         <Label Grid.Column="0"
-                               Text="&#128267;"
+                               Text="battery_saver"
+                               FontFamily="MaterialSymbols"
                                FontSize="22"
                                VerticalOptions="Center" />
                         <VerticalStackLayout Grid.Column="1" Spacing="2" VerticalOptions="Center">

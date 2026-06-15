@@ -168,7 +168,9 @@ public class DatabaseService
         await EvictGeocodeCacheOverflowAsync(db);
     }
 
-    // Deletes the least-recently-used rows when the table exceeds 100 entries.
+    // The offline geocode cache is a convenience, not a record to keep forever — cap it at 100 so
+    // the encrypted db doesn't balloon over months of commuting. Stalest-used rows go first, so what
+    // survives is naturally the handful of places the rider actually travels to.
     private static async Task EvictGeocodeCacheOverflowAsync(SQLiteAsyncConnection db)
     {
         const int MaxEntries = 100;

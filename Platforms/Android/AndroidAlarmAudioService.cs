@@ -137,7 +137,9 @@ public class AndroidAlarmAudioService : IAlarmAudioService
             _ => [0, 200]
         };
 
-        // Scale pulse durations by intensity (gaps at index 0 and even indices stay 0 or minimal)
+        // Rider dials alarm urgency Low/Med/High, so stretch or shrink the buzz pulses to match.
+        // Index 0 is the lead-in delay and stays 0; everything else is floored at 50ms so even a
+        // "Low" scale can't shrink a pulse down to something the rider wouldn't feel through a pocket.
         var scale = intensity switch
         {
             "Low"  => 0.5,

@@ -49,6 +49,9 @@
   <ItemGroup>
 <MauiSplashScreen Include="Resources\\Splash\\splash.svg" Color="#1A0F35" BaseSize="256,256" />
     <MauiImage Include="Resources\\Images\\*" />
+    <!-- High base size keeps the full-screen tutorial PNGs sharp on high-DPI screens.
+         Update (not a 2nd Include) avoids a duplicate-item error with the wildcard above. -->
+    <MauiImage Update="Resources\\Images\\tutorial*.png" BaseSize="1200,1200" />
     <MauiFont Include="Resources\\Fonts\\*" />
     <MauiAsset Include="Resources\\Raw\\**" LogicalName="%(RecursiveDir)%(Filename)%(Extension)" />
   </ItemGroup>

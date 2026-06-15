@@ -26,7 +26,8 @@
                 Padding="14,10">
             <Grid ColumnDefinitions="Auto,*">
                 <Label Grid.Column="0"
-                       Text="&#128269;"
+                       Text="search"
+                       FontFamily="MaterialSymbols"
                        FontSize="16"
                        TextColor="#8A7AAE"
                        VerticalOptions="Center" />
@@ -135,7 +136,7 @@
 
                                     <!-- Date row -->
                                     <HorizontalStackLayout Spacing="6">
-                                        <Label Text="&#128197;"
+                                        <Label Text="calendar_month" FontFamily="MaterialSymbols"
                                                FontSize="12"
                                                TextColor="#8A7AAE"
                                                VerticalOptions="Center" />

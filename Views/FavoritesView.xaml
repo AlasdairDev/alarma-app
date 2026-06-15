@@ -49,12 +49,12 @@
                              Fill="Transparent"
                              HorizontalOptions="Center"
                              VerticalOptions="Center" />
-                    <Label Text="&#129517;"
+                    <Label Text="explore" FontFamily="MaterialSymbols"
                            FontSize="72"
                            TextColor="#7B3FA0"
                            HorizontalOptions="Center"
                            VerticalOptions="Center" />
-                    <Label Text="&#11088;"
+                    <Label Text="star" FontFamily="MaterialSymbols"
                            FontSize="24"
                            TextColor="#9B6FBF"
                            HorizontalOptions="End"
@@ -94,7 +94,7 @@
                                             HeightRequest="44"
                                             VerticalOptions="Start"
                                             Margin="0,2,0,0">
-                                        <Label Text="&#128205;"
+                                        <Label Text="location_on" FontFamily="MaterialSymbols"
                                                FontSize="18"
                                                TextColor="#9B6FBF"
                                                HorizontalOptions="Center"
@@ -111,9 +111,9 @@
                                            VerticalOptions="Center" />
 
                                     <Label Grid.Column="2"
-                                           Text="&#11088;"
+                                           Text="star" FontFamily="MaterialSymbols"
                                            FontSize="20"
-                                           TextColor="#9B6FBF"
+                                           TextColor="#FFC107"
                                            VerticalOptions="Start"
                                            Margin="8,4,0,0">
                                         <Label.GestureRecognizers>

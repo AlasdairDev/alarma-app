@@ -2,6 +2,8 @@
 
 > An offline-first Android safety application for Metro Manila public-transport commuters.
 > Capstone and application-development project, Bachelor of Science in Information Technology, Polytechnic University of the Philippines.
+>
+> **Development team:** Roje Alasdair T. Evangelista, Ababao, Barbin, Lacanilao.
 
 ---
 
@@ -75,6 +77,8 @@ A consolidated mapping of these controls to OWASP categories is given in [Append
 | Mapping | Leaflet.js with CartoDB dark tiles in a MAUI `WebView` under a strict Content-Security-Policy |
 | Geocoding | Photon (primary) and Nominatim (fallback), plus a client-side Philippine alias dictionary |
 | Cryptography | `System.Security.Cryptography` — `AesGcm`, `RandomNumberGenerator` |
+| Iconography | Google Material Symbols font ligatures (`MaterialSymbolsOutlined.ttf`) registered under the `MaterialSymbols` alias — vector glyphs that scale crisply at any screen density |
+| Asset rendering | MAUI resizetizer with `BaseSize`-driven high-DPI buckets: an SVG splash and `BaseSize="1200,1200"` tutorial artwork stay sharp from `mdpi` to `xxxhdpi` |
 
 ### Development and build environment
 
@@ -161,6 +165,78 @@ The `-r` flag reinstalls over an existing copy while preserving data.
 ### 4.5 First-run permissions
 
 On first launch the application guides the user through granting location (including background), notifications, and SMS permissions, and offers to request a battery-optimization exemption. All permissions are explained in context; location and SMS are central to the destination-alarm and emergency-SOS features respectively.
+
+---
+
+## 5. Test Automation & Telemetry
+
+The commute and alarm pipeline is exercised on an Android emulator with a hands-free
+ADB script, `AutomationTools/simulate_commute.py`, so the multi-stage alarm can be
+verified end-to-end without physically moving.
+
+### 5.1 Localized Manila test loop
+
+The script models a real Metro Manila commute along the **University of Santo Tomas**
+corridor. It walks a straight south-to-north line, passing through UST near the
+midpoint (Arrival) and continuing past it (Overshoot), so all three alarm stages fire:
+
+| Property | Value |
+|---|---|
+| Route | UST corridor, longitude `120.9895` |
+| Start | `14.6047, 120.9895` (~0.55 km south of UST — Approach) |
+| Destination | University of Santo Tomas (~`14.6097, 120.9895` — Arrival) |
+| End | `14.6167, 120.9895` (~0.78 km north of UST — Overshoot) |
+| Waypoints | 28 interpolated fixes |
+| Pacing | one fix every 4 seconds |
+
+> Note: the original `14.5995 → 14.6085` line was an early debug route; the verified
+> loop above is the current one and replaces it.
+
+### 5.2 Running the loop
+
+```bash
+# 1. Bypass the first-run permission dialogs (emulator only)
+adb shell pm grant com.alarma.app android.permission.ACCESS_FINE_LOCATION
+adb shell pm grant com.alarma.app android.permission.ACCESS_COARSE_LOCATION
+adb shell pm grant com.alarma.app android.permission.POST_NOTIFICATIONS
+
+# 2. Drive the full hands-free run (launch → search → select → start → 28 fixes)
+python AutomationTools/simulate_commute.py
+```
+
+The script launches the app, taps into Search, types the destination, selects the first
+result, taps **Start Trip**, then streams the 28-point loop via `adb emu geo fix`. GPS
+injection uses the emulator console bridge; a physical handset needs a mock-location
+provider app. Tap coordinates are calibrated for a 1080×2400 emulator and exposed as
+editable constants at the top of the script.
+
+### 5.3 Iconography & typography
+
+The interface uses **Google Material Symbols** font ligatures for icons instead of raw
+Unicode emojis, so glyphs render as crisp vectors and stay consistent across devices.
+
+- **Font asset:** `Resources/Fonts/MaterialSymbolsOutlined.ttf` (picked up by the
+  `<MauiFont Include="Resources\Fonts\*" />` wildcard in `AlarmaApp.csproj`).
+- **Registration** (`MauiProgram.cs`):
+  ```csharp
+  builder.UseMauiApp<App>()
+      .ConfigureFonts(fonts =>
+          fonts.AddFont("MaterialSymbolsOutlined.ttf", "MaterialSymbols"));
+  ```
+- **Usage:** an icon `Label` sets `FontFamily="MaterialSymbols"` and uses the ligature
+  name as its `Text` (e.g. `search`). The search affordance across `HomeView`,
+  `SearchView`, `HistoryView`, and `AddFavoriteView` uses the `search` ligature.
+- Available ligature names follow the Material Symbols catalog
+  (`location_on`, `notifications_active`, `warning`, `commute`, …).
+
+**High-DPI asset rendering.** Beyond the icon font, raster and vector art is run through
+the MAUI resizetizer so a single source asset is generated into every Android density
+bucket (`mdpi` → `xxxhdpi`) at build time. The splash screen ships as an SVG
+(`MauiSplashScreen`, `BaseSize="256,256"`), and the full-screen tutorial illustrations are
+declared with `BaseSize="1200,1200"` so they stay pin-sharp on high-resolution displays
+without shipping hand-cut per-density copies. In the onboarding flow these illustrations
+render with `Aspect="AspectFill"` on an input-transparent background layer, so the artwork
+fills the canvas edge-to-edge while the navigation controls above it keep clean touch targets.
 
 ---
 
