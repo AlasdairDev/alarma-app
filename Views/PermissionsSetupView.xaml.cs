@@ -79,7 +79,7 @@ public partial class PermissionsSetupView : ContentPage
         _suppressToggle = false;
         NotifSwitch.IsEnabled = true;
         StatusLabel.Text = granted
-            ? "Notifications: granted ✓"
+            ? "Notifications: granted"
             : "Notifications: denied. Tap the row to open Settings.";
     }
 
@@ -94,7 +94,7 @@ public partial class PermissionsSetupView : ContentPage
         _suppressToggle = false;
         LocationSwitch.IsEnabled = true;
         StatusLabel.Text = granted
-            ? "Location (Always): granted ✓"
+            ? "Location (Always): granted"
             : "Location: denied. Tap the row to open Settings.";
     }
 
@@ -131,7 +131,7 @@ public partial class PermissionsSetupView : ContentPage
         NotifSwitch.IsToggled = granted;
         _suppressToggle = false;
         StatusLabel.Text = granted
-            ? "Notifications: granted ✓"
+            ? "Notifications: granted"
             : "Notifications: denied. Opening Settings…";
     }
 
@@ -148,7 +148,7 @@ public partial class PermissionsSetupView : ContentPage
         LocationSwitch.IsToggled = granted;
         _suppressToggle = false;
         StatusLabel.Text = granted
-            ? "Location (Always): granted ✓"
+            ? "Location (Always): granted"
             : "Location: denied. Opening Settings…";
     }
 
@@ -184,7 +184,7 @@ public partial class PermissionsSetupView : ContentPage
                 _suppressToggle = true;
                 BatterySwitch.IsToggled = true;
                 _suppressToggle = false;
-                StatusLabel.Text = "Battery optimization: already exempted ✓";
+                StatusLabel.Text = "Battery optimization: already exempted";
                 return;
             }
 

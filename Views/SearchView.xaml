@@ -77,7 +77,8 @@
                     Margin="4,4,0,4">
                 <Grid ColumnDefinitions="Auto,*,Auto">
                     <Label Grid.Column="0"
-                           Text="&#128269;"
+                           Text="search"
+                           FontFamily="MaterialSymbols"
                            FontSize="15"
                            TextColor="#888888"
                            VerticalOptions="Center" />

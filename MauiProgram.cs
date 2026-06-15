@@ -24,7 +24,12 @@ public static class MauiProgram
         };
 
         var builder = MauiApp.CreateBuilder();
-        builder.UseMauiApp<App>();
+        builder.UseMauiApp<App>()
+            .ConfigureFonts(fonts =>
+            {
+                // Material Symbols — icon ligatures (search, location_on, etc.) used across the views.
+                fonts.AddFont("MaterialSymbolsOutlined.ttf", "MaterialSymbols");
+            });
 
         builder.Services.AddSingleton<DatabaseService>();
         builder.Services.AddSingleton<PreferencesService>();
@@ -42,7 +47,8 @@ public static class MauiProgram
         builder.Services.AddSingleton<Views.EmergencyView>();
         builder.Services.AddSingleton<Views.SettingsView>();
 
-        // Navigation views — transient, new instance per navigation
+        // Navigation views — transient so each push starts clean instead of leaking the previous
+        // trip's search query or destination selection into the next one
         builder.Services.AddTransient<Views.SearchView>();
         builder.Services.AddTransient<Views.AddFavoriteView>();
         builder.Services.AddTransient<Views.AlarmStageView>();

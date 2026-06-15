@@ -43,13 +43,17 @@
                         </VisualStateGroup>
                     </VisualStateGroupList>
                 </VisualStateManager.VisualStateGroups>
+                <!-- AspectFill makes the PNG fill the whole canvas (no black bars).
+                     InputTransparent lets taps pass through the PNG to the buttons below -->
                 <Image Source="{Binding ImageSource}"
                        Aspect="AspectFill"
+                       InputTransparent="True"
                        HorizontalOptions="Fill"
                        VerticalOptions="Fill" />
 
-                <!-- Invisible tap zones aligned over the PNG's baked-in Skip / Next buttons -->
+                <!-- Tap zones over the PNG's baked-in Skip / Next buttons; ZIndex keeps them on top -->
                 <Grid VerticalOptions="End"
+                      ZIndex="100"
                       Margin="32,0,32,52"
                       HeightRequest="56"
                       ColumnDefinitions="*,*"
@@ -109,6 +113,7 @@
                 <Grid Grid.Row="0" BackgroundColor="#1A0F35">
                     <Image Source="{Binding ImageSource}"
                            Aspect="AspectFill"
+                           InputTransparent="True"
                            HorizontalOptions="Fill"
                            VerticalOptions="Fill" />
 
@@ -124,8 +129,10 @@
                     </BoxView>
                 </Grid>
 
-                <!-- Row 1 (Auto): Modern Card — only T&C, checkbox, Get Started. No Skip/Next. -->
+                <!-- Row 1 (Auto): Modern Card — only T&C, checkbox, Get Started. No Skip/Next.
+                     ZIndex keeps the Get Started button fully un-occluded by the image layer. -->
                 <Border Grid.Row="1"
+                        ZIndex="100"
                         BackgroundColor="#2D2D44"
                         StrokeThickness="0"
                         HeightRequest="240">

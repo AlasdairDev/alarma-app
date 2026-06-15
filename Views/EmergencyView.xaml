@@ -133,7 +133,7 @@
 
                                         <!-- Delete -->
                                         <Label Grid.Column="2"
-                                               Text="&#10005;"
+                                               Text="close" FontFamily="MaterialSymbols"
                                                FontSize="16"
                                                TextColor="#FF6B6B"
                                                VerticalOptions="Center"
@@ -221,7 +221,7 @@
 
                 <!-- Dismiss X -->
                 <Grid>
-                    <Label Text="&#10005;"
+                    <Label Text="close" FontFamily="MaterialSymbols"
                            FontSize="18"
                            TextColor="#8A7AAE"
                            HorizontalOptions="End"
@@ -248,7 +248,7 @@
 
                 <!-- Location chip -->
                 <HorizontalStackLayout HorizontalOptions="Center" Spacing="6">
-                    <Label Text="&#128205;"
+                    <Label Text="location_on" FontFamily="MaterialSymbols"
                            FontSize="14"
                            TextColor="#9B6FBF"
                            VerticalOptions="Center" />
@@ -292,7 +292,7 @@
             <VerticalStackLayout Spacing="14">
 
                 <Grid>
-                    <Label Text="&#10005;"
+                    <Label Text="close" FontFamily="MaterialSymbols"
                            FontSize="18"
                            TextColor="#8A7AAE"
                            HorizontalOptions="End"

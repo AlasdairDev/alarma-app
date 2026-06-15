@@ -43,7 +43,7 @@
                 Padding="16,8"
                 IsVisible="{Binding IsChipVisible}">
             <HorizontalStackLayout Spacing="8">
-                <Label Text="&#128205;"
+                <Label Text="location_on" FontFamily="MaterialSymbols"
                        FontSize="14"
                        TextColor="#9B6FBF"
                        VerticalOptions="Center" />
@@ -147,7 +147,7 @@
                             WidthRequest="22"
                             HeightRequest="22"
                             VerticalOptions="Center">
-                        <Label Text="&#10003;"
+                        <Label Text="check" FontFamily="MaterialSymbols"
                                FontSize="12"
                                TextColor="White"
                                HorizontalOptions="Center"
@@ -165,7 +165,7 @@
                             WidthRequest="22"
                             HeightRequest="22"
                             VerticalOptions="Center">
-                        <Label Text="&#10003;"
+                        <Label Text="check" FontFamily="MaterialSymbols"
                                FontSize="12"
                                TextColor="White"
                                HorizontalOptions="Center"

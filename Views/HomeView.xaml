@@ -42,7 +42,8 @@
                     SemanticProperties.Hint="Double tap to open destination search">
                 <Grid ColumnDefinitions="Auto,*">
                     <Label Grid.Column="0"
-                           Text="&#128269;"
+                           Text="search"
+                           FontFamily="MaterialSymbols"
                            FontSize="16"
                            TextColor="#888888"
                            VerticalOptions="Center" />
@@ -175,7 +176,8 @@
 
             <!-- Location center-on-me FAB — lower-right -->
             <Button HorizontalOptions="End"
-                    Text="&#9673;"
+                    Text="my_location"
+                    FontFamily="MaterialSymbols"
                     FontSize="20"
                     WidthRequest="52"
                     HeightRequest="52"
@@ -197,11 +199,18 @@
                     HorizontalOptions="Center"
                     SemanticProperties.Description="View Active Trip"
                     SemanticProperties.Hint="Double tap to open the active trip monitor">
-                <Label Text="&#128205;  View Active Trip"
-                       TextColor="White"
-                       FontSize="15"
-                       FontAttributes="Bold"
-                       HorizontalOptions="Center" />
+                <HorizontalStackLayout Spacing="8" HorizontalOptions="Center">
+                    <Label Text="location_on"
+                           FontFamily="MaterialSymbols"
+                           TextColor="White"
+                           FontSize="15"
+                           VerticalOptions="Center" />
+                    <Label Text="View Active Trip"
+                           TextColor="White"
+                           FontSize="15"
+                           FontAttributes="Bold"
+                           VerticalOptions="Center" />
+                </HorizontalStackLayout>
                 <Border.GestureRecognizers>
                     <TapGestureRecognizer Tapped="OnViewActiveTripTapped" />
                 </Border.GestureRecognizers>
@@ -215,7 +224,8 @@
                     Padding="15,10"
                     HorizontalOptions="Center">
                 <HorizontalStackLayout Spacing="10" HorizontalOptions="Center">
-                    <Label Text="&#127911;"
+                    <Label Text="headphones"
+                           FontFamily="MaterialSymbols"
                            FontSize="16"
                            VerticalOptions="Center" />
                     <Label Text="Earphones connected"
