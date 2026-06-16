@@ -1,10 +1,8 @@
-// Security Considerations (OWASP Top 10)
-// A04 Insecure Design: SOS requires a deliberate 2-second hold (not a tap) to prevent
-//   accidental dispatch; _holdTimer is nulled on page disappear so a background timer
-//   cannot fire after navigation to another tab.
-// A03 Injection: Contact Name (MaxLength=50) and Phone validated in
-//   HomeController.IsValidPhilippineNumber — no raw input reaches SQLite without going
-//   through the controller's validation gate first.
+// The SOS + emergency-contacts screen. SOS needs a deliberate 2-second hold rather than a tap so it
+// can't go off by accident, and we null out _holdTimer when the page disappears so a pending timer
+// can't fire after the user has already swiped to another tab. Contact name is capped at 50 chars and
+// the phone number runs through HomeController.IsValidPhilippineNumber, so nothing reaches the database
+// without clearing the controller's validation first.
 
 using AlarmaApp.Controllers;
 

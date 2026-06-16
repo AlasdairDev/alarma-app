@@ -1,11 +1,9 @@
-// Security Considerations (OWASP Top 10)
-// A01 Broken Access Control: Displays read-only SavedRoute records from the device-local encrypted
-//   SQLite database. Actions (apply, remove) go through HomeController command pipeline which
-//   re-validates the route object before any DB write — this view cannot bypass controller logic.
-// A04 Insecure Design: No user-typed input is accepted in this view; route data presented here
-//   was validated (name 2–30 chars, PH coordinate bounds) at save-time and at backup restore-time.
-//   OnFavoriteRouteTapped uses BindingContext (DI-resolved item reference) — no string parsing
-//   or user-supplied identifiers pass through this handler.
+// Just shows the rider's saved routes (read-only) out of the encrypted local database. Every action
+// here — apply, remove — goes back through HomeController's commands, which re-validate the route
+// before any write, so this screen can't shortcut the controller's rules. Nothing is typed in on this
+// page; the route data was already validated when it was saved (name 2–30 chars, coordinates inside
+// the PH box) and again on backup restore. OnFavoriteRouteTapped works off the bound item itself, so
+// there's no string parsing or user-supplied id flowing through here.
 
 using AlarmaApp.Controllers;
 using AlarmaApp.Models;

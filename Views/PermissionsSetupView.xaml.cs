@@ -1,8 +1,7 @@
-// Security Considerations (OWASP Top 10)
-// A01 Broken Access Control: HasCompletedPermissionsSetup is set only after the user
-//   explicitly taps Continue or Skip — not on any intermediate row tap or toggle.
-// A04 Insecure Design: Each toggle requests only that specific permission; denial
-//   immediately resets the switch to OFF and surfaces an error — no silent failures.
+// The first-run permissions screen. We only mark HasCompletedPermissionsSetup once the user actually
+// taps Continue or Skip — never on some intermediate row tap or toggle — so the gate can't be tripped
+// by accident. Each switch requests just its own permission, and if it's denied the switch snaps back
+// to OFF with a visible message rather than failing silently.
 
 using AlarmaApp.Services;
 using AlarmaApp.Services.Interfaces;

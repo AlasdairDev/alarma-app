@@ -1,19 +1,18 @@
-// Security Considerations (OWASP Top 10)
-// A04 Insecure Design: Event handlers (LiveLocationUpdated, CenterMapRequested, MapJsRequested)
-//   are subscribed in OnAppearing and unsubscribed in OnDisappearing, preventing memory leaks and
-//   stale handler invocations from prior Activity instances. Subscriptions are skipped for the
-//   initial OnAppearing that pushes the launch modal (App.LaunchDone = false) — they are only
-//   registered after the modal is dismissed and OnAppearing fires again. AlarmStageActivated is
-//   handled at the AppShell level (singleton) so the alarm modal fires on any tab.
-//   MapJsRequested fires JS against the live WebView in-place instead of replacing MapHtmlSource
-//   with a new HtmlWebViewSource — this eliminates the full-reload that caused gray tiles when
-//   the user tapped Center-on-me or picked a destination. SyncMapStateAsync() replays the current
-//   destination state on every OnAppearing so the map is consistent even if SetDestination was
-//   called while the view was off-screen (e.g. returning from SearchView or FavoritesView).
-// A03 Injection: All values forwarded to EvaluateJavaScriptAsync use InvariantCulture F6
-//   numeric strings or JsonSerializer.Serialize — no user-supplied strings reach the JS context.
-// A01 Broken Access Control: Onboarding and permissions gates are enforced here before
-//   InitializeAsync so location/SMS init cannot be bypassed by navigating directly to //home.
+// The home/map screen — most of the app's moving parts meet here, so a few notes:
+//   - We subscribe to the controller events (LiveLocationUpdated, CenterMapRequested, MapJsRequested)
+//     in OnAppearing and drop them in OnDisappearing, which avoids leaks and stops stale handlers from
+//     an old Activity firing. We skip the very first OnAppearing (the one that pushes the launch modal,
+//     while App.LaunchDone is false) and only wire up once the modal is gone and OnAppearing runs again.
+//   - The alarm event itself lives on AppShell, not here, so the alarm fires on whatever tab you're on.
+//   - MapJsRequested runs JS straight against the live WebView instead of swapping in a fresh
+//     HtmlWebViewSource — reloading the source was what turned the tiles gray whenever you hit
+//     Center-on-me or picked a destination. SyncMapStateAsync() replays the current destination on
+//     every OnAppearing so the map stays correct even if the destination changed while this page was
+//     off-screen (say, coming back from Search or Favorites).
+//   - Everything we hand to EvaluateJavaScriptAsync is an InvariantCulture F6 number or JsonSerializer
+//     output, so no raw user text ever lands in the JS context.
+//   - The onboarding and permission gates are enforced here before InitializeAsync, so you can't skip
+//     them by navigating straight to //home.
 
 using AlarmaApp.Controllers;
 using AlarmaApp.Services;

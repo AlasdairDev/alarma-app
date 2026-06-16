@@ -1,11 +1,9 @@
-// Security Considerations (OWASP Top 10)
-// A04 Insecure Design: SecurityException in GetLastKnownLocationAsync is caught and returns null
-//   rather than crashing — a revoked location permission at runtime (user revokes in Settings
-//   while app is backgrounded) is handled gracefully; the caller (HomeController) null-checks
-//   the result before constructing the SOS message.
-// A05 Security Misconfiguration: Location data is never persisted or logged here — only passed
-//   as LocationSnapshot value objects to subscribers (HomeController, LocationTrackingService).
-// No user credentials, PII, or network calls are made by this service.
+// The .NET-facing wrapper around our Android location plumbing. The main thing to watch here is
+// that the user can revoke location permission from Settings while we're in the background — so if
+// GetLastKnownLocationAsync hits a SecurityException we just return null instead of crashing, and
+// HomeController null-checks before it builds the SOS message. Like the service itself, this layer
+// never saves or logs a coordinate; it only hands LocationSnapshot value objects to its subscribers.
+// No credentials, no personal data, no network calls live here.
 
 using System.Diagnostics;
 using System.Security;

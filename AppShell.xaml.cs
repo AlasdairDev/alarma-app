@@ -1,13 +1,10 @@
-// Security Considerations (OWASP Top 10)
-// A04 Insecure Design: AlarmStageActivated is subscribed at the Shell singleton level so the
-//   full-screen alarm UI surfaces regardless of which tab the user is on when a GPS distance
-//   threshold is crossed — no tab switch can silently suppress an in-progress alarm. Without
-//   this, the event was only caught while HomeView was visible; any other active tab meant the
-//   alarm modal never appeared (audio/notification still fired, but UI was dead).
-//   _alarmStageShowing prevents concurrent GoToAsync("alarmstage") calls from stacking
-//   duplicate alarm pages on the navigation stack. The Navigated event resets the flag only
-//   after the alarmstage route has been popped, not suppressed.
-// No user input, secrets, or network calls are handled in this class.
+// We wire AlarmStageActivated up here at the Shell (which is a singleton) on purpose: that way the
+// full-screen alarm pops no matter which tab the rider happens to be on when a distance threshold is
+// crossed. We learned this the hard way — when the event was only handled inside HomeView, switching
+// to any other tab meant the alarm sound and notification still fired but the UI never showed up.
+// _alarmStageShowing guards against two GoToAsync("alarmstage") calls racing and stacking duplicate
+// alarm pages; the Navigated event only clears it once the alarmstage route is actually popped.
+// No user input, secrets, or network calls happen in this class.
 
 using AlarmaApp.Controllers;
 using AlarmaApp.Models;

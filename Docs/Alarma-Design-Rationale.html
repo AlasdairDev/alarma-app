@@ -199,7 +199,7 @@
   <div class="meta">
     <strong>Project:</strong> Capstone &amp; Application Development<br>
     <strong>Program:</strong> BS Information Technology — Polytechnic University of the Philippines<br>
-    <strong>Development Team:</strong> Roje Alasdair T. Evangelista, Ababao, Barbin, Lacanilao<br>
+    <strong>Development Team:</strong> BS Information Technology Capstone Project Group<br>
     <strong>Platform:</strong> Android (.NET MAUI, .NET 9) &nbsp;·&nbsp; <strong>Version:</strong> 1.0.0<br>
     <strong>Document:</strong> Design &amp; Technology Justification
   </div>
@@ -332,13 +332,58 @@
     <h3>Why cellular SMS, not an internet push</h3>
     <span class="choice">Chosen: Android SmsManager</span>
     <p class="why"><b>Why:</b> An emergency is exactly when there is no Wi-Fi and no mobile data — but cellular SMS still works. Sending live coordinates directly through Android <code>SmsManager</code> means SOS functions fully offline and <b>never passes through any Alarma server</b>, so there is no backend to fail, leak, or subpoena.</p>
-    <p class="why"><b>Safeguards:</b> a 2-second press-and-hold prevents accidental triggers (timer cleared on page exit), and a 30-second cooldown prevents runaway sending.</p>
+    <p class="why"><b>Safeguards:</b> a 2-second press-and-hold prevents accidental triggers (timer cleared on page exit), and a 30-second cooldown prevents runaway sending. The action gives a short haptic + beep confirmation but deliberately does not hijack the ringer or Do-Not-Disturb (see Section 7).</p>
   </div>
 </section>
 
 <!-- ===================== 7 ===================== -->
 <section class="section pb">
-  <h2><span class="num">7</span>Interface, Iconography &amp; Layout Engineering</h2>
+  <h2><span class="num">7</span>Capstone Audit Resolution</h2>
+  <p class="lead">A focused functional and UX audit ahead of the panel defense closed twelve defects in the commute pipeline and the safety features. None of these changes alter the cryptographic story in Sections 3–4 — the SQLCipher database, the AES-256-GCM backup and black box, and the Keystore key handling are all untouched.</p>
+
+  <h3>Infrastructure &amp; permissions</h3>
+  <div class="decision">
+    <h3>Mandatory GPS enforcement</h3>
+    <span class="choice">Pre-flight the device location switch</span>
+    <p class="why"><b>Why:</b> A user can grant the app location permission yet still have the phone's master location switch off — in which case no fix ever arrives and a "trip" would track nothing. Starting a trip now checks <code>ILocationService.IsLocationServiceEnabled()</code> first and, if location is off, blocks the start and sends the user straight to the OS location settings — the same way a navigation app refuses to guide without GPS.</p>
+  </div>
+  <div class="decision">
+    <h3>Two-way permission toggles</h3>
+    <span class="choice">Honor the OFF path</span>
+    <p class="why"><b>Why:</b> The setup switches only ever requested permissions; flipping one off did nothing. Android offers no API to revoke a runtime permission programmatically, so OFF now tears down local state (an active tracking service and its wake lock are stopped) and routes the user to App Settings, where the OS actually allows revocation. On return, the switch re-syncs to the real status.</p>
+  </div>
+
+  <h3>Alarm, tracking &amp; state</h3>
+  <div class="decision">
+    <h3>Haversine distance with a GPS-jitter gate</h3>
+    <span class="choice">Noise-gated path integral</span>
+    <p class="why"><b>Why:</b> Trip distance is summed as a true Haversine path integral between fixes. A stationary phone still emits fixes that wander a few metres, which would inflate the total, so a per-segment <b>jitter gate</b> discards any movement below the fix's own accuracy (minimum 8 m) and only advances the comparison anchor on an accepted segment — rejecting noise while still accumulating genuine slow movement.</p>
+  </div>
+  <div class="decision">
+    <h3>Full state reset on trip stop</h3>
+    <span class="choice">No ghost state</span>
+    <p class="why"><b>Why:</b> Stopping a trip used to leave the destination set, so a stale <em>View Active Trip</em> affordance lingered on the home screen. Stop now performs a complete reset — destination and map marker cleared, search header restored, the in-memory active trip dropped, and the foreground service killed — returning the home screen to its idle state.</p>
+  </div>
+  <div class="decision">
+    <h3>Monotonic, outlier-resistant escalation</h3>
+    <span class="choice">Persisted arrival</span>
+    <p class="why"><b>Why:</b> The three alarm stages are monotonic by construction (lead ≥ 300 m &gt; arrival 200 m &gt; overshoot), and arrival must now hold across consecutive fixes before it latches — so a single outlier fix can no longer fake an arrival, nor the false overshoot that would chase it. The vehicle-type selector was removed in favor of a single adaptive, speed-based lead distance.</p>
+  </div>
+
+  <h3>Feedback &amp; SOS</h3>
+  <div class="decision">
+    <h3>SMS-first SOS with a discreet cue</h3>
+    <span class="choice">No ringer / DND hijack</span>
+    <p class="why"><b>Why:</b> SOS previously fired the full multi-stage alarm and overrode Do-Not-Disturb — the opposite of what someone in a vulnerable situation needs. It is now strictly an SMS dispatch with a short <b>haptic buzz and a brief confirmation beep</b> so the press registers quietly. The cue respects the phone's current volume and DND, so a silenced phone stays silent.</p>
+  </div>
+  <div class="callout">
+    <b>Smaller UX fixes in the same pass.</b> Tapping a trip notification now deep-links straight to the active-trip screen via an explicit <code>PendingIntent</code> through a <code>SingleTop</code> activity; the origin row reads <em>"Searching for GPS…"</em> instead of <em>"Location unavailable"</em> while a fix is acquired; and the emergency-contact form shows inline feedback for both validation errors and successful saves instead of failing silently.
+  </div>
+</section>
+
+<!-- ===================== 8 ===================== -->
+<section class="section pb">
+  <h2><span class="num">8</span>Interface, Iconography &amp; Layout Engineering</h2>
   <p class="lead">The UI is judged on a moving vehicle, one-handed, often at night. These decisions are about legibility, predictable touch targets, and assets that scale cleanly across the wide range of screen densities our commuter devices ship with.</p>
 
   <div class="decision">
@@ -362,9 +407,9 @@
   </div>
 </section>
 
-<!-- ===================== 8 ===================== -->
+<!-- ===================== 9 ===================== -->
 <section class="section">
-  <h2><span class="num">8</span>Production Build Hardening</h2>
+  <h2><span class="num">9</span>Production Build Hardening</h2>
   <p class="lead">The Release configuration does double duty: it shrinks and speeds up the APK <em>and</em> it raises the cost of reverse-engineering.</p>
   <table>
     <tr><th>Setting</th><th>Why we enabled it</th></tr>
@@ -379,9 +424,9 @@
   </div>
 </section>
 
-<!-- ===================== 9 ===================== -->
+<!-- ===================== 10 ===================== -->
 <section class="section">
-  <h2><span class="num">9</span>Testing Strategy</h2>
+  <h2><span class="num">10</span>Testing Strategy</h2>
   <div class="decision">
     <h3>Why a separate net9.0 xUnit project</h3>
     <span class="choice">Chosen: AlarmaApp.Tests (plain net9.0)</span>
@@ -389,9 +434,9 @@
   </div>
 </section>
 
-<!-- ===================== 10 ===================== -->
+<!-- ===================== 11 ===================== -->
 <section class="section">
-  <h2><span class="num">10</span>Summary of Decisions</h2>
+  <h2><span class="num">11</span>Summary of Decisions</h2>
   <table>
     <tr><th>Area</th><th>Choice</th><th>Core reason</th></tr>
     <tr><td>Framework</td><td>.NET MAUI / .NET 9</td><td>One C# codebase, native API access, mature AOT/trimming.</td></tr>
@@ -402,7 +447,8 @@
     <tr><td>Tracking</td><td>Foreground Service</td><td>Survives backgrounding; private; coordinates never persisted.</td></tr>
     <tr><td>Maps</td><td>Leaflet + CartoDB</td><td>No API key, no telemetry, privacy-first.</td></tr>
     <tr><td>Geocoding</td><td>Photon + Nominatim + aliases</td><td>Free, keyless, locally aware, cached.</td></tr>
-    <tr><td>SOS</td><td>Cellular SMS</td><td>Works offline; no backend to fail or leak.</td></tr>
+    <tr><td>SOS</td><td>Cellular SMS + discreet cue</td><td>Works offline; no backend; haptic/beep only, no ringer or DND hijack.</td></tr>
+    <tr><td>Trip reliability</td><td>GPS enforcement + jitter-gated distance</td><td>Blocks dead trips when location is off; rejects GPS noise; clean state resets on stop.</td></tr>
     <tr><td>Iconography</td><td>Material Symbols font</td><td>Vector-sharp at any density; identical across OEMs.</td></tr>
     <tr><td>Onboarding layout</td><td>AspectFill back-layer + InputTransparent</td><td>Full-bleed art with unobstructed touch targets.</td></tr>
     <tr><td>Favorite accent</td><td>Gold-yellow #FFC107</td><td>High-contrast, recognizable favorited state.</td></tr>

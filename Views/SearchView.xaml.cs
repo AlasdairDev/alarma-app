@@ -1,11 +1,8 @@
-// Security Considerations (OWASP Top 10)
-// A03 Injection: DestinationQuery Entry is bounded by MaxLength="200" at the XAML layer;
-//   the controller additionally validates length > 200 before issuing HTTP requests — no raw
-//   user string reaches the geocoding HTTP layer without passing both guards.
-// A04 Insecure Design: Debounce CancellationTokenSource is cancelled on back-press and on
-//   result-tap so a stale in-flight search cannot overwrite the user's confirmed destination
-//   selection with an outdated result set.
-// No credentials, SQLite writes, or sensitive data are handled in this view layer.
+// The destination search screen. The query box is capped at MaxLength="200" in XAML, and the
+// controller re-checks the length before it makes any HTTP call, so an over-long string can't reach
+// the geocoding layer either way. The debounce CancellationTokenSource gets cancelled on back-press
+// and when a result is tapped, so a slow search still in flight can't land late and clobber the
+// destination the user just picked. No credentials, no database writes, nothing sensitive here.
 
 using AlarmaApp.Controllers;
 using AlarmaApp.Services;

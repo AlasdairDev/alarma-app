@@ -1,9 +1,8 @@
-// Security Considerations (OWASP Top 10)
-// A05 Security Misconfiguration: _navigated flag prevents double-navigation on rapid tap;
-//   PrepareForAppearance() resets it per Activity lifecycle so the singleton never skips
-//   the onboarding/auth gate on Android back-stack restoration.
-// A04 Insecure Design: No user data is accepted here; splash cannot be used to intercept
-//   or bypass downstream permission flows — it only signals Completed to App.xaml.cs.
+// The splash/launch animation. The _navigated flag stops a rapid double-tap from firing navigation
+// twice, and PrepareForAppearance() resets it each Activity lifecycle so this singleton never
+// accidentally skips the onboarding/permission gates when Android restores the back stack. It takes
+// no user input and can't be used to jump past any later permission step — all it does is raise
+// Completed back to App.xaml.cs.
 
 namespace AlarmaApp.Views;
 

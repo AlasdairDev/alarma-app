@@ -1,13 +1,11 @@
-// Security Considerations (OWASP Top 10)
-// A05 Security Misconfiguration: Captive-portal WiFi (hotel, airport) is explicitly rejected
-//   by checking NetCapability.CaptivePortal — when Android detects a login-wall it sets this
-//   flag before the user authenticates, so geocoding queries are never sent to the portal
-//   operator in plaintext. Previously the check required NetCapability.Validated, which is
-//   correct on production devices but causes false-negatives on Android emulators where
-//   Google's connectivitycheck.gstatic.com probe fails even though real internet is reachable.
-//   The revised logic: INTERNET required + CaptivePortal absent → connection allowed. This
-//   covers (1) validated production networks, (2) emulator networks that lack the Validated
-//   flag, and (3) correctly blocks any network the OS has confirmed is a captive portal.
+// Tells the rest of the app whether we actually have usable internet. The tricky part is
+// captive-portal WiFi — those hotel/airport "sign in here" networks. Android flags them with
+// NetCapability.CaptivePortal before the user logs in, and we reject those so a destination search
+// never leaks in plaintext to whoever runs the portal. We first gated on NetCapability.Validated,
+// which is right on real phones but gives false negatives on emulators (Google's
+// connectivitycheck.gstatic.com probe fails there even when the internet works fine). So the rule we
+// landed on is simpler: has INTERNET and is NOT a captive portal → good to go. That keeps real
+// networks and emulators working while still blocking any network the OS has confirmed is a login-wall.
 
 using AlarmaApp.Services.Interfaces;
 using Android.Content;

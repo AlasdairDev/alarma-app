@@ -1,9 +1,7 @@
-// Security Considerations (OWASP Top 10)
-// A01 Broken Access Control / IDOR: Displays read-only TripHistory records from the device-local
-//   encrypted SQLite database. There is no cross-user or cross-device resource access surface —
-//   every record is owned by the device and decrypted with the device-specific key from SecureStorage.
-// A03 Injection: Trip data (destination names, summaries) was validated and length-capped at
-//   write-time; no raw user-controlled strings are rendered as HTML or evaluated as code here.
+// Read-only list of past trips, pulled from the encrypted local database. There's no way to reach
+// another user's or another device's data here — every record belongs to this device and is decrypted
+// with the device's own key from SecureStorage. The text we show (destination names, summaries) was
+// validated and length-capped when it was written, and nothing here is rendered as HTML or run as code.
 
 using AlarmaApp.Controllers;
 

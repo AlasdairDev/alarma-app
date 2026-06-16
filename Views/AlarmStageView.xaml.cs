@@ -1,18 +1,17 @@
-// Security Considerations (OWASP Top 10)
-// A07 Identification and Authentication Failures: OnBackButtonPressed override prevents the user
-//   from bypassing the alarm dismiss flow via the hardware back button — DismissAlarmCommand
-//   always executes, ensuring controller state (CurrentAlarmStage) resets cleanly.
-// A04 Insecure Design: DismissAndExitAsync executes DismissAlarmCommand before popping the route
-//   so the controller and UI update atomically — no window where AlarmStage is None in the
-//   controller but the alarm view is still showing (which would re-open on the next stage event).
-//   OnStopTripClicked issues StopTrackingCommand and navigates back in one handler so the user
-//   is never stranded on AlarmStageView after a trip ends with no alarm active.
-//   MapJsRequested is subscribed on OnAppearing (unsubscribed on OnDisappearing) so the trip map
-//   receives live-location updates and destination replay without full WebView reload.
-//   The slide-to-stop/dismiss gesture requires a horizontal drag of ≥75 % of the track width to
-//   trigger, preventing accidental tap-through dismissals (A04 defense-in-depth).
-// A03 Injection: All JS values forwarded via MapJsRequested use InvariantCulture F6 numeric
-//   strings or JsonSerializer.Serialize — no user-supplied strings reach the JS eval context.
+// The full-screen "WAKE UP" alarm page. A bunch of little things keep its state honest:
+//   - We override OnBackButtonPressed so the hardware back button can't sneak past the dismiss flow
+//     — DismissAlarmCommand always runs, which resets CurrentAlarmStage cleanly.
+//   - DismissAndExitAsync fires DismissAlarmCommand BEFORE popping the page, so the controller and UI
+//     change together. Otherwise there'd be a brief moment where the stage is None but the alarm view
+//     is still up, and the next stage event would just re-open it.
+//   - OnStopTripClicked stops tracking and navigates back in the same handler, so nobody gets
+//     stranded on this page after a trip ends with no alarm running.
+//   - We subscribe to MapJsRequested in OnAppearing (and unsubscribe in OnDisappearing) so the trip
+//     map gets live location + destination replay without reloading the whole WebView.
+//   - The slide-to-stop gesture needs a drag of at least 75% of the track to count, so a stray tap
+//     can't dismiss the alarm by accident.
+//   - Anything we push into the map's JS is an InvariantCulture F6 number or JsonSerializer output —
+//     never a raw user string in the eval context.
 
 using AlarmaApp.Controllers;
 using System.ComponentModel;

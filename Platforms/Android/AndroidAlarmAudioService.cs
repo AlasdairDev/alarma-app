@@ -1,12 +1,13 @@
-// Security Considerations (OWASP Top 10)
-// A04 Insecure Design:
-//   - _savedRingerMode uses ??= so only the first Stage 2+ override saves the original mode;
-//     every DisableCriticalAudioAsync call restores it and clears the saved value — silent mode
-//     cannot be permanently changed by repeated alarm escalations.
-//   - Per-ringtone CancellationTokenSource (_playCts): a superseded alarm's Task.Delay callback
-//     throws OperationCanceledException and returns without calling DisableCriticalAudioAsync,
-//     preventing it from silencing a higher-priority alarm that started after it.
-// No user data, credentials, or network access in this service.
+// Handles the actual sound + vibration for the alarm stages (and the quieter SOS cue). Two subtle
+// bugs we had to design around:
+//   - We only want to remember the rider's ORIGINAL ringer mode once, so _savedRingerMode uses ??=
+//     — the first Stage-2+ override saves it, and every DisableCriticalAudioAsync restores it and
+//     clears it again. That way a string of alarm escalations can't permanently leave the phone
+//     stuck off silent.
+//   - Each ringtone gets its own CancellationTokenSource (_playCts). If a newer, higher-priority
+//     alarm takes over, the older one's Task.Delay throws OperationCanceledException and bails out
+//     WITHOUT restoring the ringer — otherwise it would silence the alarm that just superseded it.
+// Nothing sensitive here: no user data, no credentials, no network.
 
 using AlarmaApp.Models;
 using AlarmaApp.Services.Interfaces;
