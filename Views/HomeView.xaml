@@ -135,21 +135,36 @@
                 <Grid Grid.Row="2" Grid.Column="1"
                       ColumnDefinitions="*,Auto"
                       Margin="10,0,0,0">
-                    <!-- Tapping the destination text drops straight back into the search screen
-                         (same as the back chevron) so the rider can retype without hunting for it. -->
-                    <Label Grid.Column="0"
-                           Text="{Binding DestinationShortNameText}"
-                           TextColor="White"
-                           FontSize="13"
-                           FontAttributes="Bold"
-                           VerticalOptions="Center"
-                           LineBreakMode="TailTruncation"
-                           SemanticProperties.Description="Selected destination"
-                           SemanticProperties.Hint="Double tap to search for a different destination">
-                        <Label.GestureRecognizers>
+                    <!-- Styled to read as a dormant search field: a light-lavender pill with an edit
+                         pencil, so it clearly looks tappable. Tapping anywhere on it (text or icon)
+                         drops back into the search screen, same as the back chevron. -->
+                    <Border Grid.Column="0"
+                            BackgroundColor="#EDE7F6"
+                            StrokeShape="RoundRectangle 22"
+                            Stroke="Transparent"
+                            Padding="14,9"
+                            VerticalOptions="Center"
+                            SemanticProperties.Description="Selected destination"
+                            SemanticProperties.Hint="Double tap to search for a different destination">
+                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                            <Label Grid.Column="0"
+                                   Text="{Binding DestinationShortNameText}"
+                                   TextColor="#1A0F35"
+                                   FontSize="13"
+                                   FontAttributes="Bold"
+                                   VerticalOptions="Center"
+                                   LineBreakMode="TailTruncation" />
+                            <Label Grid.Column="1"
+                                   Text="edit"
+                                   FontFamily="MaterialSymbols"
+                                   FontSize="16"
+                                   TextColor="#7B3FA0"
+                                   VerticalOptions="Center" />
+                        </Grid>
+                        <Border.GestureRecognizers>
                             <TapGestureRecognizer Tapped="OnSearchTapped" />
-                        </Label.GestureRecognizers>
-                    </Label>
+                        </Border.GestureRecognizers>
+                    </Border>
                     <Label Grid.Column="1"
                            FontSize="20"
                            VerticalOptions="Center"
