@@ -155,8 +155,9 @@ public class GeocodingService
         // photon first - fuzzier + faster than nominatim
         var photon = await SearchPhotonAsync(expanded, cancellationToken);
 
-        // top up with nominatim if photon's a bit thin (happens on very specific addresses)
-        if (photon.Count < 3)
+        // Top up with Nominatim when Photon is thin OR the query looks like a street address —
+        // Nominatim carries the addr:street / housenumber data residential subdivisions need.
+        if (photon.Count < 3 || IsAddressLike(expanded))
         {
             var nominatim = await SearchNominatimAsync(expanded, cancellationToken);
             var merged = Merge(photon, nominatim, maxCount: 10);
@@ -167,11 +168,16 @@ public class GeocodingService
                 return merged;
             }
 
-            // both APIs gave us nothing - try the hardcoded table
+            // both OSM services gave us nothing - try the hardcoded landmark table
             if (LocalFallback.TryGetValue(expanded, out var local))
                 return [local];
 
-            return merged;
+            // absolute last resort: the native platform geocoder, which has better residential
+            // coverage in the PH than OSM. Bounded to the PH envelope inside SearchNativeAsync.
+            var native = await SearchNativeAsync(expanded);
+            if (native.Count > 0)
+                await SaveToCacheAsync(cacheKey, native, cached);
+            return native;
         }
 
         await SaveToCacheAsync(cacheKey, photon, cached);
@@ -241,7 +247,10 @@ public class GeocodingService
                 if (!InPhilippines(lat, lon)) continue;
 
                 var name = BuildPhotonName(f.Properties);
-                if (string.IsNullOrWhiteSpace(name)) continue;
+                // Keep coordinate-valid pins we couldn't name (common inside subdivisions)
+                // instead of dropping them — label them so the user can still select the spot.
+                if (string.IsNullOrWhiteSpace(name))
+                    name = CoordinateLabel(lat, lon);
 
                 var ptype = FormatPlaceType(f.Properties.OsmKey,
                                             f.Properties.OsmValue ?? f.Properties.Type);
@@ -303,8 +312,14 @@ public class GeocodingService
                     || !TryParseLongitude(r.Longitude, out var lon)) continue;
                 if (!InPhilippines(lat, lon)) continue;
 
+                // Guard against blank names slipping through (Nominatim, unlike Photon, otherwise
+                // adds them) — fall back to a coordinate label so no empty rows reach the UI.
+                var name = BuildNominatimName(r);
+                if (string.IsNullOrWhiteSpace(name))
+                    name = CoordinateLabel(lat, lon);
+
                 results.Add(new GeocodingResult(
-                    BuildNominatimName(r), lat, lon,
+                    name, lat, lon,
                     FormatPlaceType(r.OsmClass, r.OsmType)));
             }
             return results;
@@ -433,6 +448,49 @@ public class GeocodingService
 
     private static bool InPhilippines(double lat, double lon) =>
         lat >= PhLatMin && lat <= PhLatMax && lon >= PhLonMin && lon <= PhLonMax;
+
+    // Address-like = contains a digit or 3+ tokens (e.g. "10 Acacia St Phase 2"). Such queries
+    // benefit from Nominatim's street-level data even when Photon already returned some hits.
+    private static bool IsAddressLike(string q)
+    {
+        if (string.IsNullOrWhiteSpace(q)) return false;
+        if (q.Any(char.IsDigit)) return true;
+        return q.Split(' ', StringSplitOptions.RemoveEmptyEntries).Length >= 3;
+    }
+
+    // Label for a valid coordinate we couldn't name (common inside subdivisions). Lets the user
+    // still select the pin instead of the result being dropped (Photon) or shown blank (Nominatim).
+    private static string CoordinateLabel(double lat, double lon) =>
+        $"Near {lat.ToString("F4", CultureInfo.InvariantCulture)}, " +
+        $"{lon.ToString("F4", CultureInfo.InvariantCulture)} (Unmapped Area)";
+
+    // Tertiary fallback: the native platform geocoder (on Android, Google-backed Geocoder), which
+    // has better residential/subdivision coverage in the PH than OSM. Used only when both OSM
+    // services and the landmark table come up empty. It returns coordinates without a label, so the
+    // cleaned query text is used as the display name. Results are bounded to the PH envelope.
+    private static async Task<List<GeocodingResult>> SearchNativeAsync(string query)
+    {
+        try
+        {
+            var locations = await Microsoft.Maui.Devices.Sensors.Geocoding.Default
+                .GetLocationsAsync(query);
+            if (locations is null) return [];
+
+            var name = query.Length > 60 ? query[..60].Trim() : query.Trim();
+            var results = new List<GeocodingResult>();
+            foreach (var loc in locations)
+            {
+                if (!InPhilippines(loc.Latitude, loc.Longitude)) continue;
+                results.Add(new GeocodingResult(name, loc.Latitude, loc.Longitude, "Address"));
+                if (results.Count >= 5) break;
+            }
+            return results;
+        }
+        catch
+        {
+            return [];
+        }
+    }
 
     private static IReadOnlyList<GeocodingResult> Merge(
         List<GeocodingResult> primary,

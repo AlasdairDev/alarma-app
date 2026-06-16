@@ -4,7 +4,7 @@
 // inputs are capped (query 200, contact name 50) and phone numbers run through PhoneRegex.
 // map labels go through JsonSerializer (no XSS), coords are always InvariantCulture F6.
 // backup validates before clearing, so a junk backup can't wipe real data.
-// alarm sound / lead mins / vibration / vehicle type are all checked against allowed values.
+// alarm sound / lead mins / vibration are all checked against allowed values.
 
 using System.Collections.ObjectModel;
 using System.ComponentModel;
@@ -26,13 +26,25 @@ public class HomeController : INotifyPropertyChanged
     private const double ArrivalThresholdMeters = 200;
     private const double OvershootBufferMeters = 250;
     private const double OvershootThresholdMeters = ArrivalThresholdMeters + OvershootBufferMeters;
-    private const double RouteDeviationBufferMeters = OvershootBufferMeters;
+    // Route-deviation detection (multi-leg-commute aware). A flat buffer is too tight for city
+    // transfers, so the buffer is max(base, fraction × closest approach). Deviation is only armed
+    // once reasonably close, requires sustained movement away, and re-baselines on a transfer dwell.
+    private const double DeviationBaseBufferMeters = 400;
+    private const double DeviationProportionalFraction = 0.5;
+    private const double DeviationArmRadiusMeters = 3000;
+    private const double DwellSpeedThresholdMetersPerSecond = 0.5;
+    private const int DeviationPersistenceFixes = 4;
     private const int TripHistoryLimit = 20;
     private const int MaxSavedRoutes = 5;
     private const int MaxEmergencyContacts = 3;
-    private const double MinAlarmDistanceJeepneyMeters = 300;
-    private const double MinAlarmDistanceCityBusMeters = 400;
-    private const double MinAlarmDistanceUvExpressMeters = 500;
+    // Floor for the Stage-1 lead distance — the alarm never arms closer than this regardless of speed.
+    private const double MinAlarmDistanceMeters = 300;
+    // Per-fix movement below this (or below the fix's own accuracy) is treated as GPS jitter and
+    // excluded from the accumulated trip distance.
+    private const double MinSegmentMeters = 8;
+    // Arrival (Stage 2) must be seen on this many consecutive fixes before it latches, so a single
+    // outlier fix that lands near the destination can't falsely mark arrival (and then overshoot).
+    private const int ArrivalPersistenceFixes = 2;
 
     private readonly DatabaseService _databaseService;
     private readonly PreferencesService _preferencesService;
@@ -53,7 +65,6 @@ public class HomeController : INotifyPropertyChanged
     private readonly ObservableCollection<TripHistory> _tripHistoryEntries = new();
     private readonly ObservableCollection<GeocodingResult> _searchResults = new();
     private readonly ObservableCollection<string> _vibrationIntensityOptions = new() { "Low", "Medium", "High" };
-    private readonly ObservableCollection<string> _vehicleTypeOptions = new() { "Jeepney", "UV Express", "City Bus" };
 
     private string _statusText = "Loading...";
     private string _connectivityText = string.Empty;
@@ -76,6 +87,8 @@ public class HomeController : INotifyPropertyChanged
     private bool _hasArrivedAtDestination;
     private bool _overshootAlerted;
     private bool _routeDeviationAlerted;
+    private int _deviationAwayStreak;
+    private int _arrivalStreak;
     private bool _isOvershootPending;
     private bool _isOvershootConfirmed;
     private string _overshootDistanceText = string.Empty;
@@ -161,7 +174,6 @@ public class HomeController : INotifyPropertyChanged
     private double _alarmLeadMinutes;
     private bool _vibrationOnly;
     private string _vibrationIntensity;
-    private string _vehicleType;
     private bool _isOnboardingComplete;
     private bool _isDatabaseInitialized;
     private bool _hasInitialized;
@@ -178,8 +190,6 @@ public class HomeController : INotifyPropertyChanged
     };
     private bool _wasOnline;
     private bool _availabilityChecked;
-    private int _snoozeCount;
-    private const int MaxSnoozeCount = 3;
     private string _primaryContactNumber = string.Empty;
 
     private DateTimeOffset? _lastSosSentAt;
@@ -206,6 +216,9 @@ public class HomeController : INotifyPropertyChanged
     public event EventHandler? FavoriteSaved;
     public event EventHandler? SosDispatched;
     public event EventHandler? SmsDenied;
+    // Raised when a trip start is blocked because the device's master location switch is off.
+    // The view turns this into a "go to Settings" prompt (the controller has no Page of its own).
+    public event EventHandler? LocationServicesDisabled;
 
     public string StatusText
     {
@@ -456,7 +469,6 @@ public class HomeController : INotifyPropertyChanged
 
     public ObservableCollection<string> AlarmSoundOptions => _alarmSoundOptions;
     public ObservableCollection<string> VibrationIntensityOptions => _vibrationIntensityOptions;
-    public ObservableCollection<string> VehicleTypeOptions => _vehicleTypeOptions;
     public ObservableCollection<GeocodingResult> SearchResults => _searchResults;
 
     public bool HasSearchResults => _searchResults.Count > 0;
@@ -486,19 +498,6 @@ public class HomeController : INotifyPropertyChanged
                 : "Medium";
             if (SetProperty(ref _vibrationIntensity, valid))
                 _preferencesService.VibrationIntensity = valid;
-        }
-    }
-
-    public string VehicleType
-    {
-        get => _vehicleType;
-        set
-        {
-            var valid = _vehicleTypeOptions.Contains(value, StringComparer.OrdinalIgnoreCase)
-                ? _vehicleTypeOptions.First(o => o.Equals(value, StringComparison.OrdinalIgnoreCase))
-                : "Jeepney";
-            if (SetProperty(ref _vehicleType, valid))
-                _preferencesService.VehicleType = valid;
         }
     }
 
@@ -583,7 +582,6 @@ public class HomeController : INotifyPropertyChanged
     public ICommand RefreshEarphoneStatusCommand { get; }
     public ICommand RequestBatteryOptimizationCommand { get; }
     public ICommand DismissAlarmCommand { get; }
-    public ICommand SnoozeAlarmCommand { get; }
     public ICommand CenterOnUserCommand { get; }
     public ICommand RequestLocationPermissionCommand { get; }
     public ICommand RequestNotificationPermissionCommand { get; }
@@ -636,7 +634,6 @@ public class HomeController : INotifyPropertyChanged
         }
         _vibrationOnly = _preferencesService.VibrationOnly;
         _vibrationIntensity = _preferencesService.VibrationIntensity;
-        _vehicleType = _preferencesService.VehicleType;
         _isOnboardingComplete = _preferencesService.IsOnboardingComplete;
 
         InitializeCommand = new Command(async () => await InitializeDatabaseAsync());
@@ -663,12 +660,10 @@ public class HomeController : INotifyPropertyChanged
         RequestBatteryOptimizationCommand = new Command(async () => await RequestBatteryOptimizationAsync());
         DismissAlarmCommand = new Command(async () =>
         {
-            _snoozeCount = 0;
             CurrentAlarmStage = AlarmStage.None;
             await _alarmAudioService.DisableCriticalAudioAsync();
             LastActionText = "Alarm dismissed.";
         });
-        SnoozeAlarmCommand = new Command(async () => await SnoozeAlarmAsync());
         CenterOnUserCommand = new Command(async () => await CenterOnUserAsync());
         RequestLocationPermissionCommand = new Command(async () => await RequestLocationPermissionAsync());
         RequestNotificationPermissionCommand = new Command(async () => await RequestNotificationPermissionAsync());
@@ -848,6 +843,13 @@ public class HomeController : INotifyPropertyChanged
         LastBackupText = $"Last backup: {_preferencesService.LastBackupUtc.Value.ToOffset(TimeSpan.FromHours(8)):g} PHT";
         OnPropertyChanged(nameof(HasBackupAvailable));
     }
+
+    // Lets the view send the user to the OS location-source page after the "location is off" prompt.
+    public void OpenLocationSettings() => PermissionsService.OpenLocationSettings();
+
+    // Clears the shared status line so a screen (e.g. the contacts form) can show only its own
+    // freshly-produced feedback rather than a stale message left over from another screen.
+    public void ClearLastAction() => LastActionText = string.Empty;
 
     private async Task RequestLocationPermissionAsync()
     {
@@ -1038,7 +1040,6 @@ public class HomeController : INotifyPropertyChanged
             AlarmLeadMinutes = _preferencesService.AlarmLeadMinutes;
             VibrationOnly = _preferencesService.VibrationOnly;
             VibrationIntensity = _preferencesService.VibrationIntensity;
-            VehicleType = _preferencesService.VehicleType;
             UpdateBackupStatus();
             await LoadLocalDataAsync();
             BackupStatusText = $"Backup restored from {path}.";
@@ -1150,7 +1151,7 @@ public class HomeController : INotifyPropertyChanged
             }
             else
             {
-                CurrentLocationText = "Location unavailable";
+                CurrentLocationText = "Searching for GPS…";
             }
         }
         catch
@@ -1503,7 +1504,6 @@ public class HomeController : INotifyPropertyChanged
             return;
         }
 
-        var dndAccessGranted = await _permissionsService.EnsureDoNotDisturbAccessAsync();
         var location = await _locationService.GetLastKnownLocationAsync();
         string message;
         if (location is null)
@@ -1520,13 +1520,14 @@ public class HomeController : INotifyPropertyChanged
 
         try
         {
-            await _alarmAudioService.TriggerAlarmAsync(AlarmStage.Stage3, AlarmSound, VibrationOnly, VibrationIntensity);
+            // SOS is strictly an SMS dispatch. It must NOT hijack the ringer, force volume, or touch
+            // Do-Not-Disturb the way the trip alarm does — a discreet confirmation cue is all we want
+            // so the user knows the press registered without broadcasting it.
+            await _alarmAudioService.PlaySosFeedbackAsync();
             await _smsService.SendEmergencySmsAsync(message, recipients);
             _lastSosSentAt = DateTimeOffset.UtcNow;
             SosDispatched?.Invoke(this, EventArgs.Empty);
-            LastActionText = dndAccessGranted
-                ? $"SOS sent to {recipients.Count} contact(s)."
-                : $"SOS sent to {recipients.Count} contact(s). Grant DND access for critical audio.";
+            LastActionText = $"SOS sent to {recipients.Count} contact(s).";
         }
         catch (Exception ex)
         {
@@ -1539,6 +1540,16 @@ public class HomeController : INotifyPropertyChanged
     {
         if (IsTracking)
         {
+            return;
+        }
+
+        // Pre-flight: even with permission granted, a device whose master location switch is off
+        // will never deliver a fix — so block the start and push the user to Settings (the way
+        // Google Maps refuses to navigate without GPS) instead of starting a dead trip.
+        if (!_locationService.IsLocationServiceEnabled())
+        {
+            LastActionText = "Turn on device location to start a trip.";
+            LocationServicesDisabled?.Invoke(this, EventArgs.Empty);
             return;
         }
 
@@ -1561,10 +1572,11 @@ public class HomeController : INotifyPropertyChanged
         _hasArrivedAtDestination = false;
         _overshootAlerted = false;
         _routeDeviationAlerted = false;
+        _deviationAwayStreak = 0;
+        _arrivalStreak = 0;
         CurrentAlarmStage = AlarmStage.None;
         _lastSpeedMetersPerSecond = 0;
         _minDistanceToDestination = double.MaxValue;
-        _snoozeCount = 0;
         DistanceToDestinationText = string.Empty;
         IsTracking = true;
         TrackingStatusText = "Starting trip tracking...";
@@ -1639,6 +1651,14 @@ public class HomeController : INotifyPropertyChanged
             }
         }
 
+        // Full reset so the home screen returns to its idle state — no lingering "View Active Trip"
+        // pill or start-trip card. ClearDestination drops the destination + map marker (which makes
+        // the greeting/search header reappear) and ResetSearchState empties the search box. The
+        // foreground service itself was already torn down by StopTrackingAsync above.
+        _activeTrip = null;
+        ClearDestination();
+        ResetSearchState();
+        TrackingStatusText = "Tracking inactive.";
         LastActionText = "Trip tracking stopped.";
     }
 
@@ -1665,19 +1685,34 @@ public class HomeController : INotifyPropertyChanged
             return;
         }
 
-        if (_lastTrackedLocation is not null)
+        if (_lastTrackedLocation is null)
+        {
+            _lastTrackedLocation = snapshot;
+        }
+        else
         {
             var deltaSeconds = (snapshot.Timestamp - _lastTrackedLocation.Timestamp).TotalSeconds;
+            // Haversine path-segment length between the last accepted fix and this one.
             var deltaMeters = CalculateDistanceMeters(_lastTrackedLocation, snapshot);
-            if (deltaSeconds > 0)
-            {
-                _lastSpeedMetersPerSecond = deltaMeters / deltaSeconds;
-            }
 
-            _totalDistanceMeters += deltaMeters;
+            // Jitter gate: a stationary phone still emits fixes that wander a few metres, which would
+            // otherwise inflate the trip distance. Only count a segment once it clears the GPS noise
+            // floor (the fix's own accuracy, min 8 m). The anchor advances only on an accepted
+            // segment, so genuine slow movement still accumulates across several fixes rather than
+            // being silently dropped.
+            var noiseFloor = Math.Max(MinSegmentMeters, snapshot.AccuracyMeters);
+            if (deltaMeters >= noiseFloor)
+            {
+                if (deltaSeconds > 0)
+                {
+                    _lastSpeedMetersPerSecond = deltaMeters / deltaSeconds;
+                }
+
+                _totalDistanceMeters += deltaMeters;
+                _lastTrackedLocation = snapshot;
+            }
         }
 
-        _lastTrackedLocation = snapshot;
         BlackBoxLogger.LastKnownCoords = (snapshot.Latitude, snapshot.Longitude);
         var distanceKm = _totalDistanceMeters / MetersPerKilometer;
         TrackingStatusText = $"Tracking active: {distanceKm:F2} km traveled.";
@@ -1696,6 +1731,7 @@ public class HomeController : INotifyPropertyChanged
         if (_lastDestinationResult is null)
         {
             DistanceToDestinationText = "No destination selected for overshoot monitoring.";
+            await _notificationService.UpdateTrackingNotificationAsync("Tracking active");
             return;
         }
 
@@ -1707,22 +1743,25 @@ public class HomeController : INotifyPropertyChanged
         var distanceToDestination = CalculateDistanceMeters(snapshot, destinationSnapshot);
         var accuracyBuffer = Math.Max(snapshot.AccuracyMeters, 0);
         var overshootThreshold = OvershootThresholdMeters + accuracyBuffer;
-        var deviationThreshold = RouteDeviationBufferMeters + accuracyBuffer;
-        var vehicleMinDistance = VehicleType switch
-        {
-            "City Bus" => MinAlarmDistanceCityBusMeters,
-            "UV Express" => MinAlarmDistanceUvExpressMeters,
-            _ => MinAlarmDistanceJeepneyMeters
-        };
         var adaptiveLeadDistance = Math.Max(
-            vehicleMinDistance,
+            MinAlarmDistanceMeters,
             _lastSpeedMetersPerSecond * AlarmLeadMinutes * 60);
         var adaptiveLeadThreshold = adaptiveLeadDistance + accuracyBuffer;
         _minDistanceToDestination = Math.Min(_minDistanceToDestination, distanceToDestination);
         DistanceToDestinationText = $"Destination is {distanceToDestination / MetersPerKilometer:F2} km away.";
-        ChipDistanceText = distanceToDestination >= 1000
-            ? $"{distanceToDestination / MetersPerKilometer:F0} km away"
-            : $"{(int)distanceToDestination} m away";
+        var distanceLabel = distanceToDestination >= 1000
+            ? $"{distanceToDestination / MetersPerKilometer:F0} km"
+            : $"{(int)distanceToDestination} m";
+        ChipDistanceText = $"{distanceLabel} away";
+
+        // Mirror the live distance-to-destination into the ongoing tracking notification so the
+        // background notification and foreground state never desync. Stage suffix appears only
+        // once an alarm stage is active.
+        var stageSuffix = _currentAlarmStage != AlarmStage.None
+            ? $" • Stage {(int)_currentAlarmStage}"
+            : string.Empty;
+        await _notificationService.UpdateTrackingNotificationAsync(
+            $"{distanceLabel} to {DestinationShortNameText}{stageSuffix}");
 
         if (_currentAlarmStage == AlarmStage.None && distanceToDestination <= adaptiveLeadThreshold)
         {
@@ -1736,14 +1775,24 @@ public class HomeController : INotifyPropertyChanged
 
         if (!_hasArrivedAtDestination && distanceToDestination <= ArrivalThresholdMeters)
         {
-            _hasArrivedAtDestination = true;
-            await TriggerAlarmStageAsync(
-                AlarmStage.Stage2,
-                "Alarm stage 2",
-                "Arrived near destination. Stay alert.",
-                reroute: false,
-                allowRepeat: false);
-            return;
+            // Require the arrival to hold across a couple of fixes — one outlier dropping inside the
+            // threshold then bouncing back must not latch arrival (which would later read as overshoot).
+            _arrivalStreak++;
+            if (_arrivalStreak >= ArrivalPersistenceFixes)
+            {
+                _hasArrivedAtDestination = true;
+                await TriggerAlarmStageAsync(
+                    AlarmStage.Stage2,
+                    "Alarm stage 2",
+                    "Arrived near destination. Stay alert.",
+                    reroute: false,
+                    allowRepeat: false);
+                return;
+            }
+        }
+        else if (!_hasArrivedAtDestination)
+        {
+            _arrivalStreak = 0;
         }
 
         if (_hasArrivedAtDestination && !_overshootAlerted && distanceToDestination >= overshootThreshold)
@@ -1762,16 +1811,52 @@ public class HomeController : INotifyPropertyChanged
             return;
         }
 
-        if (!_hasArrivedAtDestination && !_routeDeviationAlerted
-            && distanceToDestination > _minDistanceToDestination + deviationThreshold)
+        // ── Route-deviation detection (multi-leg-commute aware) ───────────────────
+        // Dwell = stopped/waiting below walking pace (e.g. at a transfer terminal). On a dwell,
+        // re-baseline the closest-approach anchor to the current position so the next leg/walk
+        // after a transfer isn't measured against a stale "closest ever" point, and clear the
+        // away-streak. Walking pace (~1.4 m/s) stays above the dwell threshold, so a short
+        // transfer walk is instead absorbed by the buffer + persistence checks below.
+        if (_lastSpeedMetersPerSecond <= DwellSpeedThresholdMetersPerSecond)
         {
-            _routeDeviationAlerted = true;
-            await TriggerAlarmStageAsync(
-                AlarmStage.Stage1,
-                "Route deviation",
-                "You are getting farther from your destination.",
-                reroute: false,
-                allowRepeat: true);
+            _minDistanceToDestination = distanceToDestination;
+            _deviationAwayStreak = 0;
+        }
+
+        if (!_hasArrivedAtDestination && !_routeDeviationAlerted)
+        {
+            // Proportional buffer: a flat threshold is far too tight for city transfers. Being a
+            // little farther only matters once genuinely near the destination.
+            var deviationBuffer = Math.Max(
+                DeviationBaseBufferMeters,
+                DeviationProportionalFraction * _minDistanceToDestination) + accuracyBuffer;
+
+            // Arm only once reasonably close — early-trip legs routinely head away to reach a main
+            // thoroughfare. Tie to the adaptive lead distance, floored at the arm radius.
+            var deviationArmRadius = Math.Max(adaptiveLeadDistance, DeviationArmRadiusMeters);
+            var isArmed = _minDistanceToDestination <= deviationArmRadius;
+            var isMovingAway = distanceToDestination > _minDistanceToDestination + deviationBuffer;
+
+            if (isArmed && isMovingAway)
+            {
+                // Require sustained movement away (≈4 consecutive fixes) — a single noisy fix or a
+                // brief detour that resolves won't fire the alarm.
+                _deviationAwayStreak++;
+                if (_deviationAwayStreak >= DeviationPersistenceFixes)
+                {
+                    _routeDeviationAlerted = true;
+                    await TriggerAlarmStageAsync(
+                        AlarmStage.Stage1,
+                        "Route deviation",
+                        "You are getting farther from your destination.",
+                        reroute: false,
+                        allowRepeat: true);
+                }
+            }
+            else
+            {
+                _deviationAwayStreak = 0;
+            }
         }
     }
 
@@ -1814,32 +1899,6 @@ public class HomeController : INotifyPropertyChanged
         }
     }
 
-    private async Task SnoozeAlarmAsync()
-    {
-        if (CurrentAlarmStage == AlarmStage.None || CurrentAlarmStage == AlarmStage.Stage3)
-            return;
-
-        _snoozeCount++;
-        if (_activeTrip is not null)
-            _activeTrip.SnoozeCount = _snoozeCount;
-
-        await _alarmAudioService.DisableCriticalAudioAsync();
-
-        if (_snoozeCount >= MaxSnoozeCount)
-        {
-            await TriggerAlarmStageAsync(
-                AlarmStage.Stage3,
-                "Alarm Stage 3",
-                "Max snoozes reached. You must disembark now!",
-                reroute: false,
-                allowRepeat: false);
-        }
-        else
-        {
-            LastActionText = $"Alarm snoozed ({_snoozeCount}/{MaxSnoozeCount}).";
-        }
-    }
-
     private void CompleteOnboarding()
     {
         _preferencesService.IsOnboardingComplete = true;
@@ -1859,9 +1918,10 @@ public class HomeController : INotifyPropertyChanged
         _hasArrivedAtDestination = false;
         _overshootAlerted = false;
         _routeDeviationAlerted = false;
+        _deviationAwayStreak = 0;
+        _arrivalStreak = 0;
         CurrentAlarmStage = AlarmStage.None;
         _lastSpeedMetersPerSecond = 0;
-        _snoozeCount = 0;
         OnPropertyChanged(nameof(HasDestination));
         OnPropertyChanged(nameof(CanSaveRoute));
         OnPropertyChanged(nameof(ShowStartTripCard));
@@ -1896,6 +1956,8 @@ public class HomeController : INotifyPropertyChanged
         _hasArrivedAtDestination = false;
         _overshootAlerted = false;
         _routeDeviationAlerted = false;
+        _deviationAwayStreak = 0;
+        _arrivalStreak = 0;
         CurrentAlarmStage = AlarmStage.None;
         _lastSpeedMetersPerSecond = 0;
         OnPropertyChanged(nameof(HasDestination));

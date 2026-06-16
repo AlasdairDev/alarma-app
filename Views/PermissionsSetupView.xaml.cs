@@ -5,6 +5,7 @@
 //   immediately resets the switch to OFF and surfaces an error — no silent failures.
 
 using AlarmaApp.Services;
+using AlarmaApp.Services.Interfaces;
 using Microsoft.Maui.ApplicationModel;
 
 namespace AlarmaApp.Views;
@@ -13,13 +14,18 @@ public partial class PermissionsSetupView : ContentPage
 {
     private readonly PermissionsService _permissionsService;
     private readonly PreferencesService _preferencesService;
+    private readonly ILocationService _locationService;
     private bool _finishing;
     private bool _suppressToggle;
 
-    public PermissionsSetupView(PermissionsService permissionsService, PreferencesService preferencesService)
+    public PermissionsSetupView(
+        PermissionsService permissionsService,
+        PreferencesService preferencesService,
+        ILocationService locationService)
     {
         _permissionsService = permissionsService;
         _preferencesService = preferencesService;
+        _locationService = locationService;
         InitializeComponent();
     }
 
@@ -70,7 +76,14 @@ public partial class PermissionsSetupView : ContentPage
 
     private async void OnNotificationSwitchToggled(object? sender, ToggledEventArgs e)
     {
-        if (_suppressToggle || !e.Value) return;
+        if (_suppressToggle) return;
+        if (!e.Value)
+        {
+            // Toggling OFF = the user wants to revoke. We can't drop the grant ourselves, so send
+            // them to the OS page; OnAppearing re-reads the real status and re-syncs the switch.
+            await HandlePermissionRevokeAsync("Notifications", stopTracking: false);
+            return;
+        }
         NotifSwitch.IsEnabled = false;
         StatusLabel.Text = "Requesting notifications permission…";
         var granted = await _permissionsService.EnsureNotificationPermissionAsync();
@@ -85,7 +98,14 @@ public partial class PermissionsSetupView : ContentPage
 
     private async void OnLocationSwitchToggled(object? sender, ToggledEventArgs e)
     {
-        if (_suppressToggle || !e.Value) return;
+        if (_suppressToggle) return;
+        if (!e.Value)
+        {
+            // Revoking location: also tear down any live tracking so a foreground service +
+            // wake lock can't outlive the permission the user is dropping.
+            await HandlePermissionRevokeAsync("Location", stopTracking: true);
+            return;
+        }
         LocationSwitch.IsEnabled = false;
         StatusLabel.Text = "Requesting location permission…";
         var granted = await _permissionsService.EnsureLocationPermissionsAsync(requireBackground: true);
@@ -96,6 +116,20 @@ public partial class PermissionsSetupView : ContentPage
         StatusLabel.Text = granted
             ? "Location (Always): granted"
             : "Location: denied. Tap the row to open Settings.";
+    }
+
+    // Shared OFF-path: clean up local state for the permission being dropped, then hand the user
+    // to App Settings (the only place Android lets a runtime permission actually be revoked).
+    private async Task HandlePermissionRevokeAsync(string label, bool stopTracking)
+    {
+        if (stopTracking)
+        {
+            try { await _locationService.StopTrackingAsync(); }
+            catch (Exception ex) { BlackBoxLogger.RecordHandledException(ex, "[PermissionsSetupView.HandlePermissionRevokeAsync]"); }
+        }
+
+        StatusLabel.Text = $"{label}: opening Settings so you can revoke access…";
+        PermissionsService.OpenAppSettings();
     }
 
     private void OnBluetoothSwitchToggled(object? sender, ToggledEventArgs e)

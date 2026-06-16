@@ -1,0 +1,37 @@
+<!--
+  ILLink/Trimmer root descriptor for Alarma.
+  Prevents the IL trimmer from stripping types that are accessed via reflection at runtime.
+
+  WHY THIS FILE EXISTS
+  ====================
+  sqlite-net-pcl maps SQLite columns to C# properties using Type.GetProperties() at runtime.
+  Under PublishTrimmed + TrimMode=full, the trimmer cannot see those reflection calls and
+  will dead-code-eliminate the model property setters, causing silent data corruption or
+  MissingMemberException at runtime.  Declaring preserve="all" on the Models namespace keeps
+  every public constructor, property getter/setter, and field in the assembly intact.
+
+  SQLitePCLRaw.bundle_e_sqlcipher loads its native SQLCipher provider via reflection on the
+  Batteries_V2 class; preserving that assembly prevents a NullReferenceException on first DB
+  open in a trimmed build.
+-->
+<linker>
+
+  <!-- AlarmaApp.Models — all ORM-mapped entities must survive trimming -->
+  <assembly fullname="AlarmaApp">
+    <namespace fullname="AlarmaApp.Models" preserve="all" />
+  </assembly>
+
+  <!--
+    sqlite-net-pcl: TableMapping uses reflection to enumerate column properties.
+    Preserving the whole assembly is intentional — it is small and entirely reflective.
+  -->
+  <assembly fullname="SQLite-net" preserve="all" />
+
+  <!--
+    SQLitePCLRaw provider: Batteries_V2.Init() resolves the native library bridge
+    via reflection; stripping it breaks database initialization.
+  -->
+  <assembly fullname="SQLitePCLRaw.batteries_v2" preserve="all" />
+  <assembly fullname="SQLitePCLRaw.provider.e_sqlcipher" preserve="all" />
+
+</linker>

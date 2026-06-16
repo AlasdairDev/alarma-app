@@ -26,6 +26,9 @@ public partial class EmergencyView : ContentPage
     {
         Content.Opacity = 0;
         base.OnAppearing();
+        // Start with a clean status line so the inline form feedback shows only contact-related
+        // messages produced on this screen, not a stale one carried over from another tab.
+        _controller.ClearLastAction();
         Content.FadeTo(1, 220, Easing.CubicOut);
         _controller.SosDispatched += OnSosDispatched;
         _controller.SmsDenied += OnSmsDenied;

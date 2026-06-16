@@ -8,7 +8,6 @@ public class PreferencesService
     private const string AlarmLeadMinutesKey = "alarm_lead_minutes";
     private const string VibrationOnlyKey = "vibration_only";
     private const string VibrationIntensityKey = "vibration_intensity";
-    private const string VehicleTypeKey = "vehicle_type";
     private const string OnboardingCompleteKey = "onboarding_complete";
     private const string LastBackupUtcKey = "last_backup_utc";
     private const string HasSeenTutorialKey = "has_seen_tutorial";
@@ -38,12 +37,6 @@ public class PreferencesService
     {
         get => Preferences.Get(VibrationIntensityKey, "Medium");
         set => Preferences.Set(VibrationIntensityKey, value);
-    }
-
-    public string VehicleType
-    {
-        get => Preferences.Get(VehicleTypeKey, "Jeepney");
-        set => Preferences.Set(VehicleTypeKey, value);
     }
 
     public bool IsOnboardingComplete

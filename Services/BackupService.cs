@@ -142,7 +142,6 @@ public class BackupService
                 (h.EndedAt == null || (h.EndedAt >= h.StartedAt && h.EndedAt <= maxDate)) &&
                 h.DistanceMeters is >= 0 and <= MaxDistanceMeters &&
                 h.MaxAlarmStageReached is >= 0 and <= 3 &&
-                h.SnoozeCount is >= 0 and <= 100 &&
                 (h.DestinationName == null || h.DestinationName.Length <= MaxDisplayNameLength) &&
                 (h.Summary == null || h.Summary.Length <= MaxSummaryLength) &&
                 (h.DestinationLatitude == null ||

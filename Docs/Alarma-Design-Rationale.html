@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Alarma — Technical Design Rationale</title>
+<style>
+  @page {
+    size: A4;
+    margin: 22mm 18mm 20mm 18mm;
+    @bottom-center { content: counter(page); }
+  }
+
+  :root {
+    --ink:      #1c1830;
+    --muted:    #555068;
+    --accent:   #5b3fb0;
+    --accent-2: #7d5fd6;
+    --line:     #e2dcef;
+    --soft:     #f6f3fc;
+    --code-bg:  #f4f1fa;
+  }
+
+  * { box-sizing: border-box; }
+
+  html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+
+  body {
+    font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+    color: var(--ink);
+    font-size: 10.6pt;
+    line-height: 1.55;
+    margin: 0;
+  }
+
+  /* ---------- Cover ---------- */
+  .cover {
+    height: 247mm;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    page-break-after: always;
+    background: linear-gradient(150deg, #1a0f35 0%, #3a2275 55%, #5b3fb0 100%);
+    color: #fff;
+    margin: -22mm -18mm 0 -18mm;
+    padding: 0 24mm;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  .cover .eyebrow {
+    text-transform: uppercase;
+    letter-spacing: 4px;
+    font-size: 10pt;
+    color: #d6c8ff;
+    margin-bottom: 18px;
+  }
+  .cover h1 {
+    font-size: 40pt;
+    line-height: 1.05;
+    margin: 0 0 10px 0;
+    font-weight: 700;
+  }
+  .cover .sub {
+    font-size: 14pt;
+    color: #e7ddff;
+    font-weight: 400;
+    max-width: 150mm;
+    line-height: 1.4;
+  }
+  .cover .rule {
+    width: 70px; height: 4px; background: #b79bff;
+    margin: 26px 0;
+    border-radius: 2px;
+  }
+  .cover .meta {
+    margin-top: 40px;
+    font-size: 10.5pt;
+    color: #d9ccff;
+    line-height: 1.9;
+  }
+  .cover .meta strong { color: #fff; font-weight: 600; }
+
+  /* ---------- Headings ---------- */
+  h2 {
+    font-size: 17pt;
+    color: var(--accent);
+    margin: 30px 0 4px 0;
+    padding-bottom: 6px;
+    border-bottom: 2px solid var(--line);
+    page-break-after: avoid;
+  }
+  h2 .num {
+    color: var(--accent-2);
+    font-weight: 700;
+    margin-right: 10px;
+  }
+  h3 {
+    font-size: 12pt;
+    color: var(--ink);
+    margin: 20px 0 4px 0;
+    page-break-after: avoid;
+  }
+  p { margin: 7px 0; }
+  .lead { color: var(--muted); font-size: 11pt; }
+
+  strong { color: var(--ink); }
+  code {
+    font-family: "Consolas", "SF Mono", monospace;
+    background: var(--code-bg);
+    color: #5a3aa6;
+    padding: 1px 5px;
+    border-radius: 4px;
+    font-size: 9.2pt;
+  }
+
+  /* ---------- Decision blocks ---------- */
+  .decision {
+    border: 1px solid var(--line);
+    border-left: 4px solid var(--accent-2);
+    border-radius: 8px;
+    padding: 12px 16px;
+    margin: 14px 0;
+    background: #fff;
+    page-break-inside: avoid;
+  }
+  .decision h3 { margin-top: 0; }
+  .decision .choice {
+    display: inline-block;
+    background: var(--soft);
+    color: var(--accent);
+    font-weight: 600;
+    font-size: 8.6pt;
+    letter-spacing: .3px;
+    text-transform: uppercase;
+    padding: 3px 9px;
+    border-radius: 20px;
+    margin-bottom: 6px;
+  }
+  .decision .why  { margin: 4px 0; }
+  .decision .why b { color: var(--accent); }
+
+  /* ---------- Tables ---------- */
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 12px 0;
+    font-size: 9.6pt;
+    page-break-inside: avoid;
+  }
+  th {
+    background: var(--accent);
+    color: #fff;
+    text-align: left;
+    padding: 8px 10px;
+    font-weight: 600;
+  }
+  td {
+    padding: 7px 10px;
+    border-bottom: 1px solid var(--line);
+    vertical-align: top;
+  }
+  tr:nth-child(even) td { background: var(--soft); }
+
+  /* ---------- Callout ---------- */
+  .callout {
+    background: var(--soft);
+    border-radius: 8px;
+    padding: 12px 16px;
+    margin: 14px 0;
+    font-size: 10pt;
+    color: var(--muted);
+    page-break-inside: avoid;
+  }
+  .callout b { color: var(--accent); }
+
+  ul { margin: 6px 0; padding-left: 20px; }
+  li { margin: 3px 0; }
+
+  .section { page-break-inside: auto; }
+  .pb { page-break-before: always; }
+
+  footer {
+    margin-top: 34px;
+    padding-top: 12px;
+    border-top: 1px solid var(--line);
+    font-size: 8.6pt;
+    color: #9a93ad;
+    text-align: center;
+  }
+</style>
+</head>
+<body>
+
+<!-- ===================== COVER ===================== -->
+<section class="cover">
+  <div class="eyebrow">Technical Design Rationale</div>
+  <h1>Alarma</h1>
+  <div class="sub">Adaptive Anti-Oversleep Destination Alarm &amp; Emergency Safety System — the reasoning behind every technology and architecture decision.</div>
+  <div class="rule"></div>
+  <div class="meta">
+    <strong>Project:</strong> Capstone &amp; Application Development<br>
+    <strong>Program:</strong> BS Information Technology — Polytechnic University of the Philippines<br>
+    <strong>Development Team:</strong> Roje Alasdair T. Evangelista, Ababao, Barbin, Lacanilao<br>
+    <strong>Platform:</strong> Android (.NET MAUI, .NET 9) &nbsp;·&nbsp; <strong>Version:</strong> 1.0.0<br>
+    <strong>Document:</strong> Design &amp; Technology Justification
+  </div>
+</section>
+
+<!-- ===================== 1 ===================== -->
+<section class="section">
+  <h2><span class="num">1</span>Purpose of This Document</h2>
+  <p class="lead">This companion to the README answers a single question for every major decision in Alarma: <em>why this, and not the alternative?</em> It documents the reasoning behind the platform, the architecture, the data and security choices, and the production build — so reviewers can evaluate the engineering judgement, not just the result.</p>
+
+  <div class="callout">
+    <b>Guiding principles.</b> Three constraints shaped nearly every choice below: the app must work <b>offline-first</b> (commuters lose signal underground and on long routes), it must be <b>privacy-first</b> by law (Republic Act No. 10173, the Data Privacy Act of 2012), and it must remain <b>diagnosable in the field</b> where no debugger is attached.
+  </div>
+</section>
+
+<!-- ===================== 2 ===================== -->
+<section class="section">
+  <h2><span class="num">2</span>Platform &amp; Framework</h2>
+
+  <div class="decision">
+    <h3>Why .NET MAUI on .NET 9</h3>
+    <span class="choice">Chosen: .NET MAUI</span>
+    <p class="why"><b>Why:</b> A single C# codebase compiles to a native Android app with direct access to platform APIs (foreground services, <code>SmsManager</code>, Keystore) that the safety features depend on. The team's existing C#/.NET fluency meant no new language ramp-up, and .NET 9 brings mature AOT and IL-trimming used for the hardened Release build.</p>
+    <p class="why"><b>Over the alternatives:</b> Flutter/React Native would have meant a new language and a plugin bridge for every native security call; native Kotlin would have delivered one platform at a higher cost with no benefit, since iOS is explicitly out of scope.</p>
+  </div>
+
+  <div class="decision">
+    <h3>Why Android-only (API 26+)</h3>
+    <span class="choice">Chosen: net9.0-android</span>
+    <p class="why"><b>Why:</b> The target users — Metro Manila jeepney, UV Express, and city-bus commuters — are overwhelmingly on budget and mid-range Android devices. API 26 (Android 8.0) as the floor covers the vast majority of in-use handsets while still giving access to modern foreground-service and notification APIs. iOS, web, and desktop are deliberately out of scope to keep the safety surface small and well-tested.</p>
+  </div>
+
+  <div class="decision">
+    <h3>Why the MVC architecture</h3>
+    <span class="choice">Chosen: Model–View–Controller</span>
+    <p class="why"><b>Why:</b> A clear separation between data models, XAML views, and controllers keeps the security-critical logic (validation, crypto, location handling) in testable, UI-independent classes. That separation is what makes the standalone xUnit test suite possible without any Android/MAUI dependency.</p>
+  </div>
+</section>
+
+<!-- ===================== 3 ===================== -->
+<section class="section">
+  <h2><span class="num">3</span>Data Storage &amp; Persistence</h2>
+
+  <div class="decision">
+    <h3>Why SQLCipher over plain SQLite</h3>
+    <span class="choice">Chosen: sqlite-net-pcl + SQLCipher (AES-256)</span>
+    <p class="why"><b>Why:</b> All structured data — trip history, saved routes, emergency contacts, geocode cache, behavioral profiles — is sensitive. SQLCipher encrypts the entire database file at rest with AES-256, so a lost, stolen, or rooted device yields nothing readable. <code>sqlite-net-pcl</code> gives a clean ORM with <b>parameterized queries only</b>, eliminating SQL-injection surface.</p>
+    <p class="why"><b>Over the alternatives:</b> Plain SQLite stores data in cleartext on disk; a flat JSON/Preferences store offers neither encryption nor query integrity.</p>
+  </div>
+
+  <div class="decision">
+    <h3>Why split Preferences vs. SecureStorage</h3>
+    <span class="choice">Chosen: Preferences for settings, Keystore for secrets</span>
+    <p class="why"><b>Why:</b> Non-sensitive UI settings live in fast MAUI <code>Preferences</code>; every cryptographic key lives in the <b>Android Keystore via <code>SecureStorage</code></b>. No key is ever written to Preferences or hardcoded in the binary, so decompiling the APK reveals no secrets.</p>
+  </div>
+
+  <div class="callout">
+    <b>One key, one home.</b> The database, backup, and black-box keys are each 256-bit, generated by <code>RandomNumberGenerator</code>, and stored only in the Keystore (slots <code>alarma_db_key_v1</code>, <code>alarma_backup_key_v2</code>, <code>alarma_blackbox_key_v2</code>). This single rule — random keys, Keystore-resident, never hardcoded — underpins the entire cryptographic story.
+  </div>
+</section>
+
+<!-- ===================== 4 ===================== -->
+<section class="section pb">
+  <h2><span class="num">4</span>Security &amp; Cryptography</h2>
+  <p class="lead">Security was a primary design constraint, not an afterthought. The threat model assumes an attacker with physical or filesystem access to the device.</p>
+
+  <div class="decision">
+    <h3>Why AES-256-GCM everywhere encryption is local</h3>
+    <span class="choice">Chosen: AES-256-GCM (AesGcm)</span>
+    <p class="why"><b>Why:</b> GCM is <b>authenticated</b> encryption — it provides confidentiality <em>and</em> integrity in one pass. Any tampering with the ciphertext, nonce, or tag makes decryption fail before a single byte is returned. Both the encrypted backup and the forensic black-box log verify the GCM tag <b>before</b> any JSON is deserialized, closing the door on data-integrity attacks (OWASP A08).</p>
+    <p class="why"><b>Over the alternatives:</b> AES-CBC would require a separate HMAC step and is easy to get wrong; using the platform's <code>System.Security.Cryptography</code> avoids hand-rolled crypto entirely.</p>
+  </div>
+
+  <div class="decision">
+    <h3>Why a Forensic Black Box Logger</h3>
+    <span class="choice">Chosen: encrypted, Keystore-backed crash log</span>
+    <p class="why"><b>Why:</b> Faults happen in the field — on a moving jeepney at night — where no debugger or ADB exists, and a Release build emits no <code>Debug.WriteLine</code> output. The logger seals crashes with AES-256-GCM, then on next launch decrypts the prior fault to a readable report and deletes the source (consumed once). The key is preloaded at startup so the crash handler can encrypt synchronously without awaiting, and the writer never throws — there is no crash-on-crash loop.</p>
+  </div>
+
+  <div class="decision">
+    <h3>Why validate-before-clear on restore</h3>
+    <span class="choice">Chosen: defensive restore design</span>
+    <p class="why"><b>Why:</b> A naïve restore that wipes the database first could destroy live user data if the backup is corrupt. Alarma validates <b>every</b> record — length caps, Philippine phone-number format, coordinate bounds, quantity caps — before touching the existing database. A tampered or empty backup therefore cannot silently erase a user's contacts or routes (OWASP A04).</p>
+  </div>
+
+  <h3>How the controls map to OWASP</h3>
+  <table>
+    <tr><th>OWASP category</th><th>Why our control addresses it</th></tr>
+    <tr><td>A02 Cryptographic Failures</td><td>AES-256-GCM + SQLCipher AES-256; all keys random and Keystore-resident; no hardcoded keys.</td></tr>
+    <tr><td>A03 Injection</td><td>Parameterized SQL only; map labels via <code>JsonSerializer</code>; search input URL-encoded; phone numbers regex-validated.</td></tr>
+    <tr><td>A05 Security Misconfiguration</td><td><code>usesCleartextTraffic="false"</code>, <code>allowBackup="false"</code>, foreground service <code>Exported=false</code>.</td></tr>
+    <tr><td>A08 Data Integrity Failures</td><td>GCM authentication tags verified before any deserialization.</td></tr>
+    <tr><td>A09 Logging Failures</td><td>Encrypted forensic logging that stays readable in Release; handled exceptions routed, not swallowed.</td></tr>
+  </table>
+</section>
+
+<!-- ===================== 5 ===================== -->
+<section class="section">
+  <h2><span class="num">5</span>Location, Mapping &amp; Geocoding</h2>
+
+  <div class="decision">
+    <h3>Why an Android foreground service for tracking</h3>
+    <span class="choice">Chosen: foreground Service, Exported=false</span>
+    <p class="why"><b>Why:</b> The destination alarm must keep computing distance even when the screen is off and the app is backgrounded — exactly what Android kills a normal background task for. A foreground <code>Service</code> with <code>ForegroundServiceType=TypeLocation</code> (required from API 34) keeps tracking alive; <code>Exported=false</code> means no other app can start or bind it. Coordinates are held in-memory as immutable values and <b>never logged or persisted</b>.</p>
+  </div>
+
+  <div class="decision">
+    <h3>Why a PARTIAL_WAKE_LOCK</h3>
+    <span class="choice">Chosen: scoped wake lock</span>
+    <p class="why"><b>Why:</b> Aggressive OEM battery managers (common on the budget phones our users carry) throttle GPS delivery when the CPU sleeps, which would make the alarm miss the stop. A <code>PARTIAL_WAKE_LOCK</code> is held <b>only</b> while location providers are registered and released on stop — keeping delivery reliable without leaking the lock or draining the battery.</p>
+  </div>
+
+  <div class="decision">
+    <h3>Why Leaflet + CartoDB in a WebView, not a native map SDK</h3>
+    <span class="choice">Chosen: Leaflet.js, no API key</span>
+    <p class="why"><b>Why:</b> Google Maps SDK requires an API key, a billing account, and sends usage telemetry — at odds with the no-backend, privacy-first design. Leaflet with CartoDB dark tiles renders in a MAUI <code>WebView</code> under a strict Content-Security-Policy, needs <b>no API key and no personal identifiers</b>, and the dark theme suits late-night use.</p>
+  </div>
+
+  <div class="decision">
+    <h3>Why Photon primary + Nominatim fallback + local aliases</h3>
+    <span class="choice">Chosen: layered open geocoding</span>
+    <p class="why"><b>Why:</b> Destination search is the only feature that needs the network, so it uses free, open services with no keys. Photon is fast and typo-tolerant; Nominatim is the fallback when Photon misses; and a client-side Philippine alias dictionary resolves local landmark names (e.g., colloquial stop names) that neither service indexes well. Geocode results are cached in the encrypted database to cut repeat lookups.</p>
+  </div>
+</section>
+
+<!-- ===================== 6 ===================== -->
+<section class="section">
+  <h2><span class="num">6</span>Emergency SOS</h2>
+  <div class="decision">
+    <h3>Why cellular SMS, not an internet push</h3>
+    <span class="choice">Chosen: Android SmsManager</span>
+    <p class="why"><b>Why:</b> An emergency is exactly when there is no Wi-Fi and no mobile data — but cellular SMS still works. Sending live coordinates directly through Android <code>SmsManager</code> means SOS functions fully offline and <b>never passes through any Alarma server</b>, so there is no backend to fail, leak, or subpoena.</p>
+    <p class="why"><b>Safeguards:</b> a 2-second press-and-hold prevents accidental triggers (timer cleared on page exit), and a 30-second cooldown prevents runaway sending.</p>
+  </div>
+</section>
+
+<!-- ===================== 7 ===================== -->
+<section class="section pb">
+  <h2><span class="num">7</span>Interface, Iconography &amp; Layout Engineering</h2>
+  <p class="lead">The UI is judged on a moving vehicle, one-handed, often at night. These decisions are about legibility, predictable touch targets, and assets that scale cleanly across the wide range of screen densities our commuter devices ship with.</p>
+
+  <div class="decision">
+    <h3>Why Material Symbols font ligatures over raw emojis</h3>
+    <span class="choice">Chosen: MaterialSymbolsOutlined.ttf</span>
+    <p class="why"><b>Why:</b> The interface originally leaned on raw system emojis for glyphs like search, location, and the favorite star. Those render differently on every OEM skin and Android version — wrong weight, wrong color, sometimes a low-fidelity bitmap — so the UI looked inconsistent across the exact budget handsets our users carry. We migrated every icon to native Google <b>Material Symbols</b> font ligatures, bundled as <code>MaterialSymbolsOutlined.ttf</code> and registered once in <code>MauiProgram.cs</code> under the <code>MaterialSymbols</code> font alias. A glyph is now just text (<code>Text="location_on"</code>), so it inherits font size and color, stays vector-sharp at any density, and looks identical on every device.</p>
+    <p class="why"><b>Over the alternatives:</b> Per-icon PNGs would multiply asset count across density buckets and still rasterize; emojis surrender all control of weight and color to the platform.</p>
+  </div>
+
+  <div class="decision">
+    <h3>Why the onboarding layers split background from touch targets</h3>
+    <span class="choice">Chosen: back-layer Grid + InputTransparent</span>
+    <p class="why"><b>Why:</b> The tutorial illustrations first shipped in an aspect-fit box, which letterboxed them with black bars and — worse — left the image's container sitting over the Skip / Next / Get Started controls, swallowing every tap. The fix isolates each illustration into the back layer of a <code>Grid</code> with <code>Aspect="AspectFill"</code> so it fills the canvas edge-to-edge with no bars, and marks it <code>InputTransparent="True"</code> so the OS ignores it entirely for hit-testing. Foreground text and the navigation controls live in later layers with an explicit high <code>ZIndex</code>, so they always render on top and keep an unobstructed touch vector.</p>
+    <p class="why"><b>Over the alternatives:</b> Stacking everything in one flow layout is what caused the occlusion; absolute-positioning the buttons over an image would have re-broken on every new aspect ratio.</p>
+  </div>
+
+  <div class="decision">
+    <h3>Why a standardized gold-yellow favorite accent</h3>
+    <span class="choice">Chosen: Material Gold-Yellow #FFC107</span>
+    <p class="why"><b>Why:</b> The favorite star in the saved-location list rendered in the same muted purple as the rest of the theme, so it read as decoration rather than a state the user could recognize and act on. Standardizing the star on Material Design gold-yellow (<code>#FFC107</code>), applied directly in the list item template so it colors every entry, gives a high-contrast, universally understood "favorited" signal that survives the dark theme and dim, glare-prone commute lighting.</p>
+  </div>
+</section>
+
+<!-- ===================== 8 ===================== -->
+<section class="section">
+  <h2><span class="num">8</span>Production Build Hardening</h2>
+  <p class="lead">The Release configuration does double duty: it shrinks and speeds up the APK <em>and</em> it raises the cost of reverse-engineering.</p>
+  <table>
+    <tr><th>Setting</th><th>Why we enabled it</th></tr>
+    <tr><td><code>RunAOTCompilation</code></td><td>Compiles managed IL to native code, so there is no IL left to decompile in the shipped APK.</td></tr>
+    <tr><td><code>AndroidEnableProfiledAot</code></td><td>Profile-guided AOT prioritizes hot paths (alarm trigger, GPS callback, geocoding) for faster cold start.</td></tr>
+    <tr><td><code>PublishTrimmed</code> / <code>TrimMode=full</code></td><td>Removes unreferenced code across the whole dependency closure — smaller binary, less dead-code attack surface.</td></tr>
+    <tr><td><code>AndroidLinkMode=SdkOnly</code></td><td>Strips unused SDK/AndroidX code at the DEX level.</td></tr>
+    <tr><td><code>DebugSymbols=false</code></td><td>No symbols or sequence points, so decompilers cannot map native code back to source lines.</td></tr>
+  </table>
+  <div class="callout">
+    <b>Why <code>TrimmerRoots.xml</code> exists.</b> The IL trimmer cannot see types created by reflection. Because the SQLite ORM instantiates model classes reflectively, the <code>AlarmaApp.Models</code> namespace and the SQLite assemblies are explicitly rooted so full trimming does not delete classes that are only ever referenced at runtime.
+  </div>
+</section>
+
+<!-- ===================== 9 ===================== -->
+<section class="section">
+  <h2><span class="num">9</span>Testing Strategy</h2>
+  <div class="decision">
+    <h3>Why a separate net9.0 xUnit project</h3>
+    <span class="choice">Chosen: AlarmaApp.Tests (plain net9.0)</span>
+    <p class="why"><b>Why:</b> The security-critical logic — phone-number validation, coordinate bounding, alarm-sound whitelisting, lead-time clamping, backup restore caps, AES-GCM length checks, and the speed-based multi-stage alarm — must be verifiable without spinning up an Android emulator. Targeting plain <code>net9.0</code> with no MAUI dependency keeps the suite fast and runnable in CI, which is only possible because MVC kept that logic out of the views.</p>
+  </div>
+</section>
+
+<!-- ===================== 10 ===================== -->
+<section class="section">
+  <h2><span class="num">10</span>Summary of Decisions</h2>
+  <table>
+    <tr><th>Area</th><th>Choice</th><th>Core reason</th></tr>
+    <tr><td>Framework</td><td>.NET MAUI / .NET 9</td><td>One C# codebase, native API access, mature AOT/trimming.</td></tr>
+    <tr><td>Platform</td><td>Android API 26+</td><td>Matches the target commuters' devices; small safety surface.</td></tr>
+    <tr><td>Database</td><td>SQLCipher AES-256</td><td>All local data encrypted at rest; parameterized queries.</td></tr>
+    <tr><td>Secrets</td><td>Android Keystore</td><td>Random keys, never hardcoded or in Preferences.</td></tr>
+    <tr><td>Local crypto</td><td>AES-256-GCM</td><td>Authenticated encryption; tag verified before deserialize.</td></tr>
+    <tr><td>Tracking</td><td>Foreground Service</td><td>Survives backgrounding; private; coordinates never persisted.</td></tr>
+    <tr><td>Maps</td><td>Leaflet + CartoDB</td><td>No API key, no telemetry, privacy-first.</td></tr>
+    <tr><td>Geocoding</td><td>Photon + Nominatim + aliases</td><td>Free, keyless, locally aware, cached.</td></tr>
+    <tr><td>SOS</td><td>Cellular SMS</td><td>Works offline; no backend to fail or leak.</td></tr>
+    <tr><td>Iconography</td><td>Material Symbols font</td><td>Vector-sharp at any density; identical across OEMs.</td></tr>
+    <tr><td>Onboarding layout</td><td>AspectFill back-layer + InputTransparent</td><td>Full-bleed art with unobstructed touch targets.</td></tr>
+    <tr><td>Favorite accent</td><td>Gold-yellow #FFC107</td><td>High-contrast, recognizable favorited state.</td></tr>
+    <tr><td>Release</td><td>AOT + full trim</td><td>Smaller, faster, harder to reverse-engineer.</td></tr>
+  </table>
+
+  <footer>
+    Alarma — Technical Design Rationale · BS Information Technology, Polytechnic University of the Philippines · Version 1.0.0<br>
+    Companion to README.md · This document explains the reasoning behind each technology and architecture decision.
+  </footer>
+</section>
+
+</body>
+</html>

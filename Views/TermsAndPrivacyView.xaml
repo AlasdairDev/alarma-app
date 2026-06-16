@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="AlarmaApp.Views.TermsAndPrivacyView"
+             Shell.NavBarIsVisible="False"
+             Shell.TabBarIsVisible="False"
+             BackgroundColor="#1A0F35">
+
+    <Grid HorizontalOptions="Fill" VerticalOptions="Fill"
+          RowDefinitions="Auto,Auto,*">
+
+        <!-- Header -->
+        <Grid Grid.Row="0"
+              ColumnDefinitions="Auto,*"
+              Padding="16,52,16,16">
+            <Label Grid.Column="0"
+                   Text="close" FontFamily="MaterialSymbols"
+                   FontSize="22"
+                   TextColor="#C8B8E8"
+                   VerticalOptions="Center"
+                   Padding="0,0,16,0">
+                <Label.GestureRecognizers>
+                    <TapGestureRecognizer Tapped="OnCloseTapped" />
+                </Label.GestureRecognizers>
+            </Label>
+            <Label Grid.Column="1"
+                   x:Name="TitleLabel"
+                   Text="Terms &amp; Conditions"
+                   FontSize="20"
+                   FontAttributes="Bold"
+                   TextColor="White"
+                   VerticalOptions="Center" />
+        </Grid>
+
+        <!-- Tab selector -->
+        <Grid Grid.Row="1"
+              ColumnDefinitions="*,*"
+              Margin="16,0,16,12"
+              ColumnSpacing="8">
+            <Border x:Name="TcTabBorder"
+                    Grid.Column="0"
+                    BackgroundColor="#7B3FA0"
+                    StrokeShape="RoundRectangle 20"
+                    Stroke="Transparent"
+                    Padding="0,10">
+                <Label Text="Terms &amp; Conditions"
+                       FontSize="13"
+                       FontAttributes="Bold"
+                       TextColor="White"
+                       HorizontalOptions="Center" />
+                <Border.GestureRecognizers>
+                    <TapGestureRecognizer Tapped="OnTcTabTapped" />
+                </Border.GestureRecognizers>
+            </Border>
+            <Border x:Name="PrivacyTabBorder"
+                    Grid.Column="1"
+                    BackgroundColor="#3D2B5E"
+                    StrokeShape="RoundRectangle 20"
+                    Stroke="Transparent"
+                    Padding="0,10">
+                <Label Text="Privacy Policy"
+                       FontSize="13"
+                       FontAttributes="Bold"
+                       TextColor="#C8B8E8"
+                       HorizontalOptions="Center" />
+                <Border.GestureRecognizers>
+                    <TapGestureRecognizer Tapped="OnPrivacyTabTapped" />
+                </Border.GestureRecognizers>
+            </Border>
+        </Grid>
+
+        <!-- Scrollable content (populated from code-behind) -->
+        <ScrollView Grid.Row="2" x:Name="ContentScroll">
+            <VerticalStackLayout x:Name="ContentLayout"
+                                 Padding="20,0,20,48"
+                                 Spacing="0" />
+        </ScrollView>
+
+    </Grid>
+</ContentPage>

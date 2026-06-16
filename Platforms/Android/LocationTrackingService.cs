@@ -15,7 +15,6 @@ using Android.Content;
 using Android.Locations;
 using Android.OS;
 using Android.Runtime;
-using System.Globalization;
 using System.Security;
 
 // Alias to avoid ambiguity between AlarmaApp.Resource and Android.Resource
@@ -28,17 +27,18 @@ namespace AlarmaApp.Platforms.Android;
     ForegroundServiceType = global::Android.Content.PM.ForegroundService.TypeLocation)]
 public class LocationTrackingService : Service, ILocationListener
 {
-    private const int NotificationId = 1001;
-    private const string ChannelId = "alarma_location_tracking";
+    // Shared so IAlarmNotificationService can update this same ongoing notification in place.
+    internal const int TrackingNotificationId = 1001;
+    internal const string TrackingChannelId = "alarma_location_tracking";
     private const long LocationUpdateIntervalMillis = 5000;
     private const float MinDistanceMetersGps = 5f;
     private const float MinDistanceMetersNetwork = 10f;
-    private const double EarthRadiusMeters = 6_371_000;
+    // Drop fixes less accurate than this (aggressive cell-tower bounce) so they cannot move the
+    // live position or corrupt the distance the foreground shows. 0 = provider reported none.
+    private const float MaxAcceptableAccuracyMeters = 75f;
     private LocationManager? _locationManager;
     private PowerManager.WakeLock? _wakeLock;
     private bool _isStarted;
-    private LocationSnapshot? _lastLocation;
-    private double _totalDistanceMeters;
 
     public static event EventHandler<LocationSnapshot>? LocationUpdated;
 
@@ -47,7 +47,7 @@ public class LocationTrackingService : Service, ILocationListener
     public override void OnCreate()
     {
         base.OnCreate();
-        StartForeground(NotificationId, BuildNotification("Tracking trip location in the background."));
+        StartForeground(TrackingNotificationId, BuildNotification("Acquiring GPS…"));
         StartLocationUpdates();
     }
 
@@ -76,16 +76,20 @@ public class LocationTrackingService : Service, ILocationListener
     {
         var timestamp = DateTimeOffset.FromUnixTimeMilliseconds(location.Time);
         var accuracy = location.HasAccuracy ? location.Accuracy : 0f;
-        var snapshot = new LocationSnapshot(location.Latitude, location.Longitude, accuracy, timestamp);
-        if (_lastLocation is not null)
+
+        // Gate out low-confidence fixes so cell-tower bounce can't move the live position or the
+        // distance. accuracy == 0 means the provider reported none → accept.
+        if (accuracy > MaxAcceptableAccuracyMeters)
         {
-            _totalDistanceMeters += CalculateDistanceMeters(_lastLocation, snapshot);
+            return;
         }
 
-        _lastLocation = snapshot;
+        var snapshot = new LocationSnapshot(location.Latitude, location.Longitude, accuracy, timestamp);
         LastKnownLocation = snapshot;
+
+        // Single source of truth: the foreground (HomeController) owns distance computation and
+        // the ongoing notification text. This service only publishes the raw fix.
         LocationUpdated?.Invoke(this, snapshot);
-        UpdateNotification(snapshot);
     }
 
     public void OnProviderDisabled(string provider) { }
@@ -129,8 +133,6 @@ public class LocationTrackingService : Service, ILocationListener
                 return;
             }
 
-            _lastLocation = null;
-            _totalDistanceMeters = 0;
             _isStarted = true;
             AcquireWakeLock();
         }
@@ -150,24 +152,8 @@ public class LocationTrackingService : Service, ILocationListener
         _locationManager.RemoveUpdates(this);
         _locationManager = null;
         _isStarted = false;
-        _lastLocation = null;
-        _totalDistanceMeters = 0;
         LastKnownLocation = null;
         ReleaseWakeLock();
-    }
-
-    private void UpdateNotification(LocationSnapshot snapshot)
-    {
-        var manager = GetSystemService(NotificationService) as NotificationManager;
-        if (manager is null)
-        {
-            return;
-        }
-
-        var distanceKm = _totalDistanceMeters / 1000.0;
-        var timestamp = snapshot.Timestamp.ToOffset(TimeSpan.FromHours(8)).ToString("hh:mm tt", CultureInfo.InvariantCulture);
-        var contentText = $"Tracking active · {distanceKm:F2} km · last fix {timestamp}.";
-        manager.Notify(NotificationId, BuildNotification(contentText));
     }
 
     private Notification BuildNotification(string contentText)
@@ -175,10 +161,10 @@ public class LocationTrackingService : Service, ILocationListener
         var manager = GetSystemService(NotificationService) as NotificationManager;
         if (manager is not null && Build.VERSION.SdkInt >= BuildVersionCodes.O)
         {
-            if (manager.GetNotificationChannel(ChannelId) is null)
+            if (manager.GetNotificationChannel(TrackingChannelId) is null)
             {
                 var channel = new NotificationChannel(
-                    ChannelId,
+                    TrackingChannelId,
                     "Alarma Trip Tracking",
                     NotificationImportance.Low)
                 {
@@ -189,7 +175,7 @@ public class LocationTrackingService : Service, ILocationListener
         }
 
         var builder = Build.VERSION.SdkInt >= BuildVersionCodes.O
-            ? new Notification.Builder(this, ChannelId)
+            ? new Notification.Builder(this, TrackingChannelId)
             : new Notification.Builder(this);
 
         return builder
@@ -214,22 +200,4 @@ public class LocationTrackingService : Service, ILocationListener
             _wakeLock.Release();
         _wakeLock = null;
     }
-
-    private static double CalculateDistanceMeters(LocationSnapshot start, LocationSnapshot end)
-    {
-        var lat1 = DegreesToRadians(start.Latitude);
-        var lat2 = DegreesToRadians(end.Latitude);
-        var deltaLat = DegreesToRadians(end.Latitude - start.Latitude);
-        var deltaLon = DegreesToRadians(end.Longitude - start.Longitude);
-
-        var sinHalfDeltaLat = Math.Sin(deltaLat / 2);
-        var sinHalfDeltaLon = Math.Sin(deltaLon / 2);
-        var a = sinHalfDeltaLat * sinHalfDeltaLat
-                + Math.Cos(lat1) * Math.Cos(lat2)
-                * sinHalfDeltaLon * sinHalfDeltaLon;
-        var c = 2 * Math.Atan2(Math.Sqrt(a), Math.Sqrt(1 - a));
-        return EarthRadiusMeters * c;
-    }
-
-    private static double DegreesToRadians(double degrees) => degrees * Math.PI / 180.0;
 }
