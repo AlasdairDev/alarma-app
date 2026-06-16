@@ -1,11 +1,9 @@
-// Security-centric unit tests — boundary edge cases for all validation logic in Alarma.
-// These tests run on plain net9.0 (no Android/MAUI SDK required) and exercise the same
-// regex patterns, clamping rules, and whitelist sets used in the production app.
-//
-// OWASP Top 10 coverage:
-//   A03 Injection: Philippine phone regex, coordinate bounds, name length caps, sound whitelist
-//   A04 Insecure Design: Lead-time clamping, backup restore caps
-//   A08 Data Integrity: AES-GCM format checks, backup field validation
+// Unit tests for all the validation logic that keeps Alarma safe — mostly the boundary/edge cases.
+// They run on plain net9.0 with no Android or MAUI dependency, so they're fast and exercise the exact
+// same regexes, clamping rules, and whitelists the real app uses. What they cover:
+//   - input validation: Philippine phone regex, coordinate bounds, name length caps, sound whitelist
+//   - sensible defaults: lead-time clamping and the backup restore caps
+//   - data integrity: AES-GCM length/format checks and backup field validation
 
 using System.Text.RegularExpressions;
 using Xunit;

@@ -1,13 +1,12 @@
-// Security Considerations (OWASP Top 10)
-// A05 Security Misconfiguration:
-//   - Service declared Exported=false — cannot be started or bound by external apps or ADB.
-//   - ForegroundServiceType=TypeLocation required by Android 14+ (API 34+); without it the OS
-//     kills the service on API 34+ and location tracking silently stops.
-// A04 Insecure Design: SecurityException on RequestLocationUpdates causes StopSelf() — the
-//   foreground service terminates cleanly rather than running as a zombie that consumes battery
-//   without producing location updates.
-// No user credentials, PII beyond GPS coordinates, or network calls are made by this service.
-// GPS coordinates are only published via the static LocationUpdated event to AndroidLocationService.
+// This is the background service that keeps following the rider's GPS once a trip starts.
+// A few things we had to get right for it to stay safe and reliable:
+//   - It's Exported=false, so no other app (or ADB) can start or bind to it — only we can.
+//   - On Android 14+ it MUST declare ForegroundServiceType=TypeLocation, otherwise the OS just
+//     kills it and tracking quietly dies mid-commute, which is the worst case for an alarm app.
+//   - If the OS throws a SecurityException when we ask for location updates (e.g. permission was
+//     pulled), we StopSelf() instead of lingering as a zombie that drains battery for nothing.
+// We never touch credentials and never write coordinates to disk or the network here — the raw fix
+// just goes out through the static LocationUpdated event for AndroidLocationService to pick up.
 
 using AlarmaApp.Models;
 using Android.App;

@@ -1,13 +1,11 @@
-// Security Considerations (OWASP Top 10)
-// A04 Insecure Design: LaunchView is pushed as a modal overlay from HomeView.OnAppearing
-//   rather than being set as the initial Window.Page. The original approach
-//   (Windows[0].Page = _shell after launch completes) caused Android 14+ InputDispatcher
-//   to permanently set ActivityRecordInputSink to NO_INPUT_CHANNEL, silently dropping all
-//   touch events. Using Shell as the window page from the start keeps the input channel
-//   stable for the lifetime of the Activity.
-// A05 Security Misconfiguration: LaunchDone is a process-level static flag — it resets on
-//   app kill/restart (showing the launch animation again) but persists across Android
-//   Activity recreations (rotation, back-stack restore) so the animation is not replayed.
+// App startup wiring. One hard-won lesson lives here: we show the launch animation as a modal
+// overlay pushed from HomeView.OnAppearing instead of swapping Windows[0].Page to the Shell after
+// the splash. The swap looked fine but on Android 14+ it left the InputDispatcher stuck on
+// NO_INPUT_CHANNEL — every touch was silently dropped and the app looked frozen. Keeping the Shell
+// as the window page from the very start keeps the input channel alive for the whole Activity.
+// LaunchDone is just a process-level static flag: it resets when the app is actually killed (so the
+// animation plays again on a fresh start) but survives Activity recreation like rotation or a
+// back-stack restore, so we don't replay the splash on every little lifecycle bump.
 
 using AlarmaApp.Services;
 

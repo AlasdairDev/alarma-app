@@ -1,11 +1,11 @@
-// Security Considerations (OWASP Top 10)
-// A03 Injection: IsValidRecipient() re-validates phone number format with a compiled Regex at
-//   the transport layer (defense in depth after HomeController's pre-validation) — no number
-//   that does not match ^(09\d{9}|\+639\d{9})$ reaches SmsManager.SendTextMessage().
-// A04 Insecure Design: When SEND_SMS permission is denied or SmsManager raises a security
-//   exception, a native Intent(ActionSendto) fallback is launched — the device's messaging app
-//   opens with the SOS body and recipients pre-filled, guaranteeing delivery under all permission
-//   states without a crash. GPS coordinates in the SOS body are never logged.
+// Sends the actual SOS text messages. Two safety nets here:
+//   - IsValidRecipient() re-checks every number against ^(09\d{9}|\+639\d{9})$ right before it hits
+//     SmsManager.SendTextMessage(). Yes, HomeController already validated it, but we double-check at
+//     the transport layer so a bad number can never slip through.
+//   - If SEND_SMS is denied or SmsManager throws, we fall back to a native Intent(ActionSendto) that
+//     opens the phone's own messaging app with the recipients and SOS text pre-filled. The message
+//     still goes out (the user just taps send) instead of the app crashing. The coordinates in that
+//     body are never written to any log.
 
 using AlarmaApp.Services;
 using AlarmaApp.Services.Interfaces;

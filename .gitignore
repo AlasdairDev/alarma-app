@@ -24,3 +24,8 @@ obj/
 
 # Rider
 *.DotSettings.user
+
+# Local workspace scratch / helper tooling — not part of the shipped app
+DoThistxt
+AutomationTools/
+repair_build.ps1

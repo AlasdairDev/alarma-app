@@ -3,7 +3,7 @@
 > An offline-first Android safety application for Metro Manila public-transport commuters.
 > Capstone and application-development project, Bachelor of Science in Information Technology, Polytechnic University of the Philippines.
 >
-> **Development team:** Roje Alasdair T. Evangelista, Ababao, Barbin, Lacanilao.
+> **Development team:** BS Information Technology Capstone Project Group.
 
 ---
 
@@ -237,6 +237,31 @@ declared with `BaseSize="1200,1200"` so they stay pin-sharp on high-resolution d
 without shipping hand-cut per-density copies. In the onboarding flow these illustrations
 render with `Aspect="AspectFill"` on an input-transparent background layer, so the artwork
 fills the canvas edge-to-edge while the navigation controls above it keep clean touch targets.
+
+---
+
+## 6. Reliability & UX Hardening — Capstone Audit Resolution
+
+A focused functional and UX audit ahead of the panel defense closed twelve defects identified during pre-defense testing. These changes harden the commute pipeline and the safety features **without altering the security posture in Section 2** — the SQLCipher database, the AES-256-GCM backup and black box, and the Keystore key handling are all untouched (the one retained database column, `TripHistory.SnoozeCount`, is kept only so older encrypted backups remain restorable).
+
+### 6.1 Infrastructure & permissions
+
+- **Mandatory GPS enforcement.** Starting a trip now pre-flights the device's *master location switch* (`ILocationService.IsLocationServiceEnabled()`), not just the app permission. If system location is off, the trip is blocked and the user is sent straight to the OS location settings — the way a navigation app refuses to guide without GPS. A granted permission on a phone with location switched off can no longer produce a silent "dead" trip.
+- **Two-way permission toggles.** The setup-screen switches are no longer one-way. Toggling Location or Notifications *off* now tears down local state (an active tracking service and its wake lock are stopped) and routes the user to App Settings, where Android actually allows a runtime permission to be revoked. On return, the switch re-syncs to the real OS status.
+
+### 6.2 Alarm, tracking & state
+
+- **Haversine distance refactor.** Trip distance is accumulated as a true Haversine path integral between fixes, with a per-segment **GPS-jitter gate**: a movement below the fix's own accuracy (minimum 8 m) is treated as noise and excluded, and the comparison anchor only advances on an accepted segment — so a stationary phone's GPS wander no longer inflates the distance, while genuine slow movement still accumulates.
+- **Full state reset on stop.** Ending a trip now performs a complete reset — destination and map marker cleared, search header restored, the in-memory active trip dropped, and the foreground service killed — so no "ghost" *View Active Trip* state lingers on the home screen.
+- **Monotonic, outlier-resistant escalation.** The three alarm stages are monotonic by construction (lead ≥ 300 m > arrival 200 m > overshoot), and arrival must now persist across consecutive fixes before it latches, so a single outlier GPS fix can no longer fake an arrival (and the false overshoot that would follow it).
+- **Removed Vehicle Type & Snooze.** The vehicle-type selector and its lead-distance branching were removed in favor of a single adaptive, speed-based lead distance. Residual snooze logic was stripped (the historical database column is retained only for backup compatibility).
+
+### 6.3 UX, feedback & SOS
+
+- **Friendlier location status.** The origin row shows *"Searching for GPS…"* instead of a blunt *"Location unavailable"* while a fix is being acquired.
+- **Notification deep-linking.** Tapping a trip/alarm notification now deep-links straight to the active-trip screen via an explicit `PendingIntent` routed through a `SingleTop` `MainActivity`, instead of merely bringing the app forward.
+- **SOS is SMS-first with a discreet cue.** The SOS action no longer hijacks the ringer, forces alarm volume, or toggles Do-Not-Disturb. It strictly dispatches the emergency SMS and gives a short **haptic buzz + brief confirmation beep** so the press registers — quietly, which matters when the user may be in a vulnerable situation. The cue respects the phone's current volume and DND, so a silenced phone stays silent.
+- **Contact-form feedback.** The emergency-contact form now surfaces inline feedback for both validation errors and successful saves, instead of failing silently.
 
 ---
 
