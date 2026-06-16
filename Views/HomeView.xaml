@@ -135,13 +135,21 @@
                 <Grid Grid.Row="2" Grid.Column="1"
                       ColumnDefinitions="*,Auto"
                       Margin="10,0,0,0">
+                    <!-- Tapping the destination text drops straight back into the search screen
+                         (same as the back chevron) so the rider can retype without hunting for it. -->
                     <Label Grid.Column="0"
                            Text="{Binding DestinationShortNameText}"
                            TextColor="White"
                            FontSize="13"
                            FontAttributes="Bold"
                            VerticalOptions="Center"
-                           LineBreakMode="TailTruncation" />
+                           LineBreakMode="TailTruncation"
+                           SemanticProperties.Description="Selected destination"
+                           SemanticProperties.Hint="Double tap to search for a different destination">
+                        <Label.GestureRecognizers>
+                            <TapGestureRecognizer Tapped="OnSearchTapped" />
+                        </Label.GestureRecognizers>
+                    </Label>
                     <Label Grid.Column="1"
                            FontSize="20"
                            VerticalOptions="Center"
@@ -250,7 +258,13 @@
                                FontAttributes="Bold"
                                TextColor="White"
                                LineBreakMode="TailTruncation"
-                               VerticalOptions="Center" />
+                               VerticalOptions="Center"
+                               SemanticProperties.Description="Selected destination"
+                               SemanticProperties.Hint="Double tap to search for a different destination">
+                            <Label.GestureRecognizers>
+                                <TapGestureRecognizer Tapped="OnSearchTapped" />
+                            </Label.GestureRecognizers>
+                        </Label>
                         <Label Grid.Column="1"
                                Text="&#9734;"
                                FontSize="20"
