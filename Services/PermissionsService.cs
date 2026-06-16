@@ -84,7 +84,9 @@ public class PermissionsService
         return status == PermissionStatus.Granted;
     }
 
-    private static void OpenAppSettings()
+    // Public so the permission switches can route a user to the OS page when they want to revoke —
+    // Android offers no API to drop a runtime permission programmatically; only the user can, here.
+    public static void OpenAppSettings()
     {
 #if ANDROID
         try
@@ -99,26 +101,18 @@ public class PermissionsService
 #endif
     }
 
-    public Task<bool> EnsureDoNotDisturbAccessAsync()
+    // Opens the device-wide Location source settings (not the app page) so the user can flip the
+    // master location switch back on after we block a trip start on it.
+    public static void OpenLocationSettings()
     {
 #if ANDROID
-        var manager = AndroidApplication.Context.GetSystemService(Context.NotificationService) as NotificationManager;
-        if (manager is null)
+        try
         {
-            return Task.FromResult(false);
+            var intent = new Intent(Settings.ActionLocationSourceSettings);
+            intent.AddFlags(ActivityFlags.NewTask);
+            AndroidApplication.Context.StartActivity(intent);
         }
-
-        if (manager.IsNotificationPolicyAccessGranted)
-        {
-            return Task.FromResult(true);
-        }
-
-        var intent = new Intent(Settings.ActionNotificationPolicyAccessSettings);
-        intent.AddFlags(ActivityFlags.NewTask);
-        AndroidApplication.Context.StartActivity(intent);
-        return Task.FromResult(false);
-#else
-        return Task.FromResult(true);
+        catch { }
 #endif
     }
 }

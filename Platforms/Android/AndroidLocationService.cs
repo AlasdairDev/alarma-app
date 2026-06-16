@@ -26,6 +26,32 @@ public class AndroidLocationService : ILocationService
 
     public bool IsTracking { get; private set; }
 
+    public bool IsLocationServiceEnabled()
+    {
+        var manager = AndroidApplication.Context.GetSystemService(Context.LocationService) as LocationManager;
+        if (manager is null)
+        {
+            return false;
+        }
+
+        // API 28+ exposes a single device-wide flag; older devices fall back to checking the
+        // individual providers. Either GPS or network being on is enough for us to get fixes.
+        if (Build.VERSION.SdkInt >= BuildVersionCodes.P)
+        {
+            return manager.IsLocationEnabled;
+        }
+
+        try
+        {
+            return manager.IsProviderEnabled(LocationManager.GpsProvider)
+                || manager.IsProviderEnabled(LocationManager.NetworkProvider);
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
     public Task StartTrackingAsync(CancellationToken cancellationToken)
     {
         if (IsTracking)

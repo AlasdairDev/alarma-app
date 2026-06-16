@@ -110,6 +110,40 @@ public class AndroidAlarmAudioService : IAlarmAudioService
         }
     }
 
+    public Task PlaySosFeedbackAsync()
+    {
+        // A single short buzz so the press is felt even in a pocket. No ringer/DND changes.
+        var vibrator = AndroidApplication.Context.GetSystemService(Context.VibratorService) as Vibrator;
+        if (vibrator?.HasVibrator == true)
+        {
+            if (Build.VERSION.SdkInt >= BuildVersionCodes.O)
+                vibrator.Vibrate(VibrationEffect.CreateOneShot(400, VibrationEffect.DefaultAmplitude));
+            else
+                vibrator.Vibrate(400);
+        }
+
+        // A brief, self-contained beep on the notification stream — respects the user's current
+        // volume and never forces audio the way the trip alarm does. ToneGenerator is fully
+        // independent of RingerMode/DND, so a silenced phone simply stays silent.
+        try
+        {
+            var tone = new ToneGenerator(AndroidStream.Notification, 90);
+            tone.StartTone(Tone.PropBeep2, 600);
+            // Release after the tone finishes so the native object isn't leaked.
+            _ = Task.Delay(800).ContinueWith(_ =>
+            {
+                try { tone.Release(); } catch { }
+            });
+        }
+        catch
+        {
+            // ToneGenerator can throw on some devices when audio resources are unavailable — the
+            // haptic buzz above is enough confirmation, so swallow and carry on.
+        }
+
+        return Task.CompletedTask;
+    }
+
     private static int GetStageVolume(AlarmStage stage, int maxVolume)
     {
         return stage switch

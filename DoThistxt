@@ -1,0 +1,11 @@
+﻿Fantastic work. This is exactly what we needed.
+
+Regarding your notes:
+
+    Yes, please permanently remove the dead PermissionsService.EnsureDoNotDisturbAccessAsync code. We want the codebase as clean and lean as possible for the panel defense.
+
+    Once that is removed, please commit everything as a single commit. Use a comprehensive commit message like: fix: capstone audit resolution (12 items) spanning GPS enforcement, noise-gated distance, state resets, and SOS UX.
+
+    Finally, the app on my running emulator is still the old version. After committing, please execute the necessary dotnet build and deploy commands to push this updated version directly to my active emulator so I can verify the UI and logic fixes live.
+
+Let me know when the commit and deployment are successful!

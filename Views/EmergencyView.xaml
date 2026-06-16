@@ -200,6 +200,16 @@
                     </VerticalStackLayout>
                 </Border>
 
+                <!-- Inline feedback for the add-contact form: validation errors and save
+                     confirmations surface here (bound to the controller's LastActionText). -->
+                <Label x:Name="ContactFeedbackLabel"
+                       Text="{Binding LastActionText}"
+                       FontSize="13"
+                       TextColor="#C8B8E8"
+                       HorizontalTextAlignment="Center"
+                       LineBreakMode="WordWrap"
+                       Margin="8,12,8,0" />
+
             </VerticalStackLayout>
         </ScrollView>
 

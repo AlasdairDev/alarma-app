@@ -58,10 +58,12 @@ public partial class HomeView : ContentPage
         _controller.CenterMapRequested -= OnCenterMapRequested;
         _controller.MapJsRequested -= OnMapJsRequested;
         _controller.PropertyChanged -= OnControllerPropertyChanged;
+        _controller.LocationServicesDisabled -= OnLocationServicesDisabled;
         _controller.LiveLocationUpdated += OnLiveLocationUpdated;
         _controller.CenterMapRequested += OnCenterMapRequested;
         _controller.MapJsRequested += OnMapJsRequested;
         _controller.PropertyChanged += OnControllerPropertyChanged;
+        _controller.LocationServicesDisabled += OnLocationServicesDisabled;
 
         // Re-attach WebView to the root grid if CleanupWebViewAsync detached it on prior exit.
         if (MapWebView.Parent is null && Content is Grid mapHost)
@@ -108,6 +110,7 @@ public partial class HomeView : ContentPage
         _controller.CenterMapRequested -= OnCenterMapRequested;
         _controller.MapJsRequested -= OnMapJsRequested;
         _controller.PropertyChanged -= OnControllerPropertyChanged;
+        _controller.LocationServicesDisabled -= OnLocationServicesDisabled;
         _ = CleanupWebViewAsync();
     }
 
@@ -155,6 +158,20 @@ public partial class HomeView : ContentPage
         {
             await MapWebView.EvaluateJavaScriptAsync("clearDestination()");
         }
+    }
+
+    private void OnLocationServicesDisabled(object? sender, EventArgs e)
+    {
+        MainThread.BeginInvokeOnMainThread(async () =>
+        {
+            var goToSettings = await DisplayAlert(
+                "Location is Off",
+                "Alarma needs your device's location turned on to track your trip. Open location settings now?",
+                "Open Settings",
+                "Cancel");
+            if (goToSettings)
+                _controller.OpenLocationSettings();
+        });
     }
 
     private void OnSosWarningClosed(object? sender, EventArgs e)

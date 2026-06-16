@@ -124,18 +124,6 @@
                 </Border.GestureRecognizers>
             </Border>
 
-            <!-- Snooze button (Stage 1/2 only; command no-ops on Stage 3) -->
-            <Button Text="Snooze"
-                    BackgroundColor="#3D2B5E"
-                    TextColor="#C8B8E8"
-                    FontSize="14"
-                    CornerRadius="20"
-                    Padding="0,10"
-                    Command="{Binding SnoozeAlarmCommand}"
-                    Margin="0,4,0,0"
-                    SemanticProperties.Description="Snooze alarm"
-                    SemanticProperties.Hint="Double tap to snooze the alarm temporarily" />
-
             <!-- Reminder checklist (Stage 1 only) — matches Figma 14 -->
             <VerticalStackLayout Spacing="8"
                                  Margin="0,8,0,0"

@@ -75,7 +75,7 @@ A consolidated mapping of these controls to OWASP categories is given in [Append
 | Key–value store | MAUI `Preferences` (non-sensitive settings only) |
 | Secrets | Android Keystore via MAUI `SecureStorage` |
 | Mapping | Leaflet.js with CartoDB dark tiles in a MAUI `WebView` under a strict Content-Security-Policy |
-| Geocoding | Photon (primary) and Nominatim (fallback), plus a client-side Philippine alias dictionary |
+| Geocoding | Three-tier forward search — Photon (primary) and Nominatim (street-level supplement) over OSM, then the device's native platform geocoder (Android `Geocoder`) as a last resort for OSM-unmapped residential subdivisions — plus a client-side Philippine alias dictionary and a coordinate-label fallback (`Near lat, lon (Unmapped Area)`) so coordinate-valid pins are never dropped |
 | Cryptography | `System.Security.Cryptography` — `AesGcm`, `RandomNumberGenerator` |
 | Iconography | Google Material Symbols font ligatures (`MaterialSymbolsOutlined.ttf`) registered under the `MaterialSymbols` alias — vector glyphs that scale crisply at any screen density |
 | Asset rendering | MAUI resizetizer with `BaseSize`-driven high-DPI buckets: an SVG splash and `BaseSize="1200,1200"` tutorial artwork stay sharp from `mdpi` to `xxxhdpi` |
@@ -255,7 +255,7 @@ fills the canvas edge-to-edge while the navigation controls above it keep clean 
 
 ## Appendix B — Privacy & Legal
 
-No personal data leaves the device except destination text queries (to Photon and Nominatim) and map tile requests (to CartoDB/OpenStreetMap), all over HTTPS and free of personal identifiers. Emergency SOS messages are sent directly through Android `SmsManager` over the cellular network and do not pass through any Alarma server. GPS coordinates, emergency contacts, trip history, and behavioral data are stored only on the device in an encrypted SQLite database, in compliance with Republic Act No. 10173 (Data Privacy Act of 2012). The in-app **Settings → Legal** section provides the full Terms & Conditions and Privacy Policy.
+No personal data leaves the device except destination text queries and map tile requests (to CartoDB/OpenStreetMap), all over HTTPS and free of personal identifiers. Destination text queries are sent to Photon and Nominatim; when both return no match for an address — typically an OSM-unmapped residential subdivision — the query string is passed as a last resort to the device's native platform geocoder (on Android, Google's `Geocoder`), which may transmit it to the platform provider. Only the query text is sent: no coordinates, contacts, or identifiers accompany it. Emergency SOS messages are sent directly through Android `SmsManager` over the cellular network and do not pass through any Alarma server. GPS coordinates, emergency contacts, trip history, and behavioral data are stored only on the device in an encrypted SQLite database, in compliance with Republic Act No. 10173 (Data Privacy Act of 2012). The in-app **Settings → Legal** section provides the full Terms & Conditions and Privacy Policy.
 
 ## Appendix C — Testing
 

@@ -4,7 +4,7 @@
 //
 // OWASP Top 10 coverage:
 //   A03 Injection: Philippine phone regex, coordinate bounds, name length caps, sound whitelist
-//   A04 Insecure Design: Lead-time clamping, backup restore caps, snooze escalation boundary
+//   A04 Insecure Design: Lead-time clamping, backup restore caps
 //   A08 Data Integrity: AES-GCM format checks, backup field validation
 
 using System.Text.RegularExpressions;
@@ -254,28 +254,6 @@ public class BackupRestoreValidationTests
     [InlineData(-1, false)]
     public void MaxAlarmStageReached_ValidRange(int stage, bool isValid)
         => Assert.Equal(isValid, stage is >= 0 and <= 3);
-
-    [Theory]
-    [InlineData(0, true)]
-    [InlineData(100, true)]
-    [InlineData(101, false)]  // SnoozeCount cap is 100
-    [InlineData(-1, false)]
-    public void SnoozeCount_ValidRange(int count, bool isValid)
-        => Assert.Equal(isValid, count is >= 0 and <= 100);
-}
-
-public class SnoozeEscalationTests
-{
-    private const int MaxSnoozeCount = 3;
-
-    [Theory]
-    [InlineData(0, false)] // not yet at max
-    [InlineData(1, false)]
-    [InlineData(2, false)]
-    [InlineData(3, true)]  // exactly at max → escalate
-    [InlineData(4, true)]  // over max → escalate (edge case: should not occur in practice)
-    public void SnoozeCount_TriggerEscalation(int count, bool shouldEscalate)
-        => Assert.Equal(shouldEscalate, count >= MaxSnoozeCount);
 }
 
 public class BackupEncryptionFormatTests

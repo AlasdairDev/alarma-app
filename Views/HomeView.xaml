@@ -272,27 +272,17 @@
                             </Label.Triggers>
                         </Label>
                     </Grid>
-                    <Grid ColumnDefinitions="*,Auto"
-                          ColumnSpacing="12">
-                        <Picker Grid.Column="0"
-                                ItemsSource="{Binding VehicleTypeOptions}"
-                                SelectedItem="{Binding VehicleType}"
-                                TextColor="White"
-                                FontSize="14"
-                                BackgroundColor="#4A3570"
-                                Title="Vehicle type" />
-                        <Button Grid.Column="1"
-                                Text="Start Trip"
-                                FontSize="14"
-                                BackgroundColor="#7B3FA0"
-                                TextColor="White"
-                                CornerRadius="20"
-                                Padding="20,10"
-                                IsVisible="{Binding IsNotTracking}"
-                                SemanticProperties.Description="Start Trip"
-                                SemanticProperties.Hint="Double tap to begin tracking your journey to the selected destination"
-                                Command="{Binding StartTrackingCommand}" />
-                    </Grid>
+                    <Button Text="Start Trip"
+                            FontSize="14"
+                            BackgroundColor="#7B3FA0"
+                            TextColor="White"
+                            CornerRadius="20"
+                            Padding="20,10"
+                            HorizontalOptions="Fill"
+                            IsVisible="{Binding IsNotTracking}"
+                            SemanticProperties.Description="Start Trip"
+                            SemanticProperties.Hint="Double tap to begin tracking your journey to the selected destination"
+                            Command="{Binding StartTrackingCommand}" />
                 </VerticalStackLayout>
             </Border>
 

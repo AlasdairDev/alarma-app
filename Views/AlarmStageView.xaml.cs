@@ -1,7 +1,7 @@
 // Security Considerations (OWASP Top 10)
 // A07 Identification and Authentication Failures: OnBackButtonPressed override prevents the user
 //   from bypassing the alarm dismiss flow via the hardware back button — DismissAlarmCommand
-//   always executes, ensuring controller state (CurrentAlarmStage, _snoozeCount) resets cleanly.
+//   always executes, ensuring controller state (CurrentAlarmStage) resets cleanly.
 // A04 Insecure Design: DismissAndExitAsync executes DismissAlarmCommand before popping the route
 //   so the controller and UI update atomically — no window where AlarmStage is None in the
 //   controller but the alarm view is still showing (which would re-open on the next stage event).
