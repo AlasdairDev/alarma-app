@@ -1504,14 +1504,23 @@ public class HomeController : INotifyPropertyChanged
             return;
         }
 
-        var location = await _locationService.GetLastKnownLocationAsync();
+        // Grab the freshest fix we can at the instant SOS is pressed. If a trip is running, the
+        // in-memory _lastTrackedLocation is the exact accepted coordinate the hardened tracking loop
+        // just produced — so we use that first. Otherwise (or if it's somehow still null right at the
+        // start of a trip) we fall back to the platform's last-known/fresh location. Both are passive
+        // reads: nothing here writes back into or disturbs the Haversine tracking loop.
+        var location = (IsTracking ? _lastTrackedLocation : null)
+                       ?? await _locationService.GetLastKnownLocationAsync();
         string message;
         if (location is null)
         {
+            // Last resort — location briefly unavailable. The SOS itself still goes out so contacts
+            // are alerted even without a pin.
             message = "Alarma SOS: Location unavailable. Please check on me.";
         }
         else
         {
+            // Clickable Google Maps link so a contact can tap straight through to the rider's spot.
             var lat = location.Latitude.ToString("F5", System.Globalization.CultureInfo.InvariantCulture);
             var lon = location.Longitude.ToString("F5", System.Globalization.CultureInfo.InvariantCulture);
             var phtTime = location.Timestamp.ToOffset(TimeSpan.FromHours(8));
