@@ -19,6 +19,10 @@
   <!-- AlarmaApp.Models — all ORM-mapped entities must survive trimming -->
   <assembly fullname="AlarmaApp">
     <namespace fullname="AlarmaApp.Models" preserve="all" />
+    <!-- GeocodingResult lives in the Services namespace but is round-tripped through
+         System.Text.Json (search-result cache + the destination label pushed to the map),
+         so its members must survive trimming for reflection-based serialization to work. -->
+    <type fullname="AlarmaApp.Services.GeocodingResult" preserve="all" />
   </assembly>
 
   <!--

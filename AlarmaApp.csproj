@@ -28,6 +28,11 @@
     <Optimize>true</Optimize>
     <DebugType>none</DebugType>
     <DebugSymbols>false</DebugSymbols>
+    <!-- TrimMode=full otherwise switches off System.Text.Json's reflection-based
+         serializer, so the very first JsonSerializer.Serialize call (escaping the
+         destination label when you tap a search result) threw
+         JsonSerializerIsReflectionDisabled and took the app down. Keep reflection on. -->
+    <JsonSerializerIsReflectionEnabledByDefault>true</JsonSerializerIsReflectionEnabledByDefault>
   </PropertyGroup>
 
   <!-- Preserve Models/ namespace and SQLite ORM reflection roots from the IL trimmer -->
