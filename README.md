@@ -263,6 +263,13 @@ A focused functional and UX audit ahead of the panel defense closed twelve defec
 - **SOS is SMS-first with a discreet cue.** The SOS action no longer hijacks the ringer, forces alarm volume, or toggles Do-Not-Disturb. It strictly dispatches the emergency SMS and gives a short **haptic buzz + brief confirmation beep** so the press registers — quietly, which matters when the user may be in a vulnerable situation. The cue respects the phone's current volume and DND, so a silenced phone stays silent.
 - **Contact-form feedback.** The emergency-contact form now surfaces inline feedback for both validation errors and successful saves, instead of failing silently.
 
+### 6.4 Post-audit UX & SOS refinements
+
+Two follow-up refinements after the audit, both shipped and field-tested on the emulator:
+
+- **Frictionless search UX.** Once a destination is selected, its text is no longer a dead read-only label. It now renders as a **light-lavender pill with an `edit` (pencil) icon** — styled to match the search bars — and the whole pill is tappable: one tap drops straight back into the focused search screen, so the rider can retype a destination without first hunting for the back arrow. To keep the look cohesive, the initial "Where are you headed?" bar and the active "Where to?" entry were unified to the same `#EDE7F6` lavender as the pill. This reuses the existing search screen rather than an inline editor, so it never clears the destination and the hardened stop-trip state resets are untouched.
+- **Real-time SOS location dispatch.** The emergency SMS now carries the rider's live position as a tappable Google Maps link (`https://maps.google.com/?q={lat},{lon}`). At the moment SOS is pressed it grabs the freshest fix through a fallback chain — the active trip's in-memory Haversine fix first, then the platform's last-known/fresh location, and if even that is briefly unavailable the standard SOS text still sends so contacts are alerted regardless. Both reads are passive, so pulling the coordinate never perturbs the active tracking loop.
+
 ---
 
 ## Appendix A — OWASP Alignment

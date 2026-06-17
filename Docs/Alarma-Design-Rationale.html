@@ -379,6 +379,18 @@
   <div class="callout">
     <b>Smaller UX fixes in the same pass.</b> Tapping a trip notification now deep-links straight to the active-trip screen via an explicit <code>PendingIntent</code> through a <code>SingleTop</code> activity; the origin row reads <em>"Searching for GPS…"</em> instead of <em>"Location unavailable"</em> while a fix is acquired; and the emergency-contact form shows inline feedback for both validation errors and successful saves instead of failing silently.
   </div>
+
+  <h3>Post-audit refinements</h3>
+  <div class="decision">
+    <h3>Frictionless search: the destination becomes a tappable field</h3>
+    <span class="choice">Reuse the search screen, don't inline an editor</span>
+    <p class="why"><b>Why:</b> Once a destination was picked, its text went read-only and the only way to change it was the small back chevron — easy to miss. We restyled it as a light-lavender pill with an <code>edit</code> pencil (matching the search bars) and made the whole pill tap straight back into the focused search screen. We deliberately reused the existing search page instead of swapping in an inline <code>Entry</code>: that keeps all the search logic in one place and, just as important, never clears the destination — so the hardened stop-trip state resets stay intact. The initial and active search bars were unified to the same <code>#EDE7F6</code> lavender so every search surface reads as one consistent control.</p>
+  </div>
+  <div class="decision">
+    <h3>Real-time location in the SOS message</h3>
+    <span class="choice">Active-trip fix → last-known → text-only fallback</span>
+    <p class="why"><b>Why:</b> An SOS is only useful if a contact knows <em>where</em> to go, so the SMS now appends a tappable <code>https://maps.google.com/?q={lat},{lon}</code> link. At the instant the button is pressed we take the freshest fix through a fallback chain — the active trip's in-memory Haversine coordinate first, then the platform's last-known/fresh location, and if neither is available the plain SOS text still sends so contacts are alerted regardless. Every step is a passive read, so grabbing the coordinate can't disturb the tracking loop the alarm depends on.</p>
+  </div>
 </section>
 
 <!-- ===================== 8 ===================== -->
