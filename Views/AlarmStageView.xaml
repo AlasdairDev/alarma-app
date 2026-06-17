@@ -1,9 +1,8 @@
 <?xml version="1.0" encoding="utf-8" ?>
-<!-- Security (OWASP)
-     A04 Insecure Design: IsOvershootPending / IsOvershootConfirmed are controller-driven server-side
-       state — the UI only renders them; no user input can set them directly.
-     A03 Injection: All JS forwarded via MapJsRequested uses InvariantCulture F6 numeric strings or
-       JsonSerializer.Serialize — no user-supplied text reaches EvaluateJavaScriptAsync. -->
+<!-- The overshoot flags (IsOvershootPending / IsOvershootConfirmed) live on the controller — this
+     page only renders them, so nothing the user taps can flip that state on its own. And everything
+     we push to the trip map through MapJsRequested is an InvariantCulture F6 number or JsonSerializer
+     output, so no raw user text ever reaches EvaluateJavaScriptAsync. -->
 <ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
              x:Class="AlarmaApp.Views.AlarmStageView"
