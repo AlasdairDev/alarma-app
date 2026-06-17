@@ -63,6 +63,9 @@ public class HomeController : INotifyPropertyChanged
     private readonly ObservableCollection<EmergencyContact> _emergencyContacts = new();
     private readonly ObservableCollection<SavedRoute> _savedRoutes = new();
     private readonly ObservableCollection<TripHistory> _tripHistoryEntries = new();
+    // Unfiltered snapshot of what's loaded from the DB. The collection above is the filtered view shown
+    // in the list; we filter from this so clearing the search box restores the full list without a re-query.
+    private readonly List<TripHistory> _allTripHistory = new();
     private readonly ObservableCollection<GeocodingResult> _searchResults = new();
     private readonly ObservableCollection<string> _vibrationIntensityOptions = new() { "Low", "Medium", "High" };
 
@@ -559,6 +562,19 @@ public class HomeController : INotifyPropertyChanged
 
     public ObservableCollection<TripHistory> TripHistoryEntries => _tripHistoryEntries;
 
+    // Bound two-way to the Trip History search box. Entry pushes each keystroke through here, so the
+    // list re-filters live as the user types — no separate command or button needed.
+    public string HistorySearchQuery
+    {
+        get => _historySearchQuery;
+        set
+        {
+            if (SetProperty(ref _historySearchQuery, value))
+                ApplyTripHistoryFilter();
+        }
+    }
+    private string _historySearchQuery = string.Empty;
+
     public ICommand InitializeCommand { get; }
     public ICommand SearchDestinationCommand { get; }
     public ICommand SelectResultCommand { get; }
@@ -999,7 +1015,9 @@ public class HomeController : INotifyPropertyChanged
                 if (trip.EndedAt.HasValue)
                     trip.EndedAt = DateTime.SpecifyKind(trip.EndedAt.Value, DateTimeKind.Utc).AddHours(8);
             }
-            ReplaceCollection(_tripHistoryEntries, orderedHistory);
+            _allTripHistory.Clear();
+            _allTripHistory.AddRange(orderedHistory);
+            ApplyTripHistoryFilter();
         }
         catch (Exception ex)
         {
@@ -1974,6 +1992,33 @@ public class HomeController : INotifyPropertyChanged
         OnPropertyChanged(nameof(ShowStartTripCard));
         OnPropertyChanged(nameof(ShowGreetingHeader));
         OnPropertyChanged(nameof(IsDestinationSaved));
+    }
+
+    // Rebuilds the visible trip list from the full snapshot, applying the current search text. An empty
+    // box shows everything; otherwise we keep entries that match on destination name or date.
+    private void ApplyTripHistoryFilter()
+    {
+        var query = _historySearchQuery?.Trim();
+        if (string.IsNullOrWhiteSpace(query))
+        {
+            ReplaceCollection(_tripHistoryEntries, _allTripHistory);
+            return;
+        }
+
+        var matches = _allTripHistory.Where(trip => MatchesHistoryQuery(trip, query)).ToList();
+        ReplaceCollection(_tripHistoryEntries, matches);
+    }
+
+    // Match the typed text against the destination name and the date/time the way the user sees it on the
+    // card, so "june", "2026", or a time like "9:30" all narrow the list as expected.
+    private static bool MatchesHistoryQuery(TripHistory trip, string query)
+    {
+        var culture = System.Globalization.CultureInfo.InvariantCulture;
+        var haystack = string.Join(' ',
+            trip.DestinationName ?? string.Empty,
+            trip.StartedAt.ToString("MMMM d, yyyy", culture),
+            trip.StartedAt.ToString("h:mm tt", culture));
+        return haystack.Contains(query, StringComparison.OrdinalIgnoreCase);
     }
 
     private static void ReplaceCollection<T>(ObservableCollection<T> collection, IEnumerable<T> items)

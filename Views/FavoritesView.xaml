@@ -110,8 +110,12 @@
                                            Margin="14,0,0,0"
                                            VerticalOptions="Center" />
 
+                                    <!-- Solid (filled) gold star. The Material Symbols font we ship is the
+                                         outlined variant and its fill is a variable-font axis we can't toggle
+                                         on a Label, so we use the Unicode solid star glyph in the default font
+                                         and keep the same gold colour. -->
                                     <Label Grid.Column="2"
-                                           Text="star" FontFamily="MaterialSymbols"
+                                           Text="&#x2605;"
                                            FontSize="20"
                                            TextColor="#FFC107"
                                            VerticalOptions="Start"
