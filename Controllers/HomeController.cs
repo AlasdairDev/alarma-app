@@ -205,7 +205,9 @@ public class HomeController : INotifyPropertyChanged
     private string _bluetoothPermissionLabel = "Settings";
 
     private DateTime _lastMapLocationUpdate = DateTime.MinValue;
-    private static readonly TimeSpan MapLocationUpdateInterval = TimeSpan.FromSeconds(5);
+    // Push the live dot to the map roughly as often as a fresh GPS fix arrives. The WebView animates
+    // each hop, so a 2s cadence keeps the dot feeling alive without hammering EvaluateJavaScript.
+    private static readonly TimeSpan MapLocationUpdateInterval = TimeSpan.FromSeconds(2);
     private CancellationTokenSource? _searchCts;
 
     public event PropertyChangedEventHandler? PropertyChanged;
@@ -605,6 +607,8 @@ public class HomeController : INotifyPropertyChanged
     public ICommand ConfirmOvershootCommand { get; }
     public ICommand DismissOvershootCommand { get; }
     public ICommand OpenInGMapsCommand { get; }
+    public ICommand DeleteTripHistoryCommand { get; }
+    public ICommand ClearTripHistoryCommand { get; }
 
     public HomeController(
         DatabaseService databaseService,
@@ -705,6 +709,8 @@ public class HomeController : INotifyPropertyChanged
                     _lastDestinationResult.Latitude,
                     _lastDestinationResult.Longitude);
         });
+        DeleteTripHistoryCommand = new Command<TripHistory>(async trip => await DeleteTripHistoryAsync(trip));
+        ClearTripHistoryCommand = new Command(async () => await ClearTripHistoryAsync());
 
         _locationService.LocationUpdated += OnLocationUpdated;
         _emergencyContacts.CollectionChanged += (_, _) =>
@@ -1994,6 +2000,47 @@ public class HomeController : INotifyPropertyChanged
         OnPropertyChanged(nameof(IsDestinationSaved));
     }
 
+    // Drop a single trip the rider swiped/tapped to delete. We wipe it from the encrypted db, then pull
+    // it out of the in-memory snapshot and re-run the filter so the list updates without a full re-query.
+    private async Task DeleteTripHistoryAsync(TripHistory? trip)
+    {
+        if (trip is null)
+        {
+            return;
+        }
+
+        try
+        {
+            await _databaseService.DeleteTripHistoryAsync(trip);
+            _allTripHistory.RemoveAll(t => t.Id == trip.Id);
+            ApplyTripHistoryFilter();
+            LastActionText = "Trip removed from history.";
+        }
+        catch (Exception ex)
+        {
+            BlackBoxLogger.RecordHandledException(ex, "[HomeController.DeleteTripHistoryAsync]");
+            LastActionText = "Failed to delete trip. Please try again.";
+        }
+    }
+
+    // Nuke the whole history in one go (the "Clear All" button). The view asks the rider to confirm
+    // first since there's no undo — by the time we get here the decision is already made.
+    private async Task ClearTripHistoryAsync()
+    {
+        try
+        {
+            await _databaseService.ClearTripHistoryAsync();
+            _allTripHistory.Clear();
+            ApplyTripHistoryFilter();
+            LastActionText = "Trip history cleared.";
+        }
+        catch (Exception ex)
+        {
+            BlackBoxLogger.RecordHandledException(ex, "[HomeController.ClearTripHistoryAsync]");
+            LastActionText = "Failed to clear trip history. Please try again.";
+        }
+    }
+
     // Rebuilds the visible trip list from the full snapshot, applying the current search text. An empty
     // box shows everything; otherwise we keep entries that match on destination name or date.
     private void ApplyTripHistoryFilter()
@@ -2106,7 +2153,10 @@ public class HomeController : INotifyPropertyChanged
                 .leaflet-tile{filter:sepia(0.8) hue-rotate(250deg) saturate(2.5) brightness(0.75)}
                 .leaflet-zoom-animated{transition:transform 0.4s cubic-bezier(0,0,0.25,1)!important}
                 .leaflet-interactive{will-change:transform;transition:none!important}
-                .user-location-dot{will-change:transform,width,height;transition:transform 0.2s cubic-bezier(0.25,1,0.5,1),width 0.2s ease,height 0.2s ease}
+                /* The dot is now driven frame-by-frame from JS (see _animateUserMarker), so we kill the
+                   CSS transform transition here — letting both fight over the same element is what made
+                   the dot smear and snap. */
+                .user-location-dot{will-change:transform;transition:none!important}
               </style>
             </head>
             <body>
@@ -2115,18 +2165,48 @@ public class HomeController : INotifyPropertyChanged
                 var map = L.map('map',{zoomControl:false}).setView([14.5995,120.9842],12);
                 var _layer=L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{attribution:'&copy; OSM &copy; CARTO',subdomains:'abcd',maxZoom:19}).addTo(map);
                 var _userMarker=null;
+                var _userAnimFrame=null;
                 var _destMarker=null;
+                // Glide the live dot from where it is to the new fix instead of teleporting it. We tween
+                // lat/lon over a few hundred ms with an ease-out curve so it decelerates into place, and
+                // pan the map along with it so the dot stays put on screen while the world slides under it.
+                function animateUserMarker(toLat,toLon){
+                  if(!_userMarker){return;}
+                  var from=_userMarker.getLatLng();
+                  var fromLat=from.lat, fromLon=from.lng;
+                  var dLat=toLat-fromLat, dLon=toLon-fromLon;
+                  // Effectively no movement (GPS jitter) — just settle it and skip the loop.
+                  if(Math.abs(dLat)<1e-7 && Math.abs(dLon)<1e-7){_userMarker.setLatLng([toLat,toLon]);map.panTo([toLat,toLon],{animate:false});return;}
+                  // A new fix landed mid-glide — drop the old animation and start fresh from here.
+                  if(_userAnimFrame){cancelAnimationFrame(_userAnimFrame);_userAnimFrame=null;}
+                  var duration=600, start=null;
+                  function step(ts){
+                    if(start===null){start=ts;}
+                    var t=Math.min(1,(ts-start)/duration);
+                    var e=1-Math.pow(1-t,3); // cubic ease-out
+                    var lat=fromLat+dLat*e, lon=fromLon+dLon*e;
+                    _userMarker.setLatLng([lat,lon]);
+                    map.panTo([lat,lon],{animate:false});
+                    if(t<1){_userAnimFrame=requestAnimationFrame(step);}else{_userAnimFrame=null;}
+                  }
+                  _userAnimFrame=requestAnimationFrame(step);
+                }
                 // SVG data-URI pin — avoids broken-image from missing default Leaflet marker PNGs
                 var _pinUri='data:image/svg+xml;utf8,'+encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="40" height="40"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z" fill="#8B5CF6" stroke="#1E1E2E" stroke-width="1.5"/></svg>');
                 var _pinIcon=L.icon({iconUrl:_pinUri,iconSize:[40,40],iconAnchor:[20,40],popupAnchor:[0,-40]});
                 function updateUserLocation(lat,lon){
                   var ll=[lat,lon];
-                  if(_userMarker){_userMarker.setLatLng(ll);}
-                  else{_userMarker=L.circleMarker(ll,{radius:8,color:'#fff',weight:2,fillColor:'#4A90D9',fillOpacity:0.9,className:'user-location-dot'}).addTo(map).bindTooltip('You',{permanent:false,direction:'top'});}
-                  map.panTo(ll,{animate:false});
+                  if(_userMarker){animateUserMarker(lat,lon);}
+                  else{
+                    // First fix of the trip — drop the dot straight down, nothing to glide from yet.
+                    _userMarker=L.circleMarker(ll,{radius:8,color:'#fff',weight:2,fillColor:'#4A90D9',fillOpacity:0.9,className:'user-location-dot'}).addTo(map).bindTooltip('You',{permanent:false,direction:'top'});
+                    map.panTo(ll,{animate:false});
+                  }
                 }
                 function centerOnUser(lat,lon){
                   var ll=[lat,lon];
+                  // User asked to recenter — cancel any glide in progress so it doesn't fight the flyTo.
+                  if(_userAnimFrame){cancelAnimationFrame(_userAnimFrame);_userAnimFrame=null;}
                   if(_userMarker){_userMarker.setLatLng(ll);}
                   else{_userMarker=L.circleMarker(ll,{radius:8,color:'#fff',weight:2,fillColor:'#4A90D9',fillOpacity:0.9,className:'user-location-dot'}).addTo(map).bindTooltip('You',{permanent:false,direction:'top'});}
                   map.flyTo(ll,16,{animate:true,duration:0.4,easeLinearity:0.25});

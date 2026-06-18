@@ -149,9 +149,16 @@ public class AndroidLocationService : ILocationService
 
         try
         {
+            // Ask the platform for the finest fix it can manage — this is the commuter's live dot, so a
+            // coarse "good enough" estimate isn't good enough. Best leans on GPS/fused hardware rather
+            // than a cell-tower guess. We give it a slightly longer window since a precise fix can take a
+            // moment to settle, especially on a cold start.
             var request = new Microsoft.Maui.Devices.Sensors.GeolocationRequest(
-                Microsoft.Maui.Devices.Sensors.GeolocationAccuracy.Medium,
-                TimeSpan.FromSeconds(5));
+                Microsoft.Maui.Devices.Sensors.GeolocationAccuracy.Best,
+                TimeSpan.FromSeconds(10))
+            {
+                RequestFullAccuracy = true
+            };
             var loc = await Microsoft.Maui.Devices.Sensors.Geolocation.GetLocationAsync(request);
             if (loc is not null)
                 return new LocationSnapshot(loc.Latitude, loc.Longitude, (float)(loc.Accuracy ?? 0), loc.Timestamp);
