@@ -37,9 +37,16 @@ public class LocationTrackingService : Service, ILocationListener
     private const float MinDistanceMetersGps = 5f;
     private const float MinDistanceMetersNetwork = 10f;
     // Actively filter low-accuracy GPS spikes: drop any fix whose accuracy radius is larger than this so
-    // cell-tower bounce can't make the live pin and distance jump erratically. Tightened to 50 m per the
-    // tracking-accuracy requirement. 0 = provider reported no accuracy, which we still accept.
+    // cell-tower bounce can't make the live pin and distance jump erratically. 0 = provider reported no
+    // accuracy, which we still accept.
+#if DEBUG
+    // Debug builds run on emulators and indoors, where a fix routinely reports 100 m+ accuracy. Relaxing
+    // the gate to 200 m here lets the whole tracking flow be exercised at a desk without going outside.
+    private const float MaxAcceptableAccuracyMeters = 200f;
+#else
+    // Release builds hold the line strictly at 50 m per the tracking-accuracy requirement.
     private const float MaxAcceptableAccuracyMeters = 50f;
+#endif
     private LocationManager? _locationManager;
     private PowerManager.WakeLock? _wakeLock;
     private bool _isStarted;

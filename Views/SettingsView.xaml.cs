@@ -52,9 +52,19 @@ public partial class SettingsView : ContentPage
 #endif
     }
 
-    private async void OnUpdateContactsClicked(object? sender, EventArgs e)
+    // Run the export, then confirm the outcome in a modal so the user gets explicit feedback rather than
+    // only the small status line. BackupStatusText holds the success path or the failure reason.
+    private async void OnExportBackupTapped(object? sender, TappedEventArgs e)
     {
-        await Shell.Current.GoToAsync("//emergency");
+        await _controller.ExportBackupAsync();
+        await DisplayAlert("Export Backup", _controller.BackupStatusText, "OK");
+    }
+
+    // Same explicit modal feedback for restore (import).
+    private async void OnRestoreBackupTapped(object? sender, TappedEventArgs e)
+    {
+        await _controller.RestoreBackupAsync();
+        await DisplayAlert("Restore Backup", _controller.BackupStatusText, "OK");
     }
 
     private async void OnTermsClicked(object? sender, EventArgs e)

@@ -5,6 +5,7 @@
 // without clearing the controller's validation first.
 
 using AlarmaApp.Controllers;
+using AlarmaApp.Models;
 
 namespace AlarmaApp.Views;
 
@@ -68,6 +69,21 @@ public partial class EmergencyView : ContentPage
             if (goToSettings)
                 _controller.OpenLocationSettings();
         });
+    }
+
+    // Removing a contact is destructive (they stop receiving SOS alerts), so make the user confirm in a
+    // modal first. The contact rides in on the gesture's CommandParameter, surfaced as e.Parameter.
+    private async void OnRemoveContactTapped(object? sender, TappedEventArgs e)
+    {
+        if (e.Parameter is not EmergencyContact contact) return;
+
+        var confirm = await DisplayAlert(
+            "Remove Contact",
+            $"Remove {contact.Name} from your emergency contacts? They will no longer receive your SOS alerts.",
+            "Remove",
+            "Cancel");
+        if (confirm)
+            _controller.RemoveEmergencyContactCommand.Execute(contact);
     }
 
     private void OnSosPressed(object? sender, EventArgs e)

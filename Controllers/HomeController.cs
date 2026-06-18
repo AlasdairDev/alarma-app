@@ -45,6 +45,9 @@ public class HomeController : INotifyPropertyChanged
     // Ceiling for the lead distance — even a (possibly GPS-spiked) high speed can't arm the alarm more
     // than this far out, so the alarm can't "fire at incorrect times" kilometres from the stop.
     private const double MaxAlarmDistanceMeters = 5000;
+    // The alarm lead time is no longer a user-facing setting, so the adaptive lead distance uses this
+    // fixed default (minutes) for its speed × time calculation.
+    private const double DefaultAlarmLeadMinutes = 5;
     // Per-fix movement below this (or below the fix's own accuracy) is treated as GPS jitter and
     // excluded from the accumulated trip distance.
     private const double MinSegmentMeters = 8;
@@ -75,7 +78,6 @@ public class HomeController : INotifyPropertyChanged
     // in the list; we filter from this so clearing the search box restores the full list without a re-query.
     private readonly List<TripHistory> _allTripHistory = new();
     private readonly ObservableCollection<GeocodingResult> _searchResults = new();
-    private readonly ObservableCollection<string> _vibrationIntensityOptions = new() { "Low", "Medium", "High" };
 
     private string _statusText = "Loading...";
     private string _connectivityText = string.Empty;
@@ -239,9 +241,7 @@ public class HomeController : INotifyPropertyChanged
     private string _newContactNumber = string.Empty;
     private string _newRouteName = string.Empty;
     private string _alarmSound;
-    private double _alarmLeadMinutes;
     private bool _vibrationOnly;
-    private string _vibrationIntensity;
     private bool _isOnboardingComplete;
     private bool _isDatabaseInitialized;
     private bool _hasInitialized;
@@ -521,19 +521,6 @@ public class HomeController : INotifyPropertyChanged
         }
     }
 
-    public double AlarmLeadMinutes
-    {
-        get => _alarmLeadMinutes;
-        set
-        {
-            var clamped = Math.Clamp(value, 1, 60);
-            if (SetProperty(ref _alarmLeadMinutes, clamped))
-            {
-                _preferencesService.AlarmLeadMinutes = (int)clamped;
-            }
-        }
-    }
-
     public bool VibrationOnly
     {
         get => _vibrationOnly;
@@ -547,7 +534,6 @@ public class HomeController : INotifyPropertyChanged
     }
 
     public ObservableCollection<string> AlarmSoundOptions => _alarmSoundOptions;
-    public ObservableCollection<string> VibrationIntensityOptions => _vibrationIntensityOptions;
     public ObservableCollection<GeocodingResult> SearchResults => _searchResults;
 
     public bool HasSearchResults => _searchResults.Count > 0;
@@ -566,19 +552,6 @@ public class HomeController : INotifyPropertyChanged
 
     public bool ShowNoResults =>
         !HasSearchResults && !string.IsNullOrWhiteSpace(_destinationQuery) && !IsSearchingDestination;
-
-    public string VibrationIntensity
-    {
-        get => _vibrationIntensity;
-        set
-        {
-            var valid = _vibrationIntensityOptions.Contains(value, StringComparer.OrdinalIgnoreCase)
-                ? _vibrationIntensityOptions.First(o => o.Equals(value, StringComparison.OrdinalIgnoreCase))
-                : "Medium";
-            if (SetProperty(ref _vibrationIntensity, valid))
-                _preferencesService.VibrationIntensity = valid;
-        }
-    }
 
     public bool IsOnboardingComplete
     {
@@ -738,14 +711,7 @@ public class HomeController : INotifyPropertyChanged
             _preferencesService.AlarmSound = normalizedSound;
         }
 
-        var storedLeadMinutes = _preferencesService.AlarmLeadMinutes;
-        _alarmLeadMinutes = Math.Clamp(storedLeadMinutes, 1, 60);
-        if (storedLeadMinutes != (int)_alarmLeadMinutes)
-        {
-            _preferencesService.AlarmLeadMinutes = (int)_alarmLeadMinutes;
-        }
         _vibrationOnly = _preferencesService.VibrationOnly;
-        _vibrationIntensity = _preferencesService.VibrationIntensity;
         _isOnboardingComplete = _preferencesService.IsOnboardingComplete;
 
         InitializeCommand = new Command(async () => await InitializeDatabaseAsync());
@@ -1151,7 +1117,9 @@ public class HomeController : INotifyPropertyChanged
         }
     }
 
-    private async Task ExportBackupAsync()
+    // Public so the Settings screen can await the result and then surface a DisplayAlert with the
+    // outcome (BackupStatusText) — the command wrapper above still drives the same method.
+    public async Task ExportBackupAsync()
     {
         try
         {
@@ -1166,7 +1134,9 @@ public class HomeController : INotifyPropertyChanged
         }
     }
 
-    private async Task RestoreBackupAsync()
+    // Public for the same reason as ExportBackupAsync — the Settings screen awaits it and shows the
+    // restore outcome in a DisplayAlert modal.
+    public async Task RestoreBackupAsync()
     {
         try
         {
@@ -1180,9 +1150,7 @@ public class HomeController : INotifyPropertyChanged
             _alarmSound = NormalizeSoundKey(_preferencesService.AlarmSound);
             _preferencesService.AlarmSound = _alarmSound;
             OnPropertyChanged(nameof(AlarmSound));
-            AlarmLeadMinutes = _preferencesService.AlarmLeadMinutes;
             VibrationOnly = _preferencesService.VibrationOnly;
-            VibrationIntensity = _preferencesService.VibrationIntensity;
             UpdateBackupStatus();
             await LoadLocalDataAsync();
             BackupStatusText = $"Backup restored from {path}.";
@@ -1279,6 +1247,31 @@ public class HomeController : INotifyPropertyChanged
     {
         NavigateToAddFavoriteRequested?.Invoke(this, EventArgs.Empty);
         return Task.CompletedTask;
+    }
+
+    // Re-publishes the latest known position so a freshly-opened map (e.g. the "View Active Trip" screen)
+    // can drop its blue location dot immediately instead of waiting for the next GPS fix to arrive. The
+    // dot is a fixed-pixel marker, so once it's on the map it stays visible at every zoom level.
+    public async Task SeedLiveLocationAsync()
+    {
+        try
+        {
+            var lat = _lastTrackedLocation?.Latitude;
+            var lon = _lastTrackedLocation?.Longitude;
+            if (lat is null || lon is null)
+            {
+                var loc = await _locationService.GetLastKnownLocationAsync();
+                lat = loc?.Latitude;
+                lon = loc?.Longitude;
+            }
+
+            if (lat is not null && lon is not null)
+                LiveLocationUpdated?.Invoke(this, (lat.Value, lon.Value));
+        }
+        catch (Exception ex)
+        {
+            BlackBoxLogger.RecordHandledException(ex, "[HomeController.SeedLiveLocationAsync]");
+        }
     }
 
     public async Task RefreshCurrentLocationAsync()
@@ -1662,13 +1655,10 @@ public class HomeController : INotifyPropertyChanged
                 return;
             }
 
-            if (!await _permissionsService.EnsureSmsPermissionAsync())
-            {
-                LastActionText = "SMS permission is required to send SOS alerts.";
-                SmsDenied?.Invoke(this, EventArgs.Empty);
-                return;
-            }
-
+            // No SMS-permission gate here any more: the SOS now goes out through the MAUI SMS API
+            // (Sms.ComposeAsync), which opens the messaging app pre-filled and needs no SEND_SMS
+            // runtime permission. Gating on a permission we no longer use is exactly what was blocking
+            // the SOS from ever firing on newer Android builds.
             var recipients = _emergencyContacts
                 .Select(contact => contact.PhoneNumber)
                 .ToList();
@@ -1778,7 +1768,10 @@ public class HomeController : INotifyPropertyChanged
         CurrentAlarmStage = AlarmStage.None;
         _lastSpeedMetersPerSecond = 0;
         _minDistanceToDestination = double.MaxValue;
-        DistanceToDestinationText = string.Empty;
+        // Until the first accepted GPS fix lands, the distance readout would otherwise be blank — show
+        // an explicit "acquiring lock" state instead so the Trip Progress sheet never looks frozen.
+        DistanceToDestinationText = "Acquiring GPS lock…";
+        ChipDistanceText = "Acquiring GPS…";
         IsTracking = true;
         TrackingStatusText = "Starting trip tracking...";
 
@@ -1951,7 +1944,7 @@ public class HomeController : INotifyPropertyChanged
         var accuracyBuffer = Math.Max(snapshot.AccuracyMeters, 0);
         var overshootThreshold = OvershootThresholdMeters + accuracyBuffer;
         var adaptiveLeadDistance = Math.Clamp(
-            _lastSpeedMetersPerSecond * AlarmLeadMinutes * 60,
+            _lastSpeedMetersPerSecond * DefaultAlarmLeadMinutes * 60,
             MinAlarmDistanceMeters,
             MaxAlarmDistanceMeters);
         var adaptiveLeadThreshold = adaptiveLeadDistance + accuracyBuffer;
@@ -1973,10 +1966,21 @@ public class HomeController : INotifyPropertyChanged
 
         // ── 3-stage progressive escalation ────────────────────────────────────────
         // The trigger radius is the adaptive lead distance (speed × lead-time, floored). Stage 1 is the
-        // gentle alert at that radius; Stage 2 is the louder alert once the rider is halfway inside it;
-        // the Emergency stage is the full-screen lockout at the actual drop-off. We keep Stage 2 a little
-        // outside the arrival ring so the order never inverts when the radius is small / floored.
-        var stage2Threshold = Math.Max(adaptiveLeadDistance * 0.5, ArrivalThresholdMeters + Stage2BufferMeters)
+        // gentle alert at that radius; Stage 2 is the louder alert once the rider is meaningfully closer;
+        // the Emergency stage is the full-screen lockout at the actual drop-off.
+        //
+        // Snapshot the stage as it stands BEFORE this fix is processed. Stage 2 is gated on this snapshot
+        // (not the live field that Stage 1 may have just changed), so Alarm 2 can NEVER fire on the very
+        // same GPS fix that triggered Alarm 1 — that same-pass double-fire is exactly why Alarm 2 used to
+        // go off "right after" Alarm 1.
+        var stageBeforeUpdate = _currentAlarmStage;
+
+        // Place Stage 2 exactly halfway, by distance, between the arrival ring and the Stage 1 ring. Since
+        // the lead distance is always floored well above the arrival threshold, Stage 2 is GUARANTEED to
+        // sit strictly inside Stage 1 and strictly outside arrival regardless of speed — so it can't fire
+        // early (at the same radius as Stage 1) and the 1 → 2 → arrival order can never invert.
+        var stage2Threshold = ArrivalThresholdMeters
+                              + (adaptiveLeadDistance - ArrivalThresholdMeters) * 0.5
                               + accuracyBuffer;
 
         // Stage 1 — gentle alert at the initial trigger radius. No screen lockout (see AppShell).
@@ -1990,9 +1994,11 @@ public class HomeController : INotifyPropertyChanged
                 allowRepeat: false);
         }
 
-        // Stage 2 — louder alert once we cross ~50% of the trigger radius and aren't yet at the stop.
-        // Strictly sequential: it can only fire AFTER Stage 1 has fired (never skip straight to Stage 2).
-        if (_currentAlarmStage == AlarmStage.Stage1
+        // Stage 2 — louder alert once the rider crosses Stage 2's own (tighter) threshold. Strictly
+        // sequential AND strictly on a later fix: it requires Stage 1 to have already been active at the
+        // start of this update, so it never overlaps with the fix that fired Stage 1.
+        if (stageBeforeUpdate == AlarmStage.Stage1
+            && _currentAlarmStage == AlarmStage.Stage1
             && !_hasArrivedAtDestination
             && distanceToDestination <= stage2Threshold)
         {
@@ -2129,7 +2135,7 @@ public class HomeController : INotifyPropertyChanged
                     AlarmStageActivated?.Invoke(this, stage);
                 }
 
-                await _alarmAudioService.TriggerAlarmAsync(stage, AlarmSound, VibrationOnly, VibrationIntensity);
+                await _alarmAudioService.TriggerAlarmAsync(stage, AlarmSound, VibrationOnly);
             }
 
             await _notificationService.ShowTripAlertAsync(title, message);

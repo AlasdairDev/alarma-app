@@ -42,10 +42,17 @@ public partial class AlarmStageView : ContentPage
         base.OnAppearing();
         _controller.MapJsRequested += OnMapJsRequested;
         _controller.PropertyChanged += OnControllerPropertyChanged;
+        // Subscribe to live GPS so the commuter's blue dot tracks on THIS map too (the active-trip view
+        // has its own WebView, separate from Home's — without this it never received location updates,
+        // which is why the dot didn't show up here).
+        _controller.LiveLocationUpdated += OnLiveLocationUpdated;
         await Task.WhenAll(
             Content.FadeTo(1, 280, Easing.CubicOut),
             Content.TranslateTo(0, 0, 280, Easing.CubicOut));
         await SyncMapStateAsync();
+        // Drop the dot right away from the last known fix so it's visible the moment the map opens,
+        // rather than waiting for the next location update to arrive.
+        await _controller.SeedLiveLocationAsync();
 
         // Announce Stage 3 immediately if it was already active when the view appeared.
         if (_controller.IsStage3Wake && !_stage3Announced)
@@ -61,6 +68,7 @@ public partial class AlarmStageView : ContentPage
         base.OnDisappearing();
         _controller.MapJsRequested -= OnMapJsRequested;
         _controller.PropertyChanged -= OnControllerPropertyChanged;
+        _controller.LiveLocationUpdated -= OnLiveLocationUpdated;
         _stage3Announced = false;
     }
 
@@ -95,6 +103,16 @@ public partial class AlarmStageView : ContentPage
     private async void OnMapJsRequested(object? sender, string js)
     {
         await AlarmMapWebView.EvaluateJavaScriptAsync(js);
+    }
+
+    // Push each accepted GPS fix into this map's WebView so the blue "you are here" dot keeps up with
+    // the commuter. updateUserLocation adds the marker on the first fix and glides it on later ones.
+    private void OnLiveLocationUpdated(object? sender, (double Lat, double Lon) loc)
+    {
+        var lat = loc.Lat.ToString("F6", CultureInfo.InvariantCulture);
+        var lon = loc.Lon.ToString("F6", CultureInfo.InvariantCulture);
+        MainThread.BeginInvokeOnMainThread(async () =>
+            await AlarmMapWebView.EvaluateJavaScriptAsync($"updateUserLocation({lat},{lon})"));
     }
 
     protected override bool OnBackButtonPressed()
@@ -135,7 +153,7 @@ public partial class AlarmStageView : ContentPage
                 {
                     _isPanning = false;
                     thumb.TranslationX = maxX;
-                    _ = DismissAndExitAsync();
+                    _ = StopTripAndExitAsync();
                 }
                 break;
 
@@ -146,7 +164,7 @@ public partial class AlarmStageView : ContentPage
                 var maxSlide = Math.Max(0, track.Width - thumb.Width);
                 if (maxSlide > 0 && thumb.TranslationX >= maxSlide * 0.75)
                 {
-                    _ = DismissAndExitAsync();
+                    _ = StopTripAndExitAsync();
                 }
                 else
                 {
@@ -191,6 +209,21 @@ public partial class AlarmStageView : ContentPage
         if (_isDismissing) return;
         _isDismissing = true;
         _controller.DismissAlarmCommand.Execute(null);
+        await Task.WhenAll(
+            Content.FadeTo(0, 200, Easing.CubicIn),
+            Content.TranslateTo(0, 40, 200, Easing.CubicIn));
+        await Shell.Current.GoToAsync("..", animate: false);
+    }
+
+    // Slide to Stop (Stage 1/2) and Slide to Dismiss (Stage 3) both end the WHOLE active trip — not just
+    // close this screen. StopTrackingCommand tears down the background location service, silences all
+    // media + vibration (DisableCriticalAudioAsync), clears the destination, and resets the alarm stage,
+    // so after the swipe we simply return to the home screen with tracking fully stopped.
+    private async Task StopTripAndExitAsync()
+    {
+        if (_isDismissing) return;
+        _isDismissing = true;
+        _controller.StopTrackingCommand.Execute(null);
         await Task.WhenAll(
             Content.FadeTo(0, 200, Easing.CubicIn),
             Content.TranslateTo(0, 40, 200, Easing.CubicIn));
