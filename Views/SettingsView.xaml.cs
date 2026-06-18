@@ -5,6 +5,9 @@ namespace AlarmaApp.Views;
 public partial class SettingsView : ContentPage
 {
     private readonly HomeController _controller;
+    // Suppresses the preview that the Picker's SelectedIndexChanged fires when the binding first
+    // assigns the saved sound on load — we only want to preview an actual user pick.
+    private bool _pickerReady;
 
     public SettingsView(HomeController controller)
     {
@@ -18,13 +21,25 @@ public partial class SettingsView : ContentPage
         Content.Opacity = 0;
         base.OnAppearing();
         Content.FadeTo(1, 220, Easing.CubicOut);
+        // The initial binding-driven selection has already happened by now, so any change from here on
+        // is the user choosing a sound — enable previews.
+        _pickerReady = true;
     }
 
     protected override void OnDisappearing()
     {
         base.OnDisappearing();
-        // Leaving the page must silence any sound preview still playing.
+        // Don't let a preview keep playing once we leave, and re-arm the load guard for next entry.
+        _pickerReady = false;
         _controller.StopSoundPreview();
+    }
+
+    // Whenever the rider picks a different alarm sound from the dropdown, play a live preview. The
+    // selection itself is saved to Preferences by the Picker's two-way SelectedItem binding.
+    private void OnAlarmSoundChanged(object? sender, EventArgs e)
+    {
+        if (!_pickerReady) return;
+        _controller.PreviewSelectedSound();
     }
 
     private async void OnUpdateContactsClicked(object? sender, EventArgs e)

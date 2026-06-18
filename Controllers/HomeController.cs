@@ -2354,6 +2354,21 @@ public class HomeController : INotifyPropertyChanged
         }
     }
 
+    // Plays a live preview of whatever sound is currently selected. Used by the Settings dropdown's
+    // SelectedIndexChanged — the Picker's two-way binding already persisted the choice to Preferences,
+    // so here we only need to let the rider hear it.
+    public void PreviewSelectedSound()
+    {
+        try
+        {
+            _ = _alarmAudioService.PreviewSoundAsync(_alarmSound);
+        }
+        catch (Exception ex)
+        {
+            BlackBoxLogger.RecordHandledException(ex, "[HomeController.PreviewSelectedSound]");
+        }
+    }
+
     // Called when the rider leaves Settings so a preview can't keep playing after the page is gone.
     public void StopSoundPreview()
     {
