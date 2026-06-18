@@ -391,6 +391,21 @@
     <span class="choice">Active-trip fix → last-known → text-only fallback</span>
     <p class="why"><b>Why:</b> An SOS is only useful if a contact knows <em>where</em> to go, so the SMS now appends a tappable <code>https://maps.google.com/?q={lat},{lon}</code> link. At the instant the button is pressed we take the freshest fix through a fallback chain — the active trip's in-memory Haversine coordinate first, then the platform's last-known/fresh location, and if neither is available the plain SOS text still sends so contacts are alerted regardless. Every step is a passive read, so grabbing the coordinate can't disturb the tracking loop the alarm depends on.</p>
   </div>
+
+  <h3>UX &amp; Data Portability</h3>
+  <div class="decision">
+    <h3>Why we moved backups from hidden AppData to native OS folder selection</h3>
+    <span class="choice">Chosen: FileSaver "Save As" + FilePicker import</span>
+    <p class="why"><b>Why:</b> The first cut of Backup/Restore wrote the encrypted <code>.alarma</code> file into the app's private AppData directory and read the "latest" one back automatically. It worked, but it quietly took ownership of the user's data away from them — a commuter could never see the file, copy it to another phone, hand it to a classmate, or store it in their own Drive. For an offline, privacy-first app whose entire promise is that <em>the user's data belongs to the user</em>, hiding the one portable artifact of that data in storage they cannot reach was the wrong default. We therefore route export through the native OS "Save As" dialog (Community Toolkit <code>FileSaver</code>) so the rider picks the destination folder themselves — typically <b>Downloads</b> — and route import through the native file browser (<code>FilePicker</code>) so they navigate to and select that exact file back. The cryptographic envelope is unchanged (AES-256-GCM, Keystore key, validate-before-clear restore); only the file's <em>location</em> moves out of hidden storage into a folder the commuter genuinely controls.</p>
+    <p class="why"><b>Over the alternatives:</b> Auto-writing to a fixed public path (e.g. a hardcoded Downloads location) would have re-introduced scoped-storage permission friction on modern Android and still denied the user a real choice; the system pickers grant one-shot access to exactly the file or folder the user points at, with no broad storage permission required.</p>
+  </div>
+
+  <h3>Non-Intrusive Feedback</h3>
+  <div class="decision">
+    <h3>Why transient "grey pill" notifications replaced blocking modals</h3>
+    <span class="choice">Chosen: auto-hiding toast over DisplayAlert</span>
+    <p class="why"><b>Why:</b> Low-stakes confirmations — "backup saved", "backup restored" — were originally shown with <code>DisplayAlert</code>, a modal that dims the screen and demands a tap before anything else can happen. On a moving jeepney at night, that is exactly the wrong interaction: it seizes the whole screen and the user's attention for a message they only need to glance at, right when their attention belongs on their surroundings and their stop. We replaced those modals with a transient <b>"grey pill"</b> — a rounded, dark, toast/snackbar-style capsule that fades in near the bottom of the screen, reports the outcome, and auto-dismisses after a few seconds without ever blocking input. Feedback the rider can absorb at a glance and ignore, instead of an interruption they must clear. We deliberately keep true modals only where a decision genuinely must be made and acknowledged (destructive deletes, invalid-contact errors, the location-off prompt); everything informational degrades to the non-blocking pill.</p>
+  </div>
 </section>
 
 <!-- ===================== 8 ===================== -->

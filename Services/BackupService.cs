@@ -1,9 +1,12 @@
-// encrypted backup. AES-256-GCM, fresh 96-bit nonce per export, 256-bit key in the Keystore
-// (SecureStorage), never hardcoded.
-// GCM also gives us integrity - any tampering (cipher/nonce/tag) throws on Decrypt before we
-// read a single byte, so we never deserialize garbage.
-// restore validates EVERY record before it clears anything, so a junk/empty backup can't wipe
-// the user's real data. restored strings are length-capped, phone numbers re-checked.
+// Our encrypted backup. AES-256-GCM, a fresh 96-bit nonce per export, and a 256-bit key that lives in
+// the Keystore (SecureStorage) — we never hardcode it.
+// GCM also buys us integrity for free: any tampering (cipher/nonce/tag) throws on Decrypt before we read
+// a single byte, so we never end up deserializing garbage.
+// On restore we validate EVERY record before clearing anything, so a junk or empty backup can't wipe a
+// commuter's real data — restored strings are length-capped and phone numbers re-checked.
+// Note: we build the backup as raw bytes rather than writing it ourselves. We moved deliberately away
+// from quietly dumping the file into private AppData (where the user could never find it) to handing the
+// bytes to the OS file picker, so commuters genuinely own and can move their own backups.
 
 using System.Security.Cryptography;
 using System.Text;
@@ -58,9 +61,10 @@ public class BackupService
         _preferencesService = preferencesService;
     }
 
-    // Build the encrypted backup blob in memory (no disk write) along with a suggested file name. The
-    // export UI hands these to FileSaver so the user can drop the file wherever they like — Downloads,
-    // Drive, etc. — instead of it being buried in the app's private storage.
+    // We build the encrypted backup blob entirely in memory (no disk write) and hand it back with a
+    // suggested file name. We did it this way so the export UI can pass the bytes straight to the native
+    // OS FileSaver dialog — letting commuters drop their backup into Downloads, Drive, wherever they
+    // actually own it — instead of us burying it in private AppData they could never reach.
     public async Task<(string FileName, byte[] Data)> BuildBackupAsync()
     {
         var payload = new BackupPayload(
@@ -101,9 +105,9 @@ public class BackupService
         return latestFile;
     }
 
-    // Restore from the raw bytes of a backup file the user picked through the OS file browser. Same
-    // decrypt-then-validate-everything-before-touching-the-db contract as RestoreLatestAsync, so a junk
-    // or tampered file can never wipe real data.
+    // Restore straight from the raw bytes of whatever backup file the commuter picked through the OS file
+    // browser. We keep the exact same decrypt-then-validate-everything-before-we-touch-the-db contract as
+    // RestoreLatestAsync, so even a file someone tampered with or an empty one can never wipe real data.
     public async Task RestoreFromBytesAsync(byte[] encrypted)
     {
         var key = await GetOrCreateBackupKeyAsync();

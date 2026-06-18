@@ -3,6 +3,51 @@
 All notable changes to Alarma are recorded here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.1.0] - 2026-06-19
+
+This release is our final capstone-defense polish: it puts data ownership in the commuter's hands,
+sharpens the emergency features, and replaces blocking modals with quieter, modern feedback.
+
+### Added
+
+- **User-accessible backup export ("Save As").** Exporting a backup now opens the native OS file
+  browser via `FileSaver`, so commuters choose exactly where the encrypted `.alarma` file lands —
+  Downloads, Drive, anywhere they own — instead of it being buried in private app storage they can't
+  reach. The grey-pill confirmation reports the saved path only after the file is genuinely written.
+- **User-driven backup import (File Picker).** Restoring now uses `FilePicker` to let the commuter
+  navigate to and select their own `.alarma` file from anywhere on the device. Cancelling the picker
+  aborts safely with no crash; the same encrypted decrypt-then-validate-before-clear restore guarantees
+  still apply to the picked file.
+- **Live Google Maps location in the SOS SMS.** The emergency message now carries a tappable
+  `https://maps.google.com/?q={lat},{lon}` link so a contact can jump straight to the rider's position,
+  with a clear text-only fallback when no fix is available.
+- **Bluetooth hardware-state sync.** The app's Bluetooth UI now mirrors the device's real Bluetooth
+  radio in real time — toggling the hardware off flips the in-app switch off and hides the earphone
+  status pill, and turning it back on re-syncs the switch automatically.
+
+### Changed
+
+- **Non-intrusive "grey pill" feedback replaces blocking modals.** Backup/restore outcomes and similar
+  confirmations now surface as a transient, auto-hiding grey pill (toast-style) near the bottom of the
+  screen instead of an intrusive `DisplayAlert` modal — feedback the rider can read at a glance without
+  being interrupted mid-commute.
+- **Humanized the codebase comments** across the tracking service, backup service, and the active-trip
+  view so they read like practical team notes — first-person, with the real reasons and workarounds —
+  rather than auto-generated boilerplate.
+
+### Fixed
+
+- **Strict 911 dialer validation.** The *Call 911* action runs `PhoneDialer.Default.Open("911")` inside
+  a guarded try/catch and now surfaces a clear alert if the device has no dialer app, instead of failing
+  silently.
+- **Destination pin no longer disappears on the active-trip map.** A dedicated guard re-asserts the
+  destination pin after the Leaflet WebView reloads (and on every location-update cycle), fixing the map
+  refresh that intermittently wiped the pin.
+- **Map fully resets when a trip is stopped** — the pin, route, and live dot are cleared and the camera
+  returns to the default view, instead of staying frozen on the old destination.
+- **Individual trip-history deletions now confirm first**, matching the *Clear All* prompt, so a single
+  stray tap on a trash icon can't erase a trip without confirmation.
+
 ## [Unreleased]
 
 ### Added

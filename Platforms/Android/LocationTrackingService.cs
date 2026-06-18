@@ -36,15 +36,18 @@ public class LocationTrackingService : Service, ILocationListener
     private const long NetworkUpdateIntervalMillis = 5000;
     private const float MinDistanceMetersGps = 5f;
     private const float MinDistanceMetersNetwork = 10f;
-    // Actively filter low-accuracy GPS spikes: drop any fix whose accuracy radius is larger than this so
-    // cell-tower bounce can't make the live pin and distance jump erratically. 0 = provider reported no
-    // accuracy, which we still accept.
+    // We enforce a strict accuracy gate here because indoor cell-tower triangulation is far too sloppy
+    // for the alarm math — a fix that's off by a few hundred metres makes the live pin and the
+    // distance-to-destination readout jump around, and worst case it would fire the wake-up alarm at the
+    // wrong stop. So we just drop any fix whose accuracy radius is wider than this threshold. (An accuracy
+    // of 0 means the provider didn't report one at all, which we still let through.)
 #if DEBUG
-    // Debug builds run on emulators and indoors, where a fix routinely reports 100 m+ accuracy. Relaxing
-    // the gate to 200 m here lets the whole tracking flow be exercised at a desk without going outside.
+    // We loosen the gate to 200 m in Debug because we develop against the emulator at a desk indoors,
+    // where every fix comes back at 100 m+ — without this we could never exercise the whole tracking flow
+    // without physically walking a route outside.
     private const float MaxAcceptableAccuracyMeters = 200f;
 #else
-    // Release builds hold the line strictly at 50 m per the tracking-accuracy requirement.
+    // Release holds the line strictly at 50 m — the accuracy our alarm timing was actually tuned against.
     private const float MaxAcceptableAccuracyMeters = 50f;
 #endif
     private LocationManager? _locationManager;
@@ -88,8 +91,9 @@ public class LocationTrackingService : Service, ILocationListener
         var timestamp = DateTimeOffset.FromUnixTimeMilliseconds(location.Time);
         var accuracy = location.HasAccuracy ? location.Accuracy : 0f;
 
-        // Skip shaky fixes so a bad cell-tower reading can't make the position or distance jump around.
-        // accuracy == 0 means the provider didn't report one, so we let those through.
+        // Toss out the shaky fixes before they ever leave this service — a bad cell-tower reading sneaking
+        // through here is what used to make the position and distance jump around. (accuracy == 0 just
+        // means the provider gave us no estimate, so we trust those.)
         if (accuracy > MaxAcceptableAccuracyMeters)
         {
             return;
