@@ -167,6 +167,17 @@ public partial class AlarmStageView : ContentPage
         await Shell.Current.GoToAsync("..", animate: false);
     }
 
+    // "Done" on the rerouting screen — tear down the recovery flow in the controller, then leave the
+    // full-screen alarm page the same way a normal dismiss does.
+    private async void OnReroutingDoneClicked(object? sender, EventArgs e)
+    {
+        _controller.FinishReroutingCommand.Execute(null);
+        await Task.WhenAll(
+            Content.FadeTo(0, 200, Easing.CubicIn),
+            Content.TranslateTo(0, 40, 200, Easing.CubicIn));
+        await Shell.Current.GoToAsync("..", animate: false);
+    }
+
     private async Task DismissAndExitAsync()
     {
         if (_isDismissing) return;
