@@ -1921,6 +1921,9 @@ public class HomeController : INotifyPropertyChanged
         // foreground service itself was already torn down by StopTrackingAsync above.
         _activeTrip = null;
         ClearDestination();
+        // ClearDestination only drops the pin; this also clears the blue dot + any route and floats the
+        // camera back to the default view so the map isn't left zoomed in on the old destination.
+        ResetMapView();
         ResetSearchState();
         TrackingStatusText = "Tracking inactive.";
         LastActionText = "Trip tracking stopped.";
@@ -1991,6 +1994,8 @@ public class HomeController : INotifyPropertyChanged
         {
             _lastMapLocationUpdate = DateTime.UtcNow;
             LiveLocationUpdated?.Invoke(this, (snapshot.Latitude, snapshot.Longitude));
+            // Guarantee the destination pin is still on the map after the dot moves.
+            EnsureDestinationPinIsPresent();
         }
 
         await HandleDestinationDistanceAsync(snapshot);
@@ -2576,6 +2581,23 @@ public class HomeController : INotifyPropertyChanged
         MapJsRequested?.Invoke(this, "clearDestination()");
     }
 
+    // Nudge whichever map is currently listening to re-draw the destination pin if it has gone missing.
+    // The JS ensureDestination() is a no-op when the pin is already there or no destination is set, so
+    // it's safe to fire on every location-update cycle as a cheap safety net.
+    private void EnsureDestinationPinIsPresent()
+    {
+        if (_lastDestinationResult is null) return;
+        MapJsRequested?.Invoke(this, "ensureDestination()");
+    }
+
+    // Hard reset of the live map back to the idle home state — clears the pin, route and blue dot and
+    // recentres on the default region. Called when a trip stops so the map doesn't stay frozen on the
+    // old destination.
+    private void ResetMapView()
+    {
+        MapJsRequested?.Invoke(this, "resetMap()");
+    }
+
     // everything we push into JS (setDestination/updateUserLocation/centerOnUser) is either an
     // F6 InvariantCulture number or JsonSerializer output, so no raw user string hits eval.
     // CSP has to list both *.cartocdn.com and *.basemaps.cartocdn.com because the wildcard only
@@ -2611,6 +2633,12 @@ public class HomeController : INotifyPropertyChanged
                 var _userMarker=null;
                 var _userAnimFrame=null;
                 var _destMarker=null;
+                // Remember where the destination is even after the marker object is gone. The blue dot and
+                // the destination pin are two separate layers, but a stray redraw used to drop the pin and
+                // leave the rider staring at a map with no target. Caching the coords here lets
+                // ensureDestination() put the pin back without us having to re-run the whole setDestination
+                // (which would yank the camera around). null label means "nothing set yet".
+                var _destLat=null, _destLon=null, _destLabel=null;
                 // Glide the live dot from where it is to the new fix instead of teleporting it. We tween
                 // lat/lon over a few hundred ms with an ease-out curve so it decelerates into place, and
                 // pan the map along with it so the dot stays put on screen while the world slides under it.
@@ -2643,9 +2671,13 @@ public class HomeController : INotifyPropertyChanged
                   if(_userMarker){animateUserMarker(lat,lon);}
                   else{
                     // First fix of the trip — drop the dot straight down, nothing to glide from yet.
+                    // NOTE: we deliberately only touch the user dot here. No blanket clear, so the
+                    // destination pin survives the very first GPS fix instead of being wiped.
                     _userMarker=L.circleMarker(ll,{radius:8,color:'#fff',weight:2,fillColor:'#4A90D9',fillOpacity:0.9,className:'user-location-dot'}).addTo(map).bindTooltip('You',{permanent:false,direction:'top'});
                     map.panTo(ll,{animate:false});
                   }
+                  // Re-assert the pin at the end of every update cycle so it can never quietly disappear.
+                  ensureDestination();
                 }
                 function centerOnUser(lat,lon){
                   var ll=[lat,lon];
@@ -2654,14 +2686,35 @@ public class HomeController : INotifyPropertyChanged
                   if(_userMarker){_userMarker.setLatLng(ll);}
                   else{_userMarker=L.circleMarker(ll,{radius:8,color:'#fff',weight:2,fillColor:'#4A90D9',fillOpacity:0.9,className:'user-location-dot'}).addTo(map).bindTooltip('You',{permanent:false,direction:'top'});}
                   map.flyTo(ll,16,{animate:true,duration:0.4,easeLinearity:0.25});
+                  ensureDestination();
                 }
                 function setDestination(lat,lon,label){
                   clearDestination();
+                  // Cache first so a later redraw can rebuild the pin from these coords.
+                  _destLat=lat; _destLon=lon; _destLabel=label;
                   _destMarker=L.marker([lat,lon],{icon:_pinIcon}).addTo(map).bindPopup(label).openPopup();
                   map.flyTo([lat,lon],15,{animate:true,duration:0.4,easeLinearity:0.25});
                 }
+                // Belt-and-braces guard: if we still have a destination cached but its marker has gone
+                // missing (lost to a redraw, a late WebView load, etc.), put it back WITHOUT moving the
+                // camera — that's the difference between this and setDestination.
+                function ensureDestination(){
+                  if(_destLat===null||_destLon===null){return;}
+                  if(_destMarker){return;}
+                  _destMarker=L.marker([_destLat,_destLon],{icon:_pinIcon}).addTo(map);
+                  if(_destLabel){_destMarker.bindPopup(_destLabel);}
+                }
                 function clearDestination(){
                   if(_destMarker){map.removeLayer(_destMarker);_destMarker=null;}
+                  _destLat=null; _destLon=null; _destLabel=null;
+                }
+                // Trip stopped — wipe everything (pin, route, blue dot) and float the camera back to the
+                // default region/zoom so the map looks exactly like the clean home state again.
+                function resetMap(){
+                  if(_userAnimFrame){cancelAnimationFrame(_userAnimFrame);_userAnimFrame=null;}
+                  clearDestination();
+                  if(_userMarker){map.removeLayer(_userMarker);_userMarker=null;}
+                  map.setView([14.5995,120.9842],12);
                 }
               </script>
             </body>

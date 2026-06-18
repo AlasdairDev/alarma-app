@@ -242,7 +242,8 @@
 
                                 </VerticalStackLayout>
 
-                                <!-- Trash icon — same delete command as the swipe action -->
+                                <!-- Trash icon — routes through a confirm prompt before deleting (the swipe
+                                     action still uses the raw command). -->
                                 <Button Grid.Column="1"
                                         Text="delete"
                                         FontFamily="MaterialSymbols"
@@ -251,7 +252,7 @@
                                         TextColor="#A88FD0"
                                         Padding="8,0,0,0"
                                         VerticalOptions="Start"
-                                        Command="{Binding Source={x:Reference HistoryPage}, Path=BindingContext.DeleteTripHistoryCommand}"
+                                        Clicked="OnDeleteTripClicked"
                                         CommandParameter="{Binding .}"
                                         SemanticProperties.Description="Delete this trip"
                                         SemanticProperties.Hint="Double tap to remove this trip from history" />

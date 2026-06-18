@@ -89,6 +89,18 @@ public partial class AlarmStageView : ContentPage
                 "WAKE UP! You might miss your stop. Slide right to dismiss the alarm."));
     }
 
+    // The active-trip map is a SEPARATE WebView from Home's, so it loads the Leaflet HTML fresh every
+    // time this page opens. If OnAppearing's SyncMapStateAsync ran before that load finished, the
+    // setDestination() call hit a page with no JS yet and the pin silently never appeared. Re-running the
+    // sync (and re-seeding the dot) once Navigated fires guarantees the destination pin is drawn the
+    // moment the map is actually ready.
+    private async void OnAlarmMapNavigated(object? sender, WebNavigatedEventArgs e)
+    {
+        if (e.Result != WebNavigationResult.Success) return;
+        await SyncMapStateAsync();
+        await _controller.SeedLiveLocationAsync();
+    }
+
     private async Task SyncMapStateAsync()
     {
         if (_controller.LastDestinationResult is { } dest)

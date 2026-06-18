@@ -244,13 +244,6 @@
                 </VerticalStackLayout>
             </Border>
 
-            <!-- Status -->
-            <Label Text="{Binding BackupStatusText}"
-                   FontSize="12"
-                   TextColor="#8A7AAE"
-                   HorizontalOptions="Center"
-                   Margin="16,12" />
-
             <!-- LEGAL -->
             <Label Text="LEGAL"
                    FontSize="11"
