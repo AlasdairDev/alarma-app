@@ -171,6 +171,32 @@ public class AndroidLocationService : ILocationService
         return null;
     }
 
+    public async Task<LocationSnapshot?> GetBestLocationAsync(TimeSpan timeout)
+    {
+        // Demand the finest fix the hardware can give, but never block longer than the caller's window —
+        // SOS can't afford to hang. A cancellation token AND the request timeout both bound the wait.
+        try
+        {
+            var request = new Microsoft.Maui.Devices.Sensors.GeolocationRequest(
+                Microsoft.Maui.Devices.Sensors.GeolocationAccuracy.Best,
+                timeout)
+            {
+                RequestFullAccuracy = true
+            };
+            using var cts = new CancellationTokenSource(timeout);
+            var loc = await Microsoft.Maui.Devices.Sensors.Geolocation.GetLocationAsync(request, cts.Token);
+            if (loc is not null)
+                return new LocationSnapshot(loc.Latitude, loc.Longitude, (float)(loc.Accuracy ?? 0), loc.Timestamp);
+        }
+        catch (Exception ex)
+        {
+            BlackBoxLogger.RecordHandledException(ex, "[AndroidLocationService.GetBestLocationAsync]");
+        }
+
+        // Precise fetch hung, timed out, or returned nothing — immediately fall back to last-known.
+        return await GetLastKnownLocationAsync();
+    }
+
     private void OnLocationUpdated(object? sender, LocationSnapshot snapshot)
     {
         LocationUpdated?.Invoke(this, snapshot);

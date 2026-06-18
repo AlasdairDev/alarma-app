@@ -31,6 +31,7 @@ public partial class EmergencyView : ContentPage
         _controller.SosDispatched += OnSosDispatched;
         _controller.SmsDenied += OnSmsDenied;
         _controller.LocationServicesDisabled += OnLocationServicesDisabled;
+        _controller.EmergencyContactValidationFailed += OnContactValidationFailed;
     }
 
     protected override void OnDisappearing()
@@ -42,6 +43,15 @@ public partial class EmergencyView : ContentPage
         _controller.SosDispatched -= OnSosDispatched;
         _controller.SmsDenied -= OnSmsDenied;
         _controller.LocationServicesDisabled -= OnLocationServicesDisabled;
+        _controller.EmergencyContactValidationFailed -= OnContactValidationFailed;
+    }
+
+    // Contact-form validation errors (especially the phone-number format) now interrupt with a styled
+    // modal the user must acknowledge, instead of a quiet inline line that's easy to miss.
+    private void OnContactValidationFailed(object? sender, string message)
+    {
+        MainThread.BeginInvokeOnMainThread(async () =>
+            await DisplayAlert("Invalid Contact", message, "OK"));
     }
 
     // SOS was halted because the device's location/GPS is switched off. Force the issue with an alert
