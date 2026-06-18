@@ -6,63 +6,49 @@
              Shell.NavBarIsVisible="False"
              BackgroundColor="#1A0F35">
 
-    <Grid HorizontalOptions="Fill" VerticalOptions="Fill" RowDefinitions="Auto,Auto,*">
+    <Grid HorizontalOptions="Fill" VerticalOptions="Fill" RowDefinitions="Auto,Auto,Auto,*">
 
-        <!-- Header — title on the left, "Clear All" purge on the right (only when there's something to clear) -->
-        <Grid Grid.Row="0"
-              ColumnDefinitions="*,Auto"
-              Padding="24,52,24,12"
-              BackgroundColor="#1A0F35">
-            <Label Grid.Column="0"
-                   Text="Trip History"
-                   FontSize="28"
-                   FontAttributes="Bold"
+        <!-- Title -->
+        <Label Grid.Row="0"
+               Text="Trip History"
+               FontSize="28"
+               FontAttributes="Bold"
+               TextColor="White"
+               Padding="24,52,24,8"
+               BackgroundColor="#1A0F35" />
+
+        <!-- Search bar — filters the list live as you type (destination, route details, or date/time). -->
+        <SearchBar Grid.Row="1"
+                   Text="{Binding HistorySearchQuery, Mode=TwoWay}"
+                   Placeholder="Search trips by destination, route, or date"
+                   PlaceholderColor="#8A7AAE"
                    TextColor="White"
-                   VerticalOptions="Center" />
-            <Button Grid.Column="1"
-                    Text="Clear All"
-                    IsVisible="{Binding HasTripHistory}"
-                    Clicked="OnClearAllClicked"
-                    BackgroundColor="#4A1A1A"
-                    TextColor="#FF6B6B"
-                    FontSize="13"
-                    FontAttributes="Bold"
-                    CornerRadius="18"
-                    Padding="16,6"
-                    VerticalOptions="Center"
-                    SemanticProperties.Description="Clear all trip history"
-                    SemanticProperties.Hint="Double tap to permanently delete every recorded trip" />
-        </Grid>
+                   CancelButtonColor="#A88FD0"
+                   BackgroundColor="#3D2B5E"
+                   MaxLength="200"
+                   Margin="16,0,16,8"
+                   SemanticProperties.Description="Search trip history"
+                   SemanticProperties.Hint="Type to filter trips by destination, route, or date" />
 
-        <!-- Search bar — filters the list live as you type (by destination name or date). -->
-        <Border Grid.Row="1"
-                BackgroundColor="#3D2B5E"
-                StrokeShape="RoundRectangle 12"
-                Stroke="Transparent"
-                Margin="16,4,16,12"
-                Padding="14,2">
-            <Grid ColumnDefinitions="Auto,*">
-                <Label Grid.Column="0"
-                       Text="search"
-                       FontFamily="MaterialSymbols"
-                       FontSize="16"
-                       TextColor="#8A7AAE"
-                       VerticalOptions="Center" />
-                <Entry Grid.Column="1"
-                       Text="{Binding HistorySearchQuery, Mode=TwoWay}"
-                       Placeholder="Search by destination or date"
-                       PlaceholderColor="#8A7AAE"
-                       TextColor="White"
-                       FontSize="14"
-                       MaxLength="200"
-                       ClearButtonVisibility="WhileEditing"
-                       Margin="6,0,0,0"
-                       VerticalOptions="Center" />
-            </Grid>
-        </Border>
+        <!-- Clear All — sits under the search so it can act on whatever the filter currently shows.
+             Hidden when the (filtered) list is empty. -->
+        <Button Grid.Row="2"
+                Text="Clear All"
+                IsVisible="{Binding HasTripHistory}"
+                Clicked="OnClearAllClicked"
+                HorizontalOptions="End"
+                BackgroundColor="#4A1A1A"
+                TextColor="#FF6B6B"
+                FontSize="13"
+                FontAttributes="Bold"
+                CornerRadius="18"
+                Padding="16,6"
+                Margin="16,0,16,8"
+                SemanticProperties.Description="Clear shown trip history"
+                SemanticProperties.Hint="Double tap to delete the trips currently shown in the list" />
 
         <!-- Trip list -->
-        <ScrollView Grid.Row="2">
+        <ScrollView Grid.Row="3">
             <VerticalStackLayout Spacing="0">
 
                 <!-- Empty state -->

@@ -123,7 +123,20 @@ public partial class AlarmStageView : ContentPage
             case GestureStatus.Running:
                 if (!_isPanning) return;
                 var maxX = Math.Max(0, track.Width - thumb.Width);
-                thumb.TranslationX = Math.Clamp(_panStartX + e.TotalX, 0, maxX);
+                var newX = Math.Clamp(_panStartX + e.TotalX, 0, maxX);
+                thumb.TranslationX = newX;
+                // The real bug behind "the slider moves but nothing happens": on Android the pan
+                // recognizer often never raises Completed when you lift your finger, so the dismiss
+                // sitting in that case below simply never ran. So we fire it the instant the thumb
+                // crosses the 75% mark mid-drag instead of waiting for an event that may not come.
+                // _isPanning is flipped off so this only triggers once per gesture, and
+                // DismissAndExitAsync has its own re-entry guard as a second line of defence.
+                if (maxX > 0 && newX >= maxX * 0.75)
+                {
+                    _isPanning = false;
+                    thumb.TranslationX = maxX;
+                    _ = DismissAndExitAsync();
+                }
                 break;
 
             case GestureStatus.Completed:

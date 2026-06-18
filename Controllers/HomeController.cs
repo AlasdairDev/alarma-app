@@ -2023,16 +2023,36 @@ public class HomeController : INotifyPropertyChanged
         }
     }
 
-    // Nuke the whole history in one go (the "Clear All" button). The view asks the rider to confirm
-    // first since there's no undo — by the time we get here the decision is already made.
+    // "Clear All" button. Filter-aware on purpose: if the rider has a search active, this only wipes the
+    // trips they can actually see (the filtered subset) — clearing everything behind a filter would be a
+    // nasty surprise. With no filter it's a clean sweep via the single DeleteAll. The view confirms first
+    // since there's no undo, so by the time we get here the decision is already made.
     private async Task ClearTripHistoryAsync()
     {
         try
         {
-            await _databaseService.ClearTripHistoryAsync();
-            _allTripHistory.Clear();
-            ApplyTripHistoryFilter();
-            LastActionText = "Trip history cleared.";
+            var isFiltered = !string.IsNullOrWhiteSpace(_historySearchQuery);
+            if (isFiltered)
+            {
+                // Snapshot the visible rows first — we mutate the collection as we delete.
+                var visible = _tripHistoryEntries.ToList();
+                foreach (var trip in visible)
+                {
+                    await _databaseService.DeleteTripHistoryAsync(trip);
+                }
+
+                var deletedIds = visible.Select(t => t.Id).ToHashSet();
+                _allTripHistory.RemoveAll(t => deletedIds.Contains(t.Id));
+                ApplyTripHistoryFilter();
+                LastActionText = $"Cleared {visible.Count} matching trip(s).";
+            }
+            else
+            {
+                await _databaseService.ClearTripHistoryAsync();
+                _allTripHistory.Clear();
+                ApplyTripHistoryFilter();
+                LastActionText = "Trip history cleared.";
+            }
         }
         catch (Exception ex)
         {
@@ -2056,13 +2076,15 @@ public class HomeController : INotifyPropertyChanged
         ReplaceCollection(_tripHistoryEntries, matches);
     }
 
-    // Match the typed text against the destination name and the date/time the way the user sees it on the
-    // card, so "june", "2026", or a time like "9:30" all narrow the list as expected.
+    // Match the typed text against the destination name, the route details summary, and the date/time
+    // the way the user sees it on the card — so "june", "2026", a time like "9:30", or a word from the
+    // trip summary all narrow the list as expected.
     private static bool MatchesHistoryQuery(TripHistory trip, string query)
     {
         var culture = System.Globalization.CultureInfo.InvariantCulture;
         var haystack = string.Join(' ',
             trip.DestinationName ?? string.Empty,
+            trip.Summary ?? string.Empty,
             trip.StartedAt.ToString("MMMM d, yyyy", culture),
             trip.StartedAt.ToString("h:mm tt", culture));
         return haystack.Contains(query, StringComparison.OrdinalIgnoreCase);
