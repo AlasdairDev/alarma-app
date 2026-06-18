@@ -2,20 +2,37 @@
 <ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
              x:Class="AlarmaApp.Views.HistoryView"
+             x:Name="HistoryPage"
              Shell.NavBarIsVisible="False"
              BackgroundColor="#1A0F35">
 
     <Grid HorizontalOptions="Fill" VerticalOptions="Fill" RowDefinitions="Auto,Auto,*">
 
-        <!-- Header -->
-        <VerticalStackLayout Grid.Row="0"
-                             Padding="24,52,24,12"
-                             BackgroundColor="#1A0F35">
-            <Label Text="Trip History"
+        <!-- Header — title on the left, "Clear All" purge on the right (only when there's something to clear) -->
+        <Grid Grid.Row="0"
+              ColumnDefinitions="*,Auto"
+              Padding="24,52,24,12"
+              BackgroundColor="#1A0F35">
+            <Label Grid.Column="0"
+                   Text="Trip History"
                    FontSize="28"
                    FontAttributes="Bold"
-                   TextColor="White" />
-        </VerticalStackLayout>
+                   TextColor="White"
+                   VerticalOptions="Center" />
+            <Button Grid.Column="1"
+                    Text="Clear All"
+                    IsVisible="{Binding HasTripHistory}"
+                    Clicked="OnClearAllClicked"
+                    BackgroundColor="#4A1A1A"
+                    TextColor="#FF6B6B"
+                    FontSize="13"
+                    FontAttributes="Bold"
+                    CornerRadius="18"
+                    Padding="16,6"
+                    VerticalOptions="Center"
+                    SemanticProperties.Description="Clear all trip history"
+                    SemanticProperties.Hint="Double tap to permanently delete every recorded trip" />
+        </Grid>
 
         <!-- Search bar — filters the list live as you type (by destination name or date). -->
         <Border Grid.Row="1"
@@ -61,12 +78,22 @@
                                 IsVisible="{Binding HasTripHistory}">
                     <CollectionView.ItemTemplate>
                         <DataTemplate>
-                            <Border BackgroundColor="#261C40"
+                            <!-- Swipe left for a Delete action; the trash icon in the card does the same on tap. -->
+                            <SwipeView Margin="16,6">
+                                <SwipeView.RightItems>
+                                    <SwipeItems Mode="Execute">
+                                        <SwipeItem Text="Delete"
+                                                   BackgroundColor="#B00020"
+                                                   Command="{Binding Source={x:Reference HistoryPage}, Path=BindingContext.DeleteTripHistoryCommand}"
+                                                   CommandParameter="{Binding .}" />
+                                    </SwipeItems>
+                                </SwipeView.RightItems>
+                                <Border BackgroundColor="#261C40"
                                     StrokeShape="RoundRectangle 16"
                                     Stroke="Transparent"
-                                    Margin="16,6"
                                     Padding="16,14">
-                                <VerticalStackLayout Spacing="8">
+                                <Grid ColumnDefinitions="*,Auto">
+                                <VerticalStackLayout Grid.Column="0" Spacing="8">
 
                                     <!-- Departure → Destination row -->
                                     <Grid ColumnDefinitions="*,Auto,*">
@@ -151,7 +178,23 @@
                                     </HorizontalStackLayout>
 
                                 </VerticalStackLayout>
+
+                                <!-- Trash icon — same delete command as the swipe action -->
+                                <Button Grid.Column="1"
+                                        Text="delete"
+                                        FontFamily="MaterialSymbols"
+                                        FontSize="20"
+                                        BackgroundColor="Transparent"
+                                        TextColor="#A88FD0"
+                                        Padding="8,0,0,0"
+                                        VerticalOptions="Start"
+                                        Command="{Binding Source={x:Reference HistoryPage}, Path=BindingContext.DeleteTripHistoryCommand}"
+                                        CommandParameter="{Binding .}"
+                                        SemanticProperties.Description="Delete this trip"
+                                        SemanticProperties.Hint="Double tap to remove this trip from history" />
+                                </Grid>
                             </Border>
+                            </SwipeView>
                         </DataTemplate>
                     </CollectionView.ItemTemplate>
                 </CollectionView>

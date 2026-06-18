@@ -29,7 +29,11 @@ public class LocationTrackingService : Service, ILocationListener
     // Shared so IAlarmNotificationService can update this same ongoing notification in place.
     internal const int TrackingNotificationId = 1001;
     internal const string TrackingChannelId = "alarma_location_tracking";
-    private const long LocationUpdateIntervalMillis = 5000;
+    // GPS is our precise source, so we poll it a bit more aggressively than the coarse network
+    // provider — a fresher fix every couple of seconds keeps the live dot accurate and gives the
+    // map's interpolation something recent to glide toward.
+    private const long GpsUpdateIntervalMillis = 2000;
+    private const long NetworkUpdateIntervalMillis = 5000;
     private const float MinDistanceMetersGps = 5f;
     private const float MinDistanceMetersNetwork = 10f;
     // Drop fixes less accurate than this (aggressive cell-tower bounce) so they cannot move the
@@ -114,15 +118,17 @@ public class LocationTrackingService : Service, ILocationListener
         try
         {
             var hasProvider = false;
+            // Prefer the GPS provider — it's the fine/precise hardware source. The network provider is
+            // only a coarse fallback for when GPS hasn't locked yet (indoors, tunnels, cold start).
             if (_locationManager.IsProviderEnabled(LocationManager.GpsProvider))
             {
-                _locationManager.RequestLocationUpdates(LocationManager.GpsProvider, LocationUpdateIntervalMillis, MinDistanceMetersGps, this);
+                _locationManager.RequestLocationUpdates(LocationManager.GpsProvider, GpsUpdateIntervalMillis, MinDistanceMetersGps, this);
                 hasProvider = true;
             }
 
             if (_locationManager.IsProviderEnabled(LocationManager.NetworkProvider))
             {
-                _locationManager.RequestLocationUpdates(LocationManager.NetworkProvider, LocationUpdateIntervalMillis, MinDistanceMetersNetwork, this);
+                _locationManager.RequestLocationUpdates(LocationManager.NetworkProvider, NetworkUpdateIntervalMillis, MinDistanceMetersNetwork, this);
                 hasProvider = true;
             }
 

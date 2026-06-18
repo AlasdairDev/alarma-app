@@ -27,88 +27,99 @@ public class AndroidAlarmAudioService : IAlarmAudioService
     private RingerMode? _savedRingerMode;
     private CancellationTokenSource? _playCts;
 
+    // Every public entry point hops onto a background thread before touching AudioManager / Vibrator /
+    // RingtoneManager. Those calls are cheap-ish but not free — grabbing a Ringtone and flipping the
+    // ringer can stall for tens of milliseconds, and the alarm fires from the location-update handler
+    // that runs on the UI thread. Doing it inline there is exactly what made the "Slide to Stop" pan
+    // gesture freeze, so we keep the main thread clear and let the swipe stay buttery.
     public Task EnableCriticalAudioAsync()
     {
-        var audioManager = AndroidApplication.Context.GetSystemService(Context.AudioService) as AudioManager;
-        var notificationManager = AndroidApplication.Context.GetSystemService(Context.NotificationService) as NotificationManager;
-        if (audioManager is null)
+        return Task.Run(() =>
         {
-            return Task.CompletedTask;
-        }
+            var audioManager = AndroidApplication.Context.GetSystemService(Context.AudioService) as AudioManager;
+            var notificationManager = AndroidApplication.Context.GetSystemService(Context.NotificationService) as NotificationManager;
+            if (audioManager is null)
+            {
+                return;
+            }
 
-        lock (_ringtoneLock) { _savedRingerMode ??= audioManager.RingerMode; }
-        audioManager.RingerMode = RingerMode.Normal;
-        var maxVolume = audioManager.GetStreamMaxVolume(AndroidStream.Alarm);
-        audioManager.SetStreamVolume(AndroidStream.Alarm, maxVolume, VolumeNotificationFlags.ShowUi);
+            lock (_ringtoneLock) { _savedRingerMode ??= audioManager.RingerMode; }
+            audioManager.RingerMode = RingerMode.Normal;
+            var maxVolume = audioManager.GetStreamMaxVolume(AndroidStream.Alarm);
+            audioManager.SetStreamVolume(AndroidStream.Alarm, maxVolume, VolumeNotificationFlags.ShowUi);
 
-        if (notificationManager?.IsNotificationPolicyAccessGranted == true)
-        {
-            notificationManager.SetInterruptionFilter(InterruptionFilter.All);
-        }
-        return Task.CompletedTask;
+            if (notificationManager?.IsNotificationPolicyAccessGranted == true)
+            {
+                notificationManager.SetInterruptionFilter(InterruptionFilter.All);
+            }
+        });
     }
 
     public Task DisableCriticalAudioAsync()
     {
-        RingerMode? saved;
-        lock (_ringtoneLock)
+        return Task.Run(() =>
         {
-            if (_ringtone?.IsPlaying == true)
-                _ringtone.Stop();
-            saved = _savedRingerMode;
-            _savedRingerMode = null;
-        }
+            RingerMode? saved;
+            lock (_ringtoneLock)
+            {
+                if (_ringtone?.IsPlaying == true)
+                    _ringtone.Stop();
+                saved = _savedRingerMode;
+                _savedRingerMode = null;
+            }
 
-        if (saved.HasValue)
-        {
-            var audioManager = AndroidApplication.Context.GetSystemService(Context.AudioService) as AudioManager;
-            if (audioManager is not null)
-                audioManager.RingerMode = saved.Value;
-        }
-
-        return Task.CompletedTask;
+            if (saved.HasValue)
+            {
+                var audioManager = AndroidApplication.Context.GetSystemService(Context.AudioService) as AudioManager;
+                if (audioManager is not null)
+                    audioManager.RingerMode = saved.Value;
+            }
+        });
     }
 
-    public async Task TriggerAlarmAsync(AlarmStage stage, string soundKey, bool vibrationOnly, string vibrationIntensity = "Medium")
+    public Task TriggerAlarmAsync(AlarmStage stage, string soundKey, bool vibrationOnly, string vibrationIntensity = "Medium")
     {
-        var audioManager = AndroidApplication.Context.GetSystemService(Context.AudioService) as AudioManager;
-        var notificationManager = AndroidApplication.Context.GetSystemService(Context.NotificationService) as NotificationManager;
-        if (audioManager is null)
+        return Task.Run(async () =>
         {
-            return;
-        }
+            var audioManager = AndroidApplication.Context.GetSystemService(Context.AudioService) as AudioManager;
+            var notificationManager = AndroidApplication.Context.GetSystemService(Context.NotificationService) as NotificationManager;
+            if (audioManager is null)
+            {
+                return;
+            }
 
-        if (vibrationOnly)
-        {
-            if (stage >= AlarmStage.Stage2)
+            if (vibrationOnly)
+            {
+                if (stage >= AlarmStage.Stage2)
+                {
+                    lock (_ringtoneLock) { _savedRingerMode ??= audioManager.RingerMode; }
+                    audioManager.RingerMode = RingerMode.Vibrate;
+                }
+            }
+            else if (stage >= AlarmStage.Stage2)
             {
                 lock (_ringtoneLock) { _savedRingerMode ??= audioManager.RingerMode; }
-                audioManager.RingerMode = RingerMode.Vibrate;
+                audioManager.RingerMode = RingerMode.Normal;
+                var maxVolume = audioManager.GetStreamMaxVolume(AndroidStream.Alarm);
+                var targetVolume = GetStageVolume(stage, maxVolume);
+                audioManager.SetStreamVolume(AndroidStream.Alarm, targetVolume, VolumeNotificationFlags.ShowUi);
+
+                if (notificationManager?.IsNotificationPolicyAccessGranted == true)
+                    notificationManager.SetInterruptionFilter(InterruptionFilter.All);
             }
-        }
-        else if (stage >= AlarmStage.Stage2)
-        {
-            lock (_ringtoneLock) { _savedRingerMode ??= audioManager.RingerMode; }
-            audioManager.RingerMode = RingerMode.Normal;
-            var maxVolume = audioManager.GetStreamMaxVolume(AndroidStream.Alarm);
-            var targetVolume = GetStageVolume(stage, maxVolume);
-            audioManager.SetStreamVolume(AndroidStream.Alarm, targetVolume, VolumeNotificationFlags.ShowUi);
+            else
+            {
+                var maxVolume = audioManager.GetStreamMaxVolume(AndroidStream.Alarm);
+                var targetVolume = GetStageVolume(stage, maxVolume);
+                audioManager.SetStreamVolume(AndroidStream.Alarm, targetVolume, VolumeNotificationFlags.ShowUi);
+            }
 
-            if (notificationManager?.IsNotificationPolicyAccessGranted == true)
-                notificationManager.SetInterruptionFilter(InterruptionFilter.All);
-        }
-        else
-        {
-            var maxVolume = audioManager.GetStreamMaxVolume(AndroidStream.Alarm);
-            var targetVolume = GetStageVolume(stage, maxVolume);
-            audioManager.SetStreamVolume(AndroidStream.Alarm, targetVolume, VolumeNotificationFlags.ShowUi);
-        }
-
-        TriggerVibration(stage, vibrationIntensity);
-        if (!vibrationOnly)
-        {
-            await PlayRingtoneAsync(soundKey, stage);
-        }
+            TriggerVibration(stage, vibrationIntensity);
+            if (!vibrationOnly)
+            {
+                await PlayRingtoneAsync(soundKey, stage);
+            }
+        });
     }
 
     public Task PlaySosFeedbackAsync()
