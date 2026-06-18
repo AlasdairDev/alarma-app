@@ -1,4 +1,5 @@
 using AlarmaApp.Controllers;
+using CommunityToolkit.Maui.Storage;
 
 namespace AlarmaApp.Views;
 
@@ -52,18 +53,53 @@ public partial class SettingsView : ContentPage
 #endif
     }
 
-    // Run the export, then surface the result in the transient grey pill (not a blocking modal).
+    // Export = "Save As". Build the encrypted blob, then let the OS file browser put it wherever the
+    // rider wants (Downloads, Drive, etc.). The grey pill only fires AFTER a successful save — a cancel
+    // or failure shows its own message instead.
     private async void OnExportBackupTapped(object? sender, TappedEventArgs e)
     {
-        await _controller.ExportBackupAsync();
-        await ShowToastAsync(_controller.BackupStatusText);
+        try
+        {
+            var (fileName, data) = await _controller.BuildBackupForSaveAsync();
+            using var stream = new MemoryStream(data);
+            var result = await FileSaver.Default.SaveAsync(fileName, stream, CancellationToken.None);
+            if (result.IsSuccessful)
+                await ShowToastAsync($"Backup saved to {result.FilePath}");
+            else
+                await ShowToastAsync("Export cancelled.");
+        }
+        catch (Exception ex)
+        {
+            Services.BlackBoxLogger.RecordHandledException(ex, "[SettingsView.OnExportBackupTapped]");
+            await ShowToastAsync("Backup export failed. Please try again.");
+        }
     }
 
-    // Same transient grey-pill feedback for restore (import).
+    // Import = file browse. Open the native picker so the rider can navigate to their saved .alarma file.
+    // Cancelling returns null — we just bail out quietly. Otherwise read the bytes and hand them to the
+    // controller to decrypt + restore, then report the outcome in the grey pill.
     private async void OnRestoreBackupTapped(object? sender, TappedEventArgs e)
     {
-        await _controller.RestoreBackupAsync();
-        await ShowToastAsync(_controller.BackupStatusText);
+        try
+        {
+            var picked = await FilePicker.Default.PickAsync(new PickOptions
+            {
+                PickerTitle = "Select an Alarma backup (.alarma)"
+            });
+            if (picked is null) return; // user cancelled — abort safely, no crash
+
+            using var source = await picked.OpenReadAsync();
+            using var ms = new MemoryStream();
+            await source.CopyToAsync(ms);
+
+            await _controller.RestoreFromBytesAsync(ms.ToArray());
+            await ShowToastAsync(_controller.BackupStatusText);
+        }
+        catch (Exception ex)
+        {
+            Services.BlackBoxLogger.RecordHandledException(ex, "[SettingsView.OnRestoreBackupTapped]");
+            await ShowToastAsync("Backup restore failed. Please try again.");
+        }
     }
 
     // Pops the grey pill up with a message, holds it for exactly 3 seconds, then fades it away. The

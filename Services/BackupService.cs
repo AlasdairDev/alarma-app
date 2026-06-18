@@ -58,7 +58,10 @@ public class BackupService
         _preferencesService = preferencesService;
     }
 
-    public async Task<string> ExportAsync()
+    // Build the encrypted backup blob in memory (no disk write) along with a suggested file name. The
+    // export UI hands these to FileSaver so the user can drop the file wherever they like — Downloads,
+    // Drive, etc. — instead of it being buried in the app's private storage.
+    public async Task<(string FileName, byte[] Data)> BuildBackupAsync()
     {
         var payload = new BackupPayload(
             DateTimeOffset.UtcNow,
@@ -76,13 +79,9 @@ public class BackupService
         var key = await GetOrCreateBackupKeyAsync();
         var encrypted = Encrypt(jsonBytes, key);
 
-        var backupFolder = Path.Combine(FileSystem.AppDataDirectory, BackupFolderName);
-        Directory.CreateDirectory(backupFolder);
         var fileName = $"{BackupFilePrefix}{payload.ExportedAtUtc:yyyyMMdd-HHmmss}{BackupFileExtension}";
-        var filePath = Path.Combine(backupFolder, fileName);
-        await File.WriteAllBytesAsync(filePath, encrypted);
         _preferencesService.LastBackupUtc = payload.ExportedAtUtc;
-        return filePath;
+        return (fileName, encrypted);
     }
 
     public async Task<string?> RestoreLatestAsync()
@@ -97,8 +96,17 @@ public class BackupService
         if (latestFile is null)
             return null;
 
-        var key = await GetOrCreateBackupKeyAsync();
         var encrypted = await File.ReadAllBytesAsync(latestFile);
+        await RestoreFromBytesAsync(encrypted);
+        return latestFile;
+    }
+
+    // Restore from the raw bytes of a backup file the user picked through the OS file browser. Same
+    // decrypt-then-validate-everything-before-touching-the-db contract as RestoreLatestAsync, so a junk
+    // or tampered file can never wipe real data.
+    public async Task RestoreFromBytesAsync(byte[] encrypted)
+    {
+        var key = await GetOrCreateBackupKeyAsync();
         byte[] jsonBytes;
         try
         {
@@ -112,7 +120,7 @@ public class BackupService
         var json = Encoding.UTF8.GetString(jsonBytes);
         var payload = JsonSerializer.Deserialize<BackupPayload>(json, _serializerOptions);
         if (payload is null)
-            return null;
+            throw new InvalidOperationException("Backup file was empty or unreadable.");
 
         // Validate ALL records before touching the database — this prevents data loss when
         // a tampered or empty backup passes decryption but contains no valid records.
@@ -189,7 +197,6 @@ public class BackupService
             Math.Clamp(payload.Preferences.AlarmLeadMinutes, MinAlarmLeadMinutes, MaxAlarmLeadMinutes);
         _preferencesService.VibrationOnly = payload.Preferences.VibrationOnly;
         _preferencesService.LastBackupUtc = payload.ExportedAtUtc;
-        return latestFile;
     }
 
     private static async Task<byte[]> GetOrCreateBackupKeyAsync()

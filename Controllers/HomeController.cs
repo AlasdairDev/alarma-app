@@ -675,8 +675,6 @@ public class HomeController : INotifyPropertyChanged
     public ICommand RemoveSavedRouteCommand { get; }
     public ICommand CompleteOnboardingCommand { get; }
     public ICommand RefreshAvailabilityCommand { get; }
-    public ICommand ExportBackupCommand { get; }
-    public ICommand RestoreBackupCommand { get; }
     public ICommand RefreshEarphoneStatusCommand { get; }
     public ICommand RequestBatteryOptimizationCommand { get; }
     public ICommand DismissAlarmCommand { get; }
@@ -754,8 +752,6 @@ public class HomeController : INotifyPropertyChanged
         RemoveSavedRouteCommand = new Command<SavedRoute>(async route => await RemoveSavedRouteAsync(route));
         CompleteOnboardingCommand = new Command(CompleteOnboarding);
         RefreshAvailabilityCommand = new Command(async () => await RefreshAvailabilityAsync());
-        ExportBackupCommand = new Command(async () => await ExportBackupAsync());
-        RestoreBackupCommand = new Command(async () => await RestoreBackupAsync());
         RefreshEarphoneStatusCommand = new Command(UpdateEarphoneStatus);
         RequestBatteryOptimizationCommand = new Command(async () => await RequestBatteryOptimizationAsync());
         DismissAlarmCommand = new Command(async () =>
@@ -1187,35 +1183,20 @@ public class HomeController : INotifyPropertyChanged
         }
     }
 
-    // Public so the Settings screen can await the result and then surface a DisplayAlert with the
-    // outcome (BackupStatusText) — the command wrapper above still drives the same method.
-    public async Task ExportBackupAsync()
-    {
-        try
-        {
-            var path = await _backupService.ExportAsync();
-            UpdateBackupStatus();
-            BackupStatusText = $"Backup exported to {path}.";
-        }
-        catch (Exception ex)
-        {
-            BlackBoxLogger.RecordHandledException(ex, "[HomeController.ExportBackupAsync]");
-            BackupStatusText = "Backup export failed. Check storage permissions and try again.";
-        }
-    }
+    // Build the encrypted backup blob + suggested file name for the Settings screen to hand to the OS
+    // "Save As" dialog (FileSaver). The actual disk write happens wherever the user points the picker —
+    // we just produce the bytes here.
+    public Task<(string FileName, byte[] Data)> BuildBackupForSaveAsync()
+        => _backupService.BuildBackupAsync();
 
-    // Public for the same reason as ExportBackupAsync — the Settings screen awaits it and shows the
-    // restore outcome in a DisplayAlert modal.
-    public async Task RestoreBackupAsync()
+    // Restore from the bytes of a backup file the user picked through the OS file browser. Decrypt +
+    // validate happens in BackupService; on success we re-sync the in-memory preference mirror and
+    // reload the local data so the UI reflects the restored state immediately. Returns true on success.
+    public async Task<bool> RestoreFromBytesAsync(byte[] data)
     {
         try
         {
-            var path = await _backupService.RestoreLatestAsync();
-            if (path is null)
-            {
-                BackupStatusText = "No backup found to restore.";
-                return;
-            }
+            await _backupService.RestoreFromBytesAsync(data);
 
             _alarmSound = NormalizeSoundKey(_preferencesService.AlarmSound);
             _preferencesService.AlarmSound = _alarmSound;
@@ -1223,12 +1204,14 @@ public class HomeController : INotifyPropertyChanged
             VibrationOnly = _preferencesService.VibrationOnly;
             UpdateBackupStatus();
             await LoadLocalDataAsync();
-            BackupStatusText = $"Backup restored from {path}.";
+            BackupStatusText = "Backup restored successfully.";
+            return true;
         }
         catch (Exception ex)
         {
-            BlackBoxLogger.RecordHandledException(ex, "[HomeController.RestoreBackupAsync]");
-            BackupStatusText = "Backup restore failed. The backup file may be corrupted or from a different device.";
+            BlackBoxLogger.RecordHandledException(ex, "[HomeController.RestoreFromBytesAsync]");
+            BackupStatusText = "Backup restore failed. The file may be corrupted or from a different device.";
+            return false;
         }
     }
 
@@ -1762,15 +1745,14 @@ public class HomeController : INotifyPropertyChanged
             {
                 // Last resort — location briefly unavailable. The SOS itself still goes out so contacts
                 // are alerted even without a pin.
-                message = "Alarma SOS: Location unavailable. Please check on me.";
+                message = "I need help! Current commuter location is currently unavailable.";
             }
             else
             {
                 // Clickable Google Maps link so a contact can tap straight through to the rider's spot.
-                var lat = location.Latitude.ToString("F5", System.Globalization.CultureInfo.InvariantCulture);
-                var lon = location.Longitude.ToString("F5", System.Globalization.CultureInfo.InvariantCulture);
-                var phtTime = location.Timestamp.ToOffset(TimeSpan.FromHours(8));
-                message = $"Alarma SOS: I may need help. https://maps.google.com/?q={lat},{lon} — {phtTime:hh:mm tt} PHT";
+                var lat = location.Latitude.ToString("F6", System.Globalization.CultureInfo.InvariantCulture);
+                var lon = location.Longitude.ToString("F6", System.Globalization.CultureInfo.InvariantCulture);
+                message = $"I need help! Current commuter location: https://maps.google.com/?q={lat},{lon}";
             }
 
             // SOS is strictly an SMS dispatch. It must NOT hijack the ringer, force volume, or touch
