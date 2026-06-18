@@ -1,17 +1,20 @@
-// Sends the actual SOS text messages. Two safety nets here:
-//   - IsValidRecipient() re-checks every number against ^(09\d{9}|\+639\d{9})$ right before it hits
-//     SmsManager.SendTextMessage(). Yes, HomeController already validated it, but we double-check at
-//     the transport layer so a bad number can never slip through.
-//   - If SEND_SMS is denied or SmsManager throws, we fall back to a native Intent(ActionSendto) that
-//     opens the phone's own messaging app with the recipients and SOS text pre-filled. The message
-//     still goes out (the user just taps send) instead of the app crashing. The coordinates in that
-//     body are never written to any log.
+// Sends the actual SOS text messages. This now goes through the cross-platform MAUI SMS API
+// (Microsoft.Maui.ApplicationModel.Communication.Sms), which opens the device's own messaging app
+// with the recipients and the SOS body (including the live-location link) pre-filled. The rider taps
+// send once. That route needs NO restricted SEND_SMS runtime permission, which is exactly why the old
+// SmsManager path quietly failed on newer Android — so the SOS reliably reaches the messaging app now.
+// Two safety nets remain:
+//   - IsValidRecipient() re-checks every number against ^(09\d{9}|\+639\d{9})$ before it's used, so a
+//     bad number can never reach the composer even if the controller's own validation were bypassed.
+//   - If the platform can't compose an SMS (no SIM, tablet, etc.) we fall back to a native
+//     Intent(ActionSendto) that opens the messaging app the same way. The coordinates in that body are
+//     never written to any log.
 
 using AlarmaApp.Services;
 using AlarmaApp.Services.Interfaces;
 using Android.Content;
-using Android.Telephony;
 using Microsoft.Maui.ApplicationModel;
+using Microsoft.Maui.ApplicationModel.Communication;
 
 namespace AlarmaApp.Platforms.Android;
 
@@ -28,48 +31,28 @@ public class AndroidSmsService : ISmsService
             .Where(IsValidRecipient)
             .ToList();
 
-        // Check (and ask for) SMS permission again right before sending. The controller already does
-        // this, but we don't want to assume it's still granted by the time we actually hit send.
-        var smsStatus = await Permissions.CheckStatusAsync<SmsPermission>();
-        if (smsStatus != PermissionStatus.Granted)
-            smsStatus = await Permissions.RequestAsync<SmsPermission>();
+        if (validRecipients.Count == 0)
+            throw new InvalidOperationException("No valid emergency recipients to send the SOS to.");
 
-        if (smsStatus != PermissionStatus.Granted)
+        try
         {
-            // Graceful Intent fallback: open native SMS app with pre-filled recipients + body.
-            LaunchNativeSmsIntent(message, validRecipients);
-            return;
-        }
-
-        var smsManager = SmsManager.Default ?? throw new InvalidOperationException("SMS manager unavailable.");
-
-        // Resilient per-recipient loop: each contact is sent independently inside its own try/catch so a
-        // single bad number (or a transient modem error on one send) can NEVER abort the whole batch.
-        // We only fall back to the native SMS app if not one message made it through.
-        var anySent = false;
-        var failures = new List<string>();
-        foreach (var recipient in validRecipients)
-        {
-            try
+            // The MAUI SMS API is the supported, permission-free way to send: it hands the message and
+            // recipients to the system messaging app pre-filled. Must run on the main thread.
+            if (Sms.Default.IsComposeSupported)
             {
-                smsManager.SendTextMessage(recipient, null, message, null, null);
-                anySent = true;
-            }
-            catch (Exception ex)
-            {
-                failures.Add(recipient);
-                BlackBoxLogger.RecordHandledException(ex, "[AndroidSmsService.SendTextMessage.PerRecipient]");
-                // Keep going — the remaining contacts still need their SOS.
+                await MainThread.InvokeOnMainThreadAsync(() =>
+                    Sms.Default.ComposeAsync(new SmsMessage(message, validRecipients)));
+                return;
             }
         }
-
-        if (!anySent)
+        catch (Exception ex)
         {
-            // Nothing got through via SmsManager — open the native SMS app pre-filled with everyone so
-            // the SOS can still go out with a single tap.
-            LaunchNativeSmsIntent(message, validRecipients);
-            throw new InvalidOperationException("All SOS sends failed — native SMS app launched as fallback.");
+            BlackBoxLogger.RecordHandledException(ex, "[AndroidSmsService.ComposeAsync]");
+            // Fall through to the native intent below so the SOS can still go out.
         }
+
+        // Composer unsupported or threw — open the native messaging app pre-filled as a last resort.
+        LaunchNativeSmsIntent(message, validRecipients);
     }
 
     private static void LaunchNativeSmsIntent(string message, IList<string> recipients)
@@ -83,14 +66,17 @@ public class AndroidSmsService : ISmsService
             smsIntent.AddFlags(ActivityFlags.NewTask);
             global::Android.App.Application.Context.StartActivity(smsIntent);
         }
-        catch { }
+        catch (Exception ex)
+        {
+            BlackBoxLogger.RecordHandledException(ex, "[AndroidSmsService.LaunchNativeSmsIntent]");
+        }
     }
 
     private static readonly System.Text.RegularExpressions.Regex RecipientRegex =
         new(@"^(09\d{9}|\+639\d{9})$",
             System.Text.RegularExpressions.RegexOptions.Compiled);
 
-    // Make sure the number still looks like a real PH mobile number before we hand it to Android.
-    // The controller checked already, but a malformed number must never reach SmsManager.
+    // Make sure the number still looks like a real PH mobile number before we hand it to the composer.
+    // The controller checked already, but a malformed number must never reach the SMS app.
     private static bool IsValidRecipient(string number) => RecipientRegex.IsMatch(number);
 }

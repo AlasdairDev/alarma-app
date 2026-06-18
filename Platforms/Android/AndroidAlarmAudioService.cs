@@ -99,15 +99,21 @@ public class AndroidAlarmAudioService : IAlarmAudioService
                 return;
             }
 
+            // Stage 1 is, by spec, a gentle nudge only: a single vibration and NOTHING else. It never
+            // plays a sound, never raises the alarm volume, and never touches the ringer / DND — so even
+            // with sound enabled, Alarm 1 stays silent. Buzz and bail out before any audio path runs.
+            if (stage == AlarmStage.Stage1)
+            {
+                TriggerVibration(stage, vibrationIntensity);
+                return;
+            }
+
             if (vibrationOnly)
             {
-                if (stage >= AlarmStage.Stage2)
-                {
-                    lock (_ringtoneLock) { _savedRingerMode ??= audioManager.RingerMode; }
-                    audioManager.RingerMode = RingerMode.Vibrate;
-                }
+                lock (_ringtoneLock) { _savedRingerMode ??= audioManager.RingerMode; }
+                audioManager.RingerMode = RingerMode.Vibrate;
             }
-            else if (stage >= AlarmStage.Stage2)
+            else
             {
                 lock (_ringtoneLock) { _savedRingerMode ??= audioManager.RingerMode; }
                 audioManager.RingerMode = RingerMode.Normal;
@@ -117,12 +123,6 @@ public class AndroidAlarmAudioService : IAlarmAudioService
 
                 if (notificationManager?.IsNotificationPolicyAccessGranted == true)
                     notificationManager.SetInterruptionFilter(InterruptionFilter.All);
-            }
-            else
-            {
-                var maxVolume = audioManager.GetStreamMaxVolume(AndroidStream.Alarm);
-                var targetVolume = GetStageVolume(stage, maxVolume);
-                audioManager.SetStreamVolume(AndroidStream.Alarm, targetVolume, VolumeNotificationFlags.ShowUi);
             }
 
             TriggerVibration(stage, vibrationIntensity);

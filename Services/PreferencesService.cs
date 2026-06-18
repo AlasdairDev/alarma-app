@@ -7,7 +7,6 @@ public class PreferencesService
     private const string AlarmSoundKey = "alarm_sound";
     private const string AlarmLeadMinutesKey = "alarm_lead_minutes";
     private const string VibrationOnlyKey = "vibration_only";
-    private const string VibrationIntensityKey = "vibration_intensity";
     private const string OnboardingCompleteKey = "onboarding_complete";
     private const string LastBackupUtcKey = "last_backup_utc";
     private const string HasSeenTutorialKey = "has_seen_tutorial";
@@ -31,12 +30,6 @@ public class PreferencesService
     {
         get => Preferences.Get(VibrationOnlyKey, false);
         set => Preferences.Set(VibrationOnlyKey, value);
-    }
-
-    public string VibrationIntensity
-    {
-        get => Preferences.Get(VibrationIntensityKey, "Medium");
-        set => Preferences.Set(VibrationIntensityKey, value);
     }
 
     public bool IsOnboardingComplete
