@@ -30,6 +30,7 @@ public partial class EmergencyView : ContentPage
         Content.FadeTo(1, 220, Easing.CubicOut);
         _controller.SosDispatched += OnSosDispatched;
         _controller.SmsDenied += OnSmsDenied;
+        _controller.LocationServicesDisabled += OnLocationServicesDisabled;
     }
 
     protected override void OnDisappearing()
@@ -40,6 +41,23 @@ public partial class EmergencyView : ContentPage
         SosButton.BackgroundColor = Color.FromArgb("#FF3B30");
         _controller.SosDispatched -= OnSosDispatched;
         _controller.SmsDenied -= OnSmsDenied;
+        _controller.LocationServicesDisabled -= OnLocationServicesDisabled;
+    }
+
+    // SOS was halted because the device's location/GPS is switched off. Force the issue with an alert
+    // that sends the rider straight to the location settings — an SOS without a location is half-blind.
+    private void OnLocationServicesDisabled(object? sender, EventArgs e)
+    {
+        MainThread.BeginInvokeOnMainThread(async () =>
+        {
+            var goToSettings = await DisplayAlert(
+                "Location is Off",
+                "Turn on your device's location so your SOS can include where you are. Open location settings now?",
+                "Open Settings",
+                "Cancel");
+            if (goToSettings)
+                _controller.OpenLocationSettings();
+        });
     }
 
     private void OnSosPressed(object? sender, EventArgs e)

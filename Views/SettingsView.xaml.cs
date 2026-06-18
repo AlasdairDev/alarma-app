@@ -20,6 +20,13 @@ public partial class SettingsView : ContentPage
         Content.FadeTo(1, 220, Easing.CubicOut);
     }
 
+    protected override void OnDisappearing()
+    {
+        base.OnDisappearing();
+        // Leaving the page must silence any sound preview still playing.
+        _controller.StopSoundPreview();
+    }
+
     private async void OnUpdateContactsClicked(object? sender, EventArgs e)
     {
         await Shell.Current.GoToAsync("//emergency");

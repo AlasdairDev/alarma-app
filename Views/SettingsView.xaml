@@ -139,21 +139,77 @@
                     Stroke="Transparent"
                     Margin="16,0">
                 <VerticalStackLayout Spacing="0">
-                    <Grid ColumnDefinitions="*,Auto"
-                          Padding="18,16">
-                        <Label Grid.Column="0"
-                               Text="Alarm Sound"
+                    <!-- Alarm Sound — tappable chips. Tapping one selects it (saved to Preferences) and
+                         plays a short live preview; the active sound is highlighted. -->
+                    <VerticalStackLayout Padding="18,16" Spacing="10">
+                        <Label Text="Alarm Sound"
                                FontSize="15"
-                               TextColor="White"
-                               VerticalOptions="Center" />
-                        <Picker Grid.Column="1"
-                                ItemsSource="{Binding AlarmSoundOptions}"
-                                SelectedItem="{Binding AlarmSound}"
-                                TextColor="#9B6FBF"
-                                FontSize="14"
-                                BackgroundColor="Transparent"
-                                MinimumWidthRequest="100" />
-                    </Grid>
+                               TextColor="White" />
+                        <ScrollView Orientation="Horizontal" HorizontalScrollBarVisibility="Never">
+                            <HorizontalStackLayout Spacing="8">
+                                <Button Text="Default"
+                                        Command="{Binding SelectAndPreviewSoundCommand}"
+                                        CommandParameter="Default"
+                                        BackgroundColor="#2D1B4E" TextColor="#C8B8E8"
+                                        FontSize="13" CornerRadius="20" Padding="16,8">
+                                    <Button.Triggers>
+                                        <DataTrigger TargetType="Button" Binding="{Binding AlarmSound}" Value="Default">
+                                            <Setter Property="BackgroundColor" Value="#7B3FA0" />
+                                            <Setter Property="TextColor" Value="White" />
+                                        </DataTrigger>
+                                    </Button.Triggers>
+                                </Button>
+                                <Button Text="Alarm"
+                                        Command="{Binding SelectAndPreviewSoundCommand}"
+                                        CommandParameter="Alarm"
+                                        BackgroundColor="#2D1B4E" TextColor="#C8B8E8"
+                                        FontSize="13" CornerRadius="20" Padding="16,8">
+                                    <Button.Triggers>
+                                        <DataTrigger TargetType="Button" Binding="{Binding AlarmSound}" Value="Alarm">
+                                            <Setter Property="BackgroundColor" Value="#7B3FA0" />
+                                            <Setter Property="TextColor" Value="White" />
+                                        </DataTrigger>
+                                    </Button.Triggers>
+                                </Button>
+                                <Button Text="Chime"
+                                        Command="{Binding SelectAndPreviewSoundCommand}"
+                                        CommandParameter="Chime"
+                                        BackgroundColor="#2D1B4E" TextColor="#C8B8E8"
+                                        FontSize="13" CornerRadius="20" Padding="16,8">
+                                    <Button.Triggers>
+                                        <DataTrigger TargetType="Button" Binding="{Binding AlarmSound}" Value="Chime">
+                                            <Setter Property="BackgroundColor" Value="#7B3FA0" />
+                                            <Setter Property="TextColor" Value="White" />
+                                        </DataTrigger>
+                                    </Button.Triggers>
+                                </Button>
+                                <Button Text="Notification"
+                                        Command="{Binding SelectAndPreviewSoundCommand}"
+                                        CommandParameter="Notification"
+                                        BackgroundColor="#2D1B4E" TextColor="#C8B8E8"
+                                        FontSize="13" CornerRadius="20" Padding="16,8">
+                                    <Button.Triggers>
+                                        <DataTrigger TargetType="Button" Binding="{Binding AlarmSound}" Value="Notification">
+                                            <Setter Property="BackgroundColor" Value="#7B3FA0" />
+                                            <Setter Property="TextColor" Value="White" />
+                                        </DataTrigger>
+                                    </Button.Triggers>
+                                </Button>
+                                <Button Text="Ringtone"
+                                        Command="{Binding SelectAndPreviewSoundCommand}"
+                                        CommandParameter="Ringtone"
+                                        BackgroundColor="#2D1B4E" TextColor="#C8B8E8"
+                                        FontSize="13" CornerRadius="20" Padding="16,8">
+                                    <Button.Triggers>
+                                        <DataTrigger TargetType="Button" Binding="{Binding AlarmSound}" Value="Ringtone">
+                                            <Setter Property="BackgroundColor" Value="#7B3FA0" />
+                                            <Setter Property="TextColor" Value="White" />
+                                        </DataTrigger>
+                                    </Button.Triggers>
+                                </Button>
+                            </HorizontalStackLayout>
+                        </ScrollView>
+                    </VerticalStackLayout>
                     <BoxView HeightRequest="1" Color="#4A3570" Margin="18,0" />
                     <Grid ColumnDefinitions="*,Auto"
                           Padding="18,16">
