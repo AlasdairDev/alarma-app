@@ -6,7 +6,7 @@
              Shell.NavBarIsVisible="False"
              BackgroundColor="#1A0F35">
 
-    <Grid HorizontalOptions="Fill" VerticalOptions="Fill" RowDefinitions="Auto,Auto,Auto,*">
+    <Grid HorizontalOptions="Fill" VerticalOptions="Fill" RowDefinitions="Auto,Auto,Auto,Auto,*">
 
         <!-- Title -->
         <Label Grid.Row="0"
@@ -17,22 +17,99 @@
                Padding="24,52,24,8"
                BackgroundColor="#1A0F35" />
 
-        <!-- Search bar — filters the list live as you type (destination, route details, or date/time). -->
-        <SearchBar Grid.Row="1"
-                   Text="{Binding HistorySearchQuery, Mode=TwoWay}"
-                   Placeholder="Search trips by destination, route, or date"
-                   PlaceholderColor="#8A7AAE"
-                   TextColor="White"
-                   CancelButtonColor="#A88FD0"
-                   BackgroundColor="#3D2B5E"
-                   MaxLength="200"
-                   Margin="16,0,16,8"
-                   SemanticProperties.Description="Search trip history"
-                   SemanticProperties.Hint="Type to filter trips by destination, route, or date" />
+        <!-- Search pill — a fully-rounded lavender bar matching the Home destination pill (#EDE7F6).
+             The inner Entry is transparent and has its native underline stripped in code-behind so the
+             whole thing reads as one seamless pill. Filters the list live as you type. -->
+        <Border Grid.Row="1"
+                BackgroundColor="#EDE7F6"
+                StrokeShape="RoundRectangle 25"
+                Stroke="Transparent"
+                Margin="16,0,16,10"
+                Padding="16,4">
+            <Grid ColumnDefinitions="Auto,*">
+                <Label Grid.Column="0"
+                       Text="search"
+                       FontFamily="MaterialSymbols"
+                       FontSize="16"
+                       TextColor="#7B3FA0"
+                       VerticalOptions="Center" />
+                <Entry Grid.Column="1"
+                       x:Name="SearchEntry"
+                       HandlerChanged="OnSearchEntryHandlerChanged"
+                       Text="{Binding HistorySearchQuery, Mode=TwoWay}"
+                       Placeholder="Search by destination, route, or date"
+                       PlaceholderColor="#8A7AAE"
+                       TextColor="#3D2B5E"
+                       BackgroundColor="Transparent"
+                       FontSize="14"
+                       MaxLength="200"
+                       ClearButtonVisibility="WhileEditing"
+                       Margin="8,0,0,0"
+                       VerticalOptions="Center" />
+            </Grid>
+        </Border>
 
-        <!-- Clear All — sits under the search so it can act on whatever the filter currently shows.
-             Hidden when the (filtered) list is empty. -->
-        <Button Grid.Row="2"
+        <!-- Tappable filter chips — quick categories on top of the free-text search. Active chip lights
+             up lavender via the inline DataTrigger comparing HistoryFilterCategory to its own value. -->
+        <ScrollView Grid.Row="2"
+                    Orientation="Horizontal"
+                    HorizontalScrollBarVisibility="Never"
+                    Margin="0,0,0,10">
+            <HorizontalStackLayout Spacing="8" Padding="16,0">
+                <Button Text="All"
+                        Command="{Binding SetHistoryFilterCommand}"
+                        CommandParameter="All"
+                        BackgroundColor="#3D2B5E"
+                        TextColor="#C8B8E8"
+                        FontSize="13"
+                        CornerRadius="20"
+                        Padding="18,8"
+                        SemanticProperties.Hint="Show all trips">
+                    <Button.Triggers>
+                        <DataTrigger TargetType="Button" Binding="{Binding HistoryFilterCategory}" Value="All">
+                            <Setter Property="BackgroundColor" Value="#EDE7F6" />
+                            <Setter Property="TextColor" Value="#4A2E73" />
+                        </DataTrigger>
+                    </Button.Triggers>
+                </Button>
+                <Button Text="Recent"
+                        Command="{Binding SetHistoryFilterCommand}"
+                        CommandParameter="Recent"
+                        BackgroundColor="#3D2B5E"
+                        TextColor="#C8B8E8"
+                        FontSize="13"
+                        CornerRadius="20"
+                        Padding="18,8"
+                        SemanticProperties.Hint="Show trips from the last 7 days">
+                    <Button.Triggers>
+                        <DataTrigger TargetType="Button" Binding="{Binding HistoryFilterCategory}" Value="Recent">
+                            <Setter Property="BackgroundColor" Value="#EDE7F6" />
+                            <Setter Property="TextColor" Value="#4A2E73" />
+                        </DataTrigger>
+                    </Button.Triggers>
+                </Button>
+                <Button Text="By Route"
+                        Command="{Binding SetHistoryFilterCommand}"
+                        CommandParameter="By Route"
+                        BackgroundColor="#3D2B5E"
+                        TextColor="#C8B8E8"
+                        FontSize="13"
+                        CornerRadius="20"
+                        Padding="18,8"
+                        SemanticProperties.Hint="Sort trips alphabetically by destination route">
+                    <Button.Triggers>
+                        <DataTrigger TargetType="Button" Binding="{Binding HistoryFilterCategory}" Value="By Route">
+                            <Setter Property="BackgroundColor" Value="#EDE7F6" />
+                            <Setter Property="TextColor" Value="#4A2E73" />
+                        </DataTrigger>
+                    </Button.Triggers>
+                </Button>
+            </HorizontalStackLayout>
+        </ScrollView>
+
+        <!-- Clear All — sits under the filters so it can act on whatever the search + chips currently
+             show. Hidden when the (filtered) list is empty. -->
+        <Button Grid.Row="3"
                 Text="Clear All"
                 IsVisible="{Binding HasTripHistory}"
                 Clicked="OnClearAllClicked"
@@ -48,7 +125,7 @@
                 SemanticProperties.Hint="Double tap to delete the trips currently shown in the list" />
 
         <!-- Trip list -->
-        <ScrollView Grid.Row="3">
+        <ScrollView Grid.Row="4">
             <VerticalStackLayout Spacing="0">
 
                 <!-- Empty state -->

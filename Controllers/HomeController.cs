@@ -577,6 +577,20 @@ public class HomeController : INotifyPropertyChanged
     }
     private string _historySearchQuery = string.Empty;
 
+    // Which quick-filter chip is active ("All", "Recent", "By Route"). Layered on top of the free-text
+    // search box — the two narrow the list together. Setting it re-runs the filter so the chips feel
+    // instant, and the chip UI lights up by binding its DataTrigger against this same string.
+    public string HistoryFilterCategory
+    {
+        get => _historyFilterCategory;
+        set
+        {
+            if (SetProperty(ref _historyFilterCategory, value))
+                ApplyTripHistoryFilter();
+        }
+    }
+    private string _historyFilterCategory = "All";
+
     public ICommand InitializeCommand { get; }
     public ICommand SearchDestinationCommand { get; }
     public ICommand SelectResultCommand { get; }
@@ -609,6 +623,7 @@ public class HomeController : INotifyPropertyChanged
     public ICommand OpenInGMapsCommand { get; }
     public ICommand DeleteTripHistoryCommand { get; }
     public ICommand ClearTripHistoryCommand { get; }
+    public ICommand SetHistoryFilterCommand { get; }
 
     public HomeController(
         DatabaseService databaseService,
@@ -711,6 +726,8 @@ public class HomeController : INotifyPropertyChanged
         });
         DeleteTripHistoryCommand = new Command<TripHistory>(async trip => await DeleteTripHistoryAsync(trip));
         ClearTripHistoryCommand = new Command(async () => await ClearTripHistoryAsync());
+        SetHistoryFilterCommand = new Command<string>(category => HistoryFilterCategory =
+            string.IsNullOrWhiteSpace(category) ? "All" : category);
 
         _locationService.LocationUpdated += OnLocationUpdated;
         _emergencyContacts.CollectionChanged += (_, _) =>
@@ -2031,7 +2048,8 @@ public class HomeController : INotifyPropertyChanged
     {
         try
         {
-            var isFiltered = !string.IsNullOrWhiteSpace(_historySearchQuery);
+            var isFiltered = !string.IsNullOrWhiteSpace(_historySearchQuery)
+                || !string.Equals(_historyFilterCategory, "All", StringComparison.OrdinalIgnoreCase);
             if (isFiltered)
             {
                 // Snapshot the visible rows first — we mutate the collection as we delete.
@@ -2065,15 +2083,26 @@ public class HomeController : INotifyPropertyChanged
     // box shows everything; otherwise we keep entries that match on destination name or date.
     private void ApplyTripHistoryFilter()
     {
+        IEnumerable<TripHistory> items = _allTripHistory;
+
+        // 1) Free-text search box narrows first.
         var query = _historySearchQuery?.Trim();
-        if (string.IsNullOrWhiteSpace(query))
+        if (!string.IsNullOrWhiteSpace(query))
         {
-            ReplaceCollection(_tripHistoryEntries, _allTripHistory);
-            return;
+            items = items.Where(trip => MatchesHistoryQuery(trip, query));
         }
 
-        var matches = _allTripHistory.Where(trip => MatchesHistoryQuery(trip, query)).ToList();
-        ReplaceCollection(_tripHistoryEntries, matches);
+        // 2) Then the active chip category. "All" is a pass-through; "Recent" keeps the last week;
+        //    "By Route" reorders alphabetically by destination so trips to the same place sit together.
+        items = _historyFilterCategory switch
+        {
+            "Recent" => items.Where(trip => trip.StartedAt >= DateTime.Now.AddDays(-7)),
+            "By Route" => items.OrderBy(trip => trip.DestinationName ?? string.Empty,
+                StringComparer.OrdinalIgnoreCase),
+            _ => items
+        };
+
+        ReplaceCollection(_tripHistoryEntries, items.ToList());
     }
 
     // Match the typed text against the destination name, the route details summary, and the date/time

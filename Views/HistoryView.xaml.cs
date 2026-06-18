@@ -25,12 +25,27 @@ public partial class HistoryView : ContentPage
         Content.FadeTo(1, 220, Easing.CubicOut);
     }
 
+    // The native Android EditText draws an underline and its own background, which would poke out of
+    // our lavender pill. Once the handler is ready we strip that background so the input blends into the
+    // Border and the pill reads as one seamless shape. No-op on other platforms.
+    private void OnSearchEntryHandlerChanged(object? sender, EventArgs e)
+    {
+#if ANDROID
+        if (sender is Entry entry && entry.Handler?.PlatformView is Android.Widget.EditText editText)
+        {
+            editText.Background = null;
+            editText.SetPadding(0, editText.PaddingTop, 0, editText.PaddingBottom);
+        }
+#endif
+    }
+
     // Wiping history has no undo, so make the rider confirm first. The prompt spells out exactly what's
     // about to go: with a search active we only delete the filtered trips on screen, otherwise everything.
     // Per-trip swipe/trash deletes are low-stakes and skip this prompt.
     private async void OnClearAllClicked(object? sender, EventArgs e)
     {
-        var isFiltered = !string.IsNullOrWhiteSpace(_controller.HistorySearchQuery);
+        var isFiltered = !string.IsNullOrWhiteSpace(_controller.HistorySearchQuery)
+            || !string.Equals(_controller.HistoryFilterCategory, "All", StringComparison.OrdinalIgnoreCase);
         var shownCount = _controller.TripHistoryEntries.Count;
 
         var title = isFiltered ? "Delete Filtered Trips" : "Clear Trip History";
