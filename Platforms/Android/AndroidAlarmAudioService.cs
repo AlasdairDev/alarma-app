@@ -322,15 +322,19 @@ public class AndroidAlarmAudioService : IAlarmAudioService
         await DisableCriticalAudioAsync();
     }
 
+    // Map each option to a DISTINCT, loud system sound so the rider hears a clear difference in the
+    // Settings preview (the old map pointed "Default" and "Alarm" at the same alarm tone, so they were
+    // indistinguishable). "Default" = the device alarm tone, "Alarm" = the phone's ringtone (a longer,
+    // melodic, attention-grabbing sound), "Chime" = the notification tone (a short, bright chime).
     private static global::Android.Net.Uri? GetRingtoneUri(string soundKey)
     {
         return soundKey switch
         {
-            "Alarm" => RingtoneManager.GetDefaultUri(RingtoneType.Alarm),
-            "Chime" => RingtoneManager.GetDefaultUri(RingtoneType.Notification),
-            "Notification" => RingtoneManager.GetDefaultUri(RingtoneType.Notification),
-            "Ringtone" => RingtoneManager.GetDefaultUri(RingtoneType.Ringtone),
-            _ => RingtoneManager.GetDefaultUri(RingtoneType.Alarm)
+            "Alarm" => RingtoneManager.GetDefaultUri(RingtoneType.Ringtone)
+                       ?? RingtoneManager.GetDefaultUri(RingtoneType.Alarm),
+            "Chime" => RingtoneManager.GetDefaultUri(RingtoneType.Notification)
+                       ?? RingtoneManager.GetDefaultUri(RingtoneType.Alarm),
+            _ => RingtoneManager.GetDefaultUri(RingtoneType.Alarm),  // "Default"
         };
     }
 }

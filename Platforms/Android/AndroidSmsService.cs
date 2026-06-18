@@ -41,16 +41,33 @@ public class AndroidSmsService : ISmsService
         }
 
         var smsManager = SmsManager.Default ?? throw new InvalidOperationException("SMS manager unavailable.");
-        try
+
+        // Resilient per-recipient loop: each contact is sent independently inside its own try/catch so a
+        // single bad number (or a transient modem error on one send) can NEVER abort the whole batch.
+        // We only fall back to the native SMS app if not one message made it through.
+        var anySent = false;
+        var failures = new List<string>();
+        foreach (var recipient in validRecipients)
         {
-            foreach (var recipient in validRecipients)
+            try
+            {
                 smsManager.SendTextMessage(recipient, null, message, null, null);
+                anySent = true;
+            }
+            catch (Exception ex)
+            {
+                failures.Add(recipient);
+                BlackBoxLogger.RecordHandledException(ex, "[AndroidSmsService.SendTextMessage.PerRecipient]");
+                // Keep going — the remaining contacts still need their SOS.
+            }
         }
-        catch (Exception ex)
+
+        if (!anySent)
         {
-            // Security exception or send failure — fall back to native SMS app.
+            // Nothing got through via SmsManager — open the native SMS app pre-filled with everyone so
+            // the SOS can still go out with a single tap.
             LaunchNativeSmsIntent(message, validRecipients);
-            throw new InvalidOperationException("SOS SMS send failed — native SMS app launched as fallback.", ex);
+            throw new InvalidOperationException("All SOS sends failed — native SMS app launched as fallback.");
         }
     }
 

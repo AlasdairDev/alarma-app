@@ -183,30 +183,6 @@
                                         </DataTrigger>
                                     </Button.Triggers>
                                 </Button>
-                                <Button Text="Notification"
-                                        Command="{Binding SelectAndPreviewSoundCommand}"
-                                        CommandParameter="Notification"
-                                        BackgroundColor="#2D1B4E" TextColor="#C8B8E8"
-                                        FontSize="13" CornerRadius="20" Padding="16,8">
-                                    <Button.Triggers>
-                                        <DataTrigger TargetType="Button" Binding="{Binding AlarmSound}" Value="Notification">
-                                            <Setter Property="BackgroundColor" Value="#7B3FA0" />
-                                            <Setter Property="TextColor" Value="White" />
-                                        </DataTrigger>
-                                    </Button.Triggers>
-                                </Button>
-                                <Button Text="Ringtone"
-                                        Command="{Binding SelectAndPreviewSoundCommand}"
-                                        CommandParameter="Ringtone"
-                                        BackgroundColor="#2D1B4E" TextColor="#C8B8E8"
-                                        FontSize="13" CornerRadius="20" Padding="16,8">
-                                    <Button.Triggers>
-                                        <DataTrigger TargetType="Button" Binding="{Binding AlarmSound}" Value="Ringtone">
-                                            <Setter Property="BackgroundColor" Value="#7B3FA0" />
-                                            <Setter Property="TextColor" Value="White" />
-                                        </DataTrigger>
-                                    </Button.Triggers>
-                                </Button>
                             </HorizontalStackLayout>
                         </ScrollView>
                     </VerticalStackLayout>

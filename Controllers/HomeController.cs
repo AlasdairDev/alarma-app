@@ -48,6 +48,8 @@ public class HomeController : INotifyPropertyChanged
     // Arrival (Stage 2) must be seen on this many consecutive fixes before it latches, so a single
     // outlier fix that lands near the destination can't falsely mark arrival (and then overshoot).
     private const int ArrivalPersistenceFixes = 2;
+    // How many consecutive increasing-distance fixes past the stop confirm a genuine overshoot.
+    private const int OvershootIncreasePersistenceFixes = 3;
 
     private readonly DatabaseService _databaseService;
     private readonly PreferencesService _preferencesService;
@@ -92,11 +94,21 @@ public class HomeController : INotifyPropertyChanged
     private TripHistory? _activeTrip;
     private bool _hasArrivedAtDestination;
     private bool _overshootAlerted;
+    // Consecutive "getting farther past the stop" tracking — overshoot only confirms after several
+    // increasing fixes, so a single GPS wobble right at the destination can't trip the recovery flow.
+    private int _overshootIncreaseStreak;
+    private double _lastOvershootDistance = double.MaxValue;
     private bool _routeDeviationAlerted;
     private int _deviationAwayStreak;
     private int _arrivalStreak;
     private bool _isOvershootPending;
     private bool _isOvershootConfirmed;
+    // The two new recovery-flow screens that follow a confirmed overshoot.
+    private bool _isAreaSafetyVisible;
+    private bool _isReroutingVisible;
+    private string _areaSafetyText = string.Empty;
+    private string _reroutingHeadingText = string.Empty;
+    private readonly ObservableCollection<string> _reroutingSteps = new();
     private string _overshootDistanceText = string.Empty;
     private string _chipDistanceText = string.Empty;
     private AlarmStage _currentAlarmStage = AlarmStage.None;
@@ -151,7 +163,52 @@ public class HomeController : INotifyPropertyChanged
         }
     }
 
-    public bool IsStage3Wake => IsStage3Active && !_isOvershootPending && !_isOvershootConfirmed;
+    public bool IsStage3Wake => IsStage3Active
+        && !_isOvershootPending && !_isOvershootConfirmed
+        && !_isAreaSafetyVisible && !_isReroutingVisible;
+
+    // ── Overshoot recovery flow screens ───────────────────────────────────────
+    public bool IsAreaSafetyVisible
+    {
+        get => _isAreaSafetyVisible;
+        private set
+        {
+            if (SetProperty(ref _isAreaSafetyVisible, value))
+            {
+                OnPropertyChanged(nameof(IsStage3Wake));
+                OnPropertyChanged(nameof(IsChipVisible));
+                OnPropertyChanged(nameof(TopStatusLabel));
+            }
+        }
+    }
+
+    public bool IsReroutingVisible
+    {
+        get => _isReroutingVisible;
+        private set
+        {
+            if (SetProperty(ref _isReroutingVisible, value))
+            {
+                OnPropertyChanged(nameof(IsStage3Wake));
+                OnPropertyChanged(nameof(IsChipVisible));
+                OnPropertyChanged(nameof(TopStatusLabel));
+            }
+        }
+    }
+
+    public string AreaSafetyText
+    {
+        get => _areaSafetyText;
+        private set => SetProperty(ref _areaSafetyText, value);
+    }
+
+    public string ReroutingHeadingText
+    {
+        get => _reroutingHeadingText;
+        private set => SetProperty(ref _reroutingHeadingText, value);
+    }
+
+    public ObservableCollection<string> ReroutingSteps => _reroutingSteps;
 
     public string OvershootDistanceText
     {
@@ -165,9 +222,11 @@ public class HomeController : INotifyPropertyChanged
         private set => SetProperty(ref _chipDistanceText, value);
     }
 
-    public bool IsChipVisible => !IsStage3Wake;
+    public bool IsChipVisible => !IsStage3Wake
+        && !_isOvershootPending && !_isOvershootConfirmed
+        && !_isAreaSafetyVisible && !_isReroutingVisible;
 
-    public string TopStatusLabel => (IsOvershootPending || IsOvershootConfirmed)
+    public string TopStatusLabel => (IsOvershootPending || IsOvershootConfirmed || IsAreaSafetyVisible || IsReroutingVisible)
         ? "Overshoot Detected"
         : AlarmStageLabel;
     private double _lastSpeedMetersPerSecond;
@@ -186,13 +245,14 @@ public class HomeController : INotifyPropertyChanged
     private string _currentLocationText = "Fetching location...";
     private readonly SemaphoreSlim _initializeSemaphore = new(1, 1);
     private readonly SemaphoreSlim _databaseInitSemaphore = new(1, 1);
+    // Three clearly-distinct alarm voices. "Notification" (and the duplicate-sounding "Ringtone") were
+    // removed — each remaining option maps to a different, loud system sound in the audio service so the
+    // live preview in Settings sounds obviously different between them.
     private readonly ObservableCollection<string> _alarmSoundOptions = new()
     {
         "Default",
         "Alarm",
-        "Chime",
-        "Notification",
-        "Ringtone"
+        "Chime"
     };
     private bool _wasOnline;
     private bool _availabilityChecked;
@@ -628,6 +688,9 @@ public class HomeController : INotifyPropertyChanged
     public ICommand ConfirmOvershootCommand { get; }
     public ICommand DismissOvershootCommand { get; }
     public ICommand OpenInGMapsCommand { get; }
+    public ICommand CloseOvershootCommand { get; }
+    public ICommand ContinueToReroutingCommand { get; }
+    public ICommand FinishReroutingCommand { get; }
     public ICommand DeleteTripHistoryCommand { get; }
     public ICommand ClearTripHistoryCommand { get; }
     public ICommand SetHistoryFilterCommand { get; }
@@ -704,6 +767,7 @@ public class HomeController : INotifyPropertyChanged
         DismissAlarmCommand = new Command(async () =>
         {
             CurrentAlarmStage = AlarmStage.None;
+            ResetOvershootUiState();
             await _alarmAudioService.DisableCriticalAudioAsync();
             LastActionText = "Alarm dismissed.";
         });
@@ -716,21 +780,45 @@ public class HomeController : INotifyPropertyChanged
             IsOvershootPending = false;
             IsOvershootConfirmed = true;
         });
-        DismissOvershootCommand = new Command(() =>
+        DismissOvershootCommand = new Command(async () =>
         {
-            IsOvershootPending = false;
-            IsOvershootConfirmed = false;
+            ResetOvershootUiState();
             _overshootAlerted = false;
             CurrentAlarmStage = AlarmStage.None;
+            await _alarmAudioService.DisableCriticalAudioAsync();
         });
+        // Pure local hand-off to Google Maps (google.navigation: intent, zero network). Does NOT reset
+        // the recovery flow, so the rider can launch Maps and still come back to the in-app screens.
         OpenInGMapsCommand = new Command(async () =>
         {
-            IsOvershootConfirmed = false;
-            CurrentAlarmStage = AlarmStage.None;
             if (_lastDestinationResult is not null)
                 await _googleMapsLauncher.OpenRerouteAsync(
                     _lastDestinationResult.Latitude,
                     _lastDestinationResult.Longitude);
+        });
+        // Step 1 → 2 of the recovery flow: "Close" the confirmed alert. Silence the alarm and surface the
+        // Area Safety overlay rather than just dismissing everything.
+        CloseOvershootCommand = new Command(async () =>
+        {
+            await _alarmAudioService.DisableCriticalAudioAsync();
+            BuildAreaSafetyMessage();
+            IsOvershootConfirmed = false;
+            IsAreaSafetyVisible = true;
+        });
+        // Step 2 → 3: leave the safety overlay and enter the in-app rerouting screen.
+        ContinueToReroutingCommand = new Command(() =>
+        {
+            BuildReroutingGuidance();
+            IsAreaSafetyVisible = false;
+            IsReroutingVisible = true;
+        });
+        // Step 3 done: tear the whole recovery flow down and clear the alarm.
+        FinishReroutingCommand = new Command(async () =>
+        {
+            ResetOvershootUiState();
+            _overshootAlerted = false;
+            CurrentAlarmStage = AlarmStage.None;
+            await _alarmAudioService.DisableCriticalAudioAsync();
         });
         DeleteTripHistoryCommand = new Command<TripHistory>(async trip => await DeleteTripHistoryAsync(trip));
         ClearTripHistoryCommand = new Command(async () => await ClearTripHistoryAsync());
@@ -1653,6 +1741,9 @@ public class HomeController : INotifyPropertyChanged
         _lastTrackedLocation = null;
         _hasArrivedAtDestination = false;
         _overshootAlerted = false;
+        _overshootIncreaseStreak = 0;
+        _lastOvershootDistance = double.MaxValue;
+        ResetOvershootUiState();
         _routeDeviationAlerted = false;
         _deviationAwayStreak = 0;
         _arrivalStreak = 0;
@@ -1901,20 +1992,37 @@ public class HomeController : INotifyPropertyChanged
             _arrivalStreak = 0;
         }
 
-        if (_hasArrivedAtDestination && !_overshootAlerted && distanceToDestination >= overshootThreshold)
+        if (_hasArrivedAtDestination && !_overshootAlerted)
         {
-            _overshootAlerted = true;
-            OvershootDistanceText = distanceToDestination >= 1000
-                ? $"{distanceToDestination / 1000:F1} km away"
-                : $"{(int)distanceToDestination} m away";
-            IsOvershootPending = true;
-            await TriggerAlarmStageAsync(
-                AlarmStage.Stage3,
-                "Overshoot Detected",
-                "You might have passed your destination.",
-                reroute: false,
-                allowRepeat: false);
-            return;
+            // Overshoot = past the stop AND consistently moving farther. Count consecutive increasing
+            // fixes; moving back toward the destination resets the streak so a brief drift can't fire it.
+            if (distanceToDestination >= overshootThreshold && distanceToDestination > _lastOvershootDistance)
+            {
+                _overshootIncreaseStreak++;
+            }
+            else if (distanceToDestination < _lastOvershootDistance)
+            {
+                _overshootIncreaseStreak = 0;
+            }
+            _lastOvershootDistance = distanceToDestination;
+
+            if (_overshootIncreaseStreak >= OvershootIncreasePersistenceFixes)
+            {
+                _overshootAlerted = true;
+                OvershootDistanceText = distanceToDestination >= 1000
+                    ? $"{distanceToDestination / 1000:F1} km"
+                    : $"{(int)distanceToDestination} m";
+                // Recovery flow step 1: skip the "did you miss it?" question and push the confirmed
+                // full-screen alert straight away (destination name + exact distance live in the view).
+                IsOvershootConfirmed = true;
+                await TriggerAlarmStageAsync(
+                    AlarmStage.Stage3,
+                    "Overshoot Detected",
+                    "You have passed your destination.",
+                    reroute: false,
+                    allowRepeat: false);
+                return;
+            }
         }
 
         // ── Route-deviation detection (multi-leg-commute aware) ───────────────────
@@ -2023,6 +2131,9 @@ public class HomeController : INotifyPropertyChanged
         _minDistanceToDestination = double.MaxValue;
         _hasArrivedAtDestination = false;
         _overshootAlerted = false;
+        _overshootIncreaseStreak = 0;
+        _lastOvershootDistance = double.MaxValue;
+        ResetOvershootUiState();
         _routeDeviationAlerted = false;
         _deviationAwayStreak = 0;
         _arrivalStreak = 0;
@@ -2061,6 +2172,9 @@ public class HomeController : INotifyPropertyChanged
         _minDistanceToDestination = double.MaxValue;
         _hasArrivedAtDestination = false;
         _overshootAlerted = false;
+        _overshootIncreaseStreak = 0;
+        _lastOvershootDistance = double.MaxValue;
+        ResetOvershootUiState();
         _routeDeviationAlerted = false;
         _deviationAwayStreak = 0;
         _arrivalStreak = 0;
@@ -2241,6 +2355,84 @@ public class HomeController : INotifyPropertyChanged
             : $"{duration.TotalMinutes:F0} min";
         var overshootText = trip.OvershootDetected ? "Overshoot detected" : "No overshoot";
         return $"{durationText} · {distanceKm:F2} km · {overshootText}";
+    }
+
+    // Clears all four recovery-flow screens in one shot (used on dismiss, trip stop, and new trips).
+    private void ResetOvershootUiState()
+    {
+        IsOvershootPending = false;
+        IsOvershootConfirmed = false;
+        IsAreaSafetyVisible = false;
+        IsReroutingVisible = false;
+    }
+
+    // Offline "Area Safety Alert" copy. Deliberately built locally with no network call — it leans on
+    // the destination name + how far past it we are, plus general personal-safety guidance for being
+    // dropped somewhere unplanned. (Reverse-geocoding the exact area would need the network, which the
+    // overshoot/handoff requirement forbids.)
+    private void BuildAreaSafetyMessage()
+    {
+        var dest = DestinationShortNameText;
+        var place = string.IsNullOrWhiteSpace(dest) ? "your stop" : dest;
+        AreaSafetyText =
+            $"You're about {OvershootDistanceText} past {place}, in an area you didn't plan to be.\n\n" +
+            "• Move to a well-lit, populated spot and stay aware of your surroundings.\n" +
+            "• Keep your phone and belongings close and out of sight.\n" +
+            "• Note the nearest landmark, terminal, or store you can head to.\n" +
+            "• If anything feels unsafe, call an emergency contact or 911 right away.";
+    }
+
+    // Builds the in-app rerouting guidance shown over the mini-map. Everything here is computed locally
+    // from the last GPS fix and the saved destination — no routing API / network. For full turn-by-turn
+    // the rerouting screen hands off to Google Maps via the local intent.
+    private void BuildReroutingGuidance()
+    {
+        _reroutingSteps.Clear();
+        var dest = _lastDestinationResult;
+        var place = DestinationShortNameText;
+        if (dest is null)
+        {
+            ReroutingHeadingText = "Destination unavailable.";
+            return;
+        }
+
+        var here = _lastTrackedLocation;
+        var compass = "back toward your stop";
+        var distText = OvershootDistanceText;
+        if (here is not null)
+        {
+            var bearing = CalculateBearingDegrees(here.Latitude, here.Longitude, dest.Latitude, dest.Longitude);
+            compass = $"{BearingToCompass(bearing)} (back toward your stop)";
+            var d = CalculateDistanceMeters(
+                here,
+                new LocationSnapshot(dest.Latitude, dest.Longitude, 0f, here.Timestamp));
+            distText = d >= 1000 ? $"{d / 1000:F1} km" : $"{(int)d} m";
+        }
+
+        ReroutingHeadingText = $"Head {compass} • {distText} to {place}";
+        _reroutingSteps.Add($"1. Turn around and head {compass}.");
+        _reroutingSteps.Add($"2. Travel roughly {distText} back toward {place}.");
+        _reroutingSteps.Add("3. Look for the opposite-direction stop, jeepney, or route going back.");
+        _reroutingSteps.Add("4. Tap “Open in Google Maps” for live turn-by-turn directions.");
+    }
+
+    // Initial compass bearing from one coordinate to another, in degrees [0,360).
+    private static double CalculateBearingDegrees(double lat1, double lon1, double lat2, double lon2)
+    {
+        var phi1 = DegreesToRadians(lat1);
+        var phi2 = DegreesToRadians(lat2);
+        var deltaLon = DegreesToRadians(lon2 - lon1);
+        var y = Math.Sin(deltaLon) * Math.Cos(phi2);
+        var x = Math.Cos(phi1) * Math.Sin(phi2) - Math.Sin(phi1) * Math.Cos(phi2) * Math.Cos(deltaLon);
+        var bearing = Math.Atan2(y, x) * 180.0 / Math.PI;
+        return (bearing + 360.0) % 360.0;
+    }
+
+    private static string BearingToCompass(double bearing)
+    {
+        string[] points = { "north", "north-east", "east", "south-east", "south", "south-west", "west", "north-west" };
+        var index = (int)Math.Round(bearing / 45.0) % 8;
+        return points[index];
     }
 
     private static double CalculateDistanceMeters(LocationSnapshot start, LocationSnapshot end)
