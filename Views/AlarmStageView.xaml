@@ -17,6 +17,30 @@
                  HorizontalOptions="Fill"
                  VerticalOptions="Fill" />
 
+        <!-- Floating Back arrow (top-left) — lets the rider minimise the active-trip view and go back to
+             the tabs WITHOUT stopping tracking. Only shown during plain tracking, never during an alarm
+             stage, so it can't be used to escape the wake-up lockout (that needs Slide to Stop). -->
+        <Border HorizontalOptions="Start"
+                VerticalOptions="Start"
+                Margin="16,48,0,0"
+                BackgroundColor="#992D1B4E"
+                StrokeShape="Ellipse"
+                Stroke="Transparent"
+                WidthRequest="44"
+                HeightRequest="44"
+                IsVisible="{Binding IsNotAlarmActive}"
+                SemanticProperties.Description="Back"
+                SemanticProperties.Hint="Double tap to return to the previous screen while keeping the trip tracking in the background">
+            <Label Text="&#8249;"
+                   FontSize="28"
+                   TextColor="White"
+                   HorizontalOptions="Center"
+                   VerticalOptions="Center" />
+            <Border.GestureRecognizers>
+                <TapGestureRecognizer Tapped="OnBackArrowTapped" />
+            </Border.GestureRecognizers>
+        </Border>
+
         <!-- Stage 3 WAKE UP red tint — hidden during overshoot dialogs (Figma 17 has clear map) -->
         <BoxView BackgroundColor="#881A0000"
                  IsVisible="{Binding IsStage3Wake}"

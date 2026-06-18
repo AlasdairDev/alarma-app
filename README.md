@@ -311,34 +311,4 @@ A standalone xUnit suite (`AlarmaApp.Tests`, targeting plain `net9.0` with no An
 dotnet test AlarmaApp.Tests/AlarmaApp.Tests.csproj
 ```
 
----
-
-## Latest Release Notes
-
-Changelog for the most recent development sprint. Grouped as **Added**, **Changed**, and **Fixed**.
-
-### Added
-
-- **Adaptive 3-Stage Progressive Escalation.** Gentle Stage 1 at the trigger radius → louder Stage 2 at ~50% of the radius → full-screen Emergency lockout at the drop-off, with continuous maximum-intensity vibration and volume that only the *Slide to Stop* gesture can clear. All escalation runs on a background `Task.Run` thread.
-- **Overshoot Detection with Google Maps Intent hand-off.** Detection from consecutive increasing-distance fixes after the stop, with a pure local `google.navigation:q={lat},{lon}` Android Intent hand-off (zero network).
-- **Overshoot Recovery UI flow.** Confirmed full-screen alert (destination name + exact distance overshot) → offline *Area Safety Alert* overlay → in-app rerouting screen with a mini-map and offline step-by-step return guidance.
-- **Live-preview custom alarm sounds.** Tappable sound chips in Settings play an instant preview on tap and stop on reselect or when leaving the page; the selection persists to Preferences and drives the 3-stage alarm.
-- **Pill-shaped Trip History filter UI.** A rounded lavender search pill plus tappable filter chips (*All*, *Recent*, *By Route*) with an active-state highlight.
-- **Trip History deletion & purge.** Swipe-to-delete and a per-row trash icon, plus a *Clear All* action.
-- **Smooth live map pin.** GPS updates are interpolated frame-by-frame so the commuter dot glides between fixes instead of snapping.
-
-### Changed
-
-- **Replaced the standard native search bar** with a rounded, seamless pill (native underline/background stripped) and unified the search affordances to one light-lavender style.
-- **Removed the "Notification" alarm-sound option** (and the duplicate-sounding "Ringtone") for clarity and safety; the remaining *Default / Alarm / Chime* options now map to distinctly different, loud system sounds so the live preview is clearly differentiated.
-- **Full-screen lockout reserved for the Emergency stage only** — Stage 1 and Stage 2 alert via sound, vibration, and a local notification without taking over the screen.
-- **Filter-aware history clearing** — *Clear All* deletes only the trips currently shown when a search or chip filter is active.
-
-### Fixed
-
-- **SOS multi-contact dispatch loop.** Each emergency contact is now messaged inside its own try/catch, so one failed number can no longer abort delivery to the rest.
-- **SOS mandatory location check.** SOS now verifies the device's GPS/location hardware is enabled before dispatch and halts with an alert to turn it on if not.
-- **SOS single-fire bug.** The dispatch is wrapped in try/catch/**finally** with the busy flag always reset, so the button works on every press, not just the first.
-- **Slide-to-Stop gesture completion.** The dismiss now fires the moment the thumb crosses the threshold mid-drag, fixing Android pan gestures that never raised a completion event; in-progress vibration is also cancelled on stop.
-- **Alarm audio no longer blocks the UI thread.** Ringer/volume/vibration/ringtone work was moved off the main thread, which also resolved the laggy, unresponsive slider.
-- **GPS coordinate accuracy & interpolation.** Requests now use highest-accuracy precise location and more frequent fixes; the map pin is smoothly interpolated rather than teleported.
+> Release notes live in [CHANGELOG.md](CHANGELOG.md).

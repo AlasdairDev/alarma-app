@@ -42,6 +42,16 @@ public partial class SettingsView : ContentPage
         _controller.PreviewSelectedSound();
     }
 
+    // Strip the native Android underline/background off the Picker so our rounded pill wrapper is the
+    // only thing the user sees. No-op on other platforms.
+    private void OnPickerHandlerChanged(object? sender, EventArgs e)
+    {
+#if ANDROID
+        if (sender is Picker picker && picker.Handler?.PlatformView is Android.Widget.EditText editText)
+            editText.Background = null;
+#endif
+    }
+
     private async void OnUpdateContactsClicked(object? sender, EventArgs e)
     {
         await Shell.Current.GoToAsync("//emergency");
