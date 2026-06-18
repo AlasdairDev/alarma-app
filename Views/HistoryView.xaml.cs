@@ -44,18 +44,9 @@ public partial class HistoryView : ContentPage
     // Per-trip swipe/trash deletes are low-stakes and skip this prompt.
     private async void OnClearAllClicked(object? sender, EventArgs e)
     {
-        var isFiltered = !string.IsNullOrWhiteSpace(_controller.HistorySearchQuery)
-            || !string.Equals(_controller.HistoryFilterCategory, "All", StringComparison.OrdinalIgnoreCase);
-        var shownCount = _controller.TripHistoryEntries.Count;
-
-        var title = isFiltered ? "Delete Filtered Trips" : "Clear Trip History";
-        var message = isFiltered
-            ? $"This deletes the {shownCount} trip(s) currently shown by your search. Other trips stay. This can't be undone."
-            : "This permanently deletes every recorded trip. This can't be undone.";
-        var accept = isFiltered ? "Delete Shown" : "Clear All";
-
-        var confirm = await DisplayAlert(title, message, accept, "Cancel");
-        if (confirm)
-            _controller.ClearTripHistoryCommand.Execute(null);
+        // Strict confirmation: await the boolean and abort the purge entirely if the user taps "Cancel".
+        var confirm = await DisplayAlert("Confirm", "Are you sure you want to delete this?", "Yes", "Cancel");
+        if (!confirm) return;
+        _controller.ClearTripHistoryCommand.Execute(null);
     }
 }

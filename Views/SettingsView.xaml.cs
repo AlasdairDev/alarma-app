@@ -52,19 +52,37 @@ public partial class SettingsView : ContentPage
 #endif
     }
 
-    // Run the export, then confirm the outcome in a modal so the user gets explicit feedback rather than
-    // only the small status line. BackupStatusText holds the success path or the failure reason.
+    // Run the export, then surface the result in the transient grey pill (not a blocking modal).
     private async void OnExportBackupTapped(object? sender, TappedEventArgs e)
     {
         await _controller.ExportBackupAsync();
-        await DisplayAlert("Export Backup", _controller.BackupStatusText, "OK");
+        await ShowToastAsync(_controller.BackupStatusText);
     }
 
-    // Same explicit modal feedback for restore (import).
+    // Same transient grey-pill feedback for restore (import).
     private async void OnRestoreBackupTapped(object? sender, TappedEventArgs e)
     {
         await _controller.RestoreBackupAsync();
-        await DisplayAlert("Restore Backup", _controller.BackupStatusText, "OK");
+        await ShowToastAsync(_controller.BackupStatusText);
+    }
+
+    // Pops the grey pill up with a message, holds it for exactly 3 seconds, then fades it away. The
+    // sequence guard means a second tap mid-display simply restarts the timer instead of the first
+    // toast's delay hiding the newer message early.
+    private int _toastSeq;
+    private async Task ShowToastAsync(string message)
+    {
+        var seq = ++_toastSeq;
+        ToastLabel.Text = message;
+        ToastPill.Opacity = 1;
+        ToastPill.IsVisible = true;
+
+        await Task.Delay(3000);
+        if (seq != _toastSeq) return; // a newer toast took over — let it own the lifecycle
+
+        await ToastPill.FadeTo(0, 250, Easing.CubicIn);
+        if (seq != _toastSeq) return;
+        ToastPill.IsVisible = false;
     }
 
     private async void OnTermsClicked(object? sender, EventArgs e)

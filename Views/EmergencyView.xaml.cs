@@ -77,13 +77,10 @@ public partial class EmergencyView : ContentPage
     {
         if (e.Parameter is not EmergencyContact contact) return;
 
-        var confirm = await DisplayAlert(
-            "Remove Contact",
-            $"Remove {contact.Name} from your emergency contacts? They will no longer receive your SOS alerts.",
-            "Remove",
-            "Cancel");
-        if (confirm)
-            _controller.RemoveEmergencyContactCommand.Execute(contact);
+        // Strict confirmation: we await the boolean and only delete on "Yes". "Cancel" aborts entirely.
+        var confirm = await DisplayAlert("Confirm", "Are you sure you want to delete this?", "Yes", "Cancel");
+        if (!confirm) return;
+        _controller.RemoveEmergencyContactCommand.Execute(contact);
     }
 
     private void OnSosPressed(object? sender, EventArgs e)

@@ -15,6 +15,9 @@
   <uses-permission android:name="android.permission.ACCESS_NOTIFICATION_POLICY" />
   <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
   <uses-permission android:name="android.permission.WAKE_LOCK" />
+  <!-- Legacy normal permission (auto-granted, no runtime prompt) so the app can read the Bluetooth
+       adapter state and receive ACTION_STATE_CHANGED on pre-Android-12 devices. -->
+  <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
 
   <uses-feature android:name="android.hardware.location.gps" android:required="false" />
   <uses-feature android:name="android.hardware.telephony" android:required="false" />
