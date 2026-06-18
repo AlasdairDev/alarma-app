@@ -42,6 +42,9 @@ public class HomeController : INotifyPropertyChanged
     private const int MaxEmergencyContacts = 3;
     // Floor for the Stage-1 lead distance — the alarm never arms closer than this regardless of speed.
     private const double MinAlarmDistanceMeters = 300;
+    // Ceiling for the lead distance — even a (possibly GPS-spiked) high speed can't arm the alarm more
+    // than this far out, so the alarm can't "fire at incorrect times" kilometres from the stop.
+    private const double MaxAlarmDistanceMeters = 5000;
     // Per-fix movement below this (or below the fix's own accuracy) is treated as GPS jitter and
     // excluded from the accumulated trip distance.
     private const double MinSegmentMeters = 8;
@@ -245,14 +248,16 @@ public class HomeController : INotifyPropertyChanged
     private string _currentLocationText = "Fetching location...";
     private readonly SemaphoreSlim _initializeSemaphore = new(1, 1);
     private readonly SemaphoreSlim _databaseInitSemaphore = new(1, 1);
-    // Three clearly-distinct alarm voices. "Notification" (and the duplicate-sounding "Ringtone") were
-    // removed — each remaining option maps to a different, loud system sound in the audio service so the
-    // live preview in Settings sounds obviously different between them.
+    // Exactly five clearly-distinct alarm voices. The audio service maps each name to a different, loud
+    // system sound URI (enumerated from the device's ringtone catalogue) so the live preview in Settings
+    // sounds obviously different between every option.
     private readonly ObservableCollection<string> _alarmSoundOptions = new()
     {
         "Default",
         "Alarm",
-        "Chime"
+        "Chime",
+        "Bell",
+        "Siren"
     };
     private bool _wasOnline;
     private bool _availabilityChecked;
@@ -288,6 +293,9 @@ public class HomeController : INotifyPropertyChanged
     public event EventHandler? FavoriteSaved;
     public event EventHandler? SosDispatched;
     public event EventHandler? SmsDenied;
+    // Raised when adding an emergency contact fails validation, so the view can show a styled
+    // DisplayAlert modal instead of a quiet inline line of text.
+    public event EventHandler<string>? EmergencyContactValidationFailed;
     // Raised when a trip start is blocked because the device's master location switch is off.
     // The view turns this into a "go to Settings" prompt (the controller has no Page of its own).
     public event EventHandler? LocationServicesDisabled;
@@ -1490,38 +1498,61 @@ public class HomeController : INotifyPropertyChanged
         }
     }
 
+    // Re-inserts a favourite that was just deleted (the "Undo" on the favorites snackbar). The row is
+    // gone from the db, so we force a fresh insert by zeroing the primary key before saving.
+    public async Task RestoreFavoriteAsync(SavedRoute route)
+    {
+        if (route is null)
+        {
+            return;
+        }
+
+        try
+        {
+            route.Id = 0;
+            await _databaseService.SaveRouteAsync(route);
+            await LoadSavedRoutesAsync();
+            LastActionText = $"Restored saved route: {route.DisplayName}.";
+        }
+        catch (Exception ex)
+        {
+            BlackBoxLogger.RecordHandledException(ex, "[HomeController.RestoreFavoriteAsync]");
+            LastActionText = "Failed to restore route. Please try again.";
+        }
+    }
+
     private async Task AddEmergencyContactAsync()
     {
         var name = NewContactName?.Trim() ?? string.Empty;
         var number = NewContactNumber?.Trim() ?? string.Empty;
         if (string.IsNullOrWhiteSpace(name) || string.IsNullOrWhiteSpace(number))
         {
-            LastActionText = "Enter a contact name and phone number.";
+            EmergencyContactValidationFailed?.Invoke(this, "Enter both a contact name and a phone number.");
             return;
         }
 
         if (name.Length > MaxContactNameLength)
         {
-            LastActionText = $"Contact name must be {MaxContactNameLength} characters or fewer.";
+            EmergencyContactValidationFailed?.Invoke(this, $"Contact name must be {MaxContactNameLength} characters or fewer.");
             return;
         }
 
         if (_emergencyContacts.Count >= MaxEmergencyContacts)
         {
-            LastActionText = $"Maximum {MaxEmergencyContacts} emergency contacts allowed. Remove one to add another.";
+            EmergencyContactValidationFailed?.Invoke(this, $"Maximum {MaxEmergencyContacts} emergency contacts allowed. Remove one to add another.");
             return;
         }
 
         if (!IsValidPhilippineNumber(number))
         {
-            LastActionText = "Phone number must be in format 09XXXXXXXXX or +639XXXXXXXXX.";
+            EmergencyContactValidationFailed?.Invoke(this, "Phone number must be in the format 09XXXXXXXXX or +639XXXXXXXXX.");
             return;
         }
 
         if (_emergencyContacts.Any(contact =>
                 string.Equals(contact.PhoneNumber?.Trim(), number, StringComparison.OrdinalIgnoreCase)))
         {
-            LastActionText = "A contact with this phone number already exists.";
+            EmergencyContactValidationFailed?.Invoke(this, "A contact with this phone number already exists.");
             return;
         }
 
@@ -1668,7 +1699,7 @@ public class HomeController : INotifyPropertyChanged
             // start of a trip) we fall back to the platform's last-known/fresh location. Both are passive
             // reads: nothing here writes back into or disturbs the Haversine tracking loop.
             var location = (IsTracking ? _lastTrackedLocation : null)
-                           ?? await _locationService.GetLastKnownLocationAsync();
+                           ?? await _locationService.GetBestLocationAsync(TimeSpan.FromSeconds(5));
             string message;
             if (location is null)
             {
@@ -1890,6 +1921,12 @@ public class HomeController : INotifyPropertyChanged
         var distanceKm = _totalDistanceMeters / MetersPerKilometer;
         TrackingStatusText = $"Tracking active: {distanceKm:F2} km traveled.";
 
+        // Keep the live "Current Location" readout (shown on the Trip Progress sheet) ticking with each
+        // accepted fix so the rider can see their position updating in real time.
+        var curLat = snapshot.Latitude.ToString("F5", System.Globalization.CultureInfo.InvariantCulture);
+        var curLon = snapshot.Longitude.ToString("F5", System.Globalization.CultureInfo.InvariantCulture);
+        CurrentLocationText = $"{curLat}, {curLon}";
+
         if (DateTime.UtcNow - _lastMapLocationUpdate >= MapLocationUpdateInterval)
         {
             _lastMapLocationUpdate = DateTime.UtcNow;
@@ -1916,15 +1953,16 @@ public class HomeController : INotifyPropertyChanged
         var distanceToDestination = CalculateDistanceMeters(snapshot, destinationSnapshot);
         var accuracyBuffer = Math.Max(snapshot.AccuracyMeters, 0);
         var overshootThreshold = OvershootThresholdMeters + accuracyBuffer;
-        var adaptiveLeadDistance = Math.Max(
+        var adaptiveLeadDistance = Math.Clamp(
+            _lastSpeedMetersPerSecond * AlarmLeadMinutes * 60,
             MinAlarmDistanceMeters,
-            _lastSpeedMetersPerSecond * AlarmLeadMinutes * 60);
+            MaxAlarmDistanceMeters);
         var adaptiveLeadThreshold = adaptiveLeadDistance + accuracyBuffer;
         _minDistanceToDestination = Math.Min(_minDistanceToDestination, distanceToDestination);
-        DistanceToDestinationText = $"Destination is {distanceToDestination / MetersPerKilometer:F2} km away.";
-        var distanceLabel = distanceToDestination >= 1000
-            ? $"{distanceToDestination / MetersPerKilometer:F0} km"
-            : $"{(int)distanceToDestination} m";
+        // Every distance readout on the Trip Progress page is shown in kilometres with the explicit unit
+        // (e.g. "0.34 km away", "12 km away") — never a bare number.
+        var distanceLabel = FormatKilometres(distanceToDestination);
+        DistanceToDestinationText = $"Destination is {distanceLabel} away.";
         ChipDistanceText = $"{distanceLabel} away";
 
         // Mirror the live distance-to-destination into the ongoing tracking notification so the
@@ -1956,7 +1994,8 @@ public class HomeController : INotifyPropertyChanged
         }
 
         // Stage 2 — louder alert once we cross ~50% of the trigger radius and aren't yet at the stop.
-        if (_currentAlarmStage < AlarmStage.Stage2
+        // Strictly sequential: it can only fire AFTER Stage 1 has fired (never skip straight to Stage 2).
+        if (_currentAlarmStage == AlarmStage.Stage1
             && !_hasArrivedAtDestination
             && distanceToDestination <= stage2Threshold)
         {
@@ -2452,6 +2491,14 @@ public class HomeController : INotifyPropertyChanged
     }
 
     private static double DegreesToRadians(double degrees) => degrees * Math.PI / 180.0;
+
+    // Always render a distance in kilometres with the unit attached. Under 10 km keeps one decimal so
+    // short distances stay meaningful ("0.3 km"); 10 km and up drops to a whole number ("12 km").
+    private static string FormatKilometres(double meters)
+    {
+        var km = meters / MetersPerKilometer;
+        return km >= 10 ? $"{km:F0} km" : $"{km:F1} km";
+    }
 
     private void ClearMapTile()
     {

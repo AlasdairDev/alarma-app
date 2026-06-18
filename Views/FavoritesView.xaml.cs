@@ -13,6 +13,8 @@ namespace AlarmaApp.Views;
 public partial class FavoritesView : ContentPage
 {
     private readonly HomeController _controller;
+    private SavedRoute? _lastRemoved;
+    private IDispatcherTimer? _snackbarTimer;
 
     public FavoritesView(HomeController controller)
     {
@@ -28,6 +30,67 @@ public partial class FavoritesView : ContentPage
         base.OnAppearing();
         Content.FadeTo(1, 220, Easing.CubicOut);
         _ = _controller.RefreshFavoritesAsync();
+    }
+
+    protected override void OnDisappearing()
+    {
+        base.OnDisappearing();
+        // Don't leave a snackbar timer ticking after the page is gone.
+        _snackbarTimer?.Stop();
+        _snackbarTimer = null;
+        UndoSnackbar.IsVisible = false;
+    }
+
+    // Removing a favorite is destructive, so confirm first; on confirm we delete and offer a brief
+    // "Undo" snackbar so an accidental removal can be restored with one tap.
+    private async void OnRemoveFavoriteTapped(object? sender, TappedEventArgs e)
+    {
+        if (sender is not View view || view.BindingContext is not SavedRoute route)
+            return;
+
+        var confirm = await DisplayAlert(
+            "Remove Favorite",
+            $"Remove “{route.DisplayName}” from your favorites?",
+            "Remove",
+            "Cancel");
+        if (!confirm)
+            return;
+
+        _lastRemoved = route;
+        _controller.RemoveSavedRouteCommand.Execute(route);
+        ShowUndoSnackbar(route.DisplayName);
+    }
+
+    private void ShowUndoSnackbar(string name)
+    {
+        SnackbarLabel.Text = $"Removed “{name}”";
+        UndoSnackbar.IsVisible = true;
+
+        _snackbarTimer?.Stop();
+        _snackbarTimer = Dispatcher.CreateTimer();
+        _snackbarTimer.Interval = TimeSpan.FromSeconds(4);
+        _snackbarTimer.IsRepeating = false;
+        _snackbarTimer.Tick += (_, _) =>
+        {
+            UndoSnackbar.IsVisible = false;
+            _lastRemoved = null;
+            _snackbarTimer?.Stop();
+            _snackbarTimer = null;
+        };
+        _snackbarTimer.Start();
+    }
+
+    private async void OnUndoRemoveClicked(object? sender, EventArgs e)
+    {
+        _snackbarTimer?.Stop();
+        _snackbarTimer = null;
+        UndoSnackbar.IsVisible = false;
+
+        if (_lastRemoved is not null)
+        {
+            await _controller.RestoreFavoriteAsync(_lastRemoved);
+            _lastRemoved = null;
+        }
     }
 
     private async void OnNavigateToAddFavoriteRequested(object? sender, EventArgs e)

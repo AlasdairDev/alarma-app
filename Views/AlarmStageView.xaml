@@ -436,7 +436,7 @@
         <!-- ── No alarm active — tracking only ──────────────────────────── -->
         <VerticalStackLayout VerticalOptions="End"
                              HorizontalOptions="Fill"
-                             Padding="28,0,28,48"
+                             Padding="28,0,28,40"
                              Spacing="10"
                              IsVisible="{Binding IsNotAlarmActive}">
 
@@ -445,17 +445,48 @@
                    FontAttributes="Bold"
                    TextColor="White"
                    HorizontalOptions="Center" />
-            <Label Text="{Binding DestinationSummaryText}"
-                   FontSize="14"
-                   TextColor="#C8B8E8"
-                   HorizontalOptions="Center"
-                   LineBreakMode="TailTruncation" />
+
+            <!-- Current location + destination, filling the previously-empty sheet space. The current
+                 location updates live with every accepted GPS fix. -->
+            <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto"
+                  ColumnSpacing="10" RowSpacing="8"
+                  Margin="4,4,4,0">
+                <Border Grid.Row="0" Grid.Column="0"
+                        BackgroundColor="#3D2B5E" StrokeShape="Ellipse" Stroke="Transparent"
+                        WidthRequest="36" HeightRequest="36" VerticalOptions="Center">
+                    <Label Text="my_location" FontFamily="MaterialSymbols"
+                           FontSize="16" TextColor="#4A90D9"
+                           HorizontalOptions="Center" VerticalOptions="Center" />
+                </Border>
+                <VerticalStackLayout Grid.Row="0" Grid.Column="1" Spacing="1" VerticalOptions="Center">
+                    <Label Text="Current Location" FontSize="11" TextColor="#8A7AAE" />
+                    <Label Text="{Binding CurrentLocationText}"
+                           FontSize="14" FontAttributes="Bold" TextColor="White"
+                           LineBreakMode="TailTruncation" />
+                </VerticalStackLayout>
+
+                <Border Grid.Row="1" Grid.Column="0"
+                        BackgroundColor="#3D2B5E" StrokeShape="Ellipse" Stroke="Transparent"
+                        WidthRequest="36" HeightRequest="36" VerticalOptions="Center">
+                    <Label Text="location_on" FontFamily="MaterialSymbols"
+                           FontSize="16" TextColor="#9B6FBF"
+                           HorizontalOptions="Center" VerticalOptions="Center" />
+                </Border>
+                <VerticalStackLayout Grid.Row="1" Grid.Column="1" Spacing="1" VerticalOptions="Center">
+                    <Label Text="Destination" FontSize="11" TextColor="#8A7AAE" />
+                    <Label Text="{Binding DestinationShortNameText}"
+                           FontSize="14" FontAttributes="Bold" TextColor="White"
+                           LineBreakMode="TailTruncation" />
+                </VerticalStackLayout>
+            </Grid>
+
             <Button Text="Stop Trip"
                     BackgroundColor="#4A3570"
                     TextColor="White"
                     CornerRadius="24"
                     FontSize="16"
                     Padding="0,14"
+                    Margin="0,6,0,0"
                     SemanticProperties.Description="Stop current trip"
                     SemanticProperties.Hint="Double tap to stop tracking and return to the home screen"
                     Clicked="OnStopTripClicked" />

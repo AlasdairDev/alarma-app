@@ -13,6 +13,12 @@ public interface ILocationService
     bool IsLocationServiceEnabled();
 
     Task<LocationSnapshot?> GetLastKnownLocationAsync();
+
+    // Demands a fresh, highest-accuracy fix within the given timeout (used by SOS). If the precise fetch
+    // hangs, times out, or fails, it falls back immediately to the last-known location so a dispatch is
+    // never left without coordinates.
+    Task<LocationSnapshot?> GetBestLocationAsync(TimeSpan timeout);
+
     Task StartTrackingAsync(CancellationToken cancellationToken);
     Task StopTrackingAsync();
 }

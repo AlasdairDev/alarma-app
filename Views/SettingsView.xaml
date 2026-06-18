@@ -183,6 +183,30 @@
                                         </DataTrigger>
                                     </Button.Triggers>
                                 </Button>
+                                <Button Text="Bell"
+                                        Command="{Binding SelectAndPreviewSoundCommand}"
+                                        CommandParameter="Bell"
+                                        BackgroundColor="#2D1B4E" TextColor="#C8B8E8"
+                                        FontSize="13" CornerRadius="20" Padding="16,8">
+                                    <Button.Triggers>
+                                        <DataTrigger TargetType="Button" Binding="{Binding AlarmSound}" Value="Bell">
+                                            <Setter Property="BackgroundColor" Value="#7B3FA0" />
+                                            <Setter Property="TextColor" Value="White" />
+                                        </DataTrigger>
+                                    </Button.Triggers>
+                                </Button>
+                                <Button Text="Siren"
+                                        Command="{Binding SelectAndPreviewSoundCommand}"
+                                        CommandParameter="Siren"
+                                        BackgroundColor="#2D1B4E" TextColor="#C8B8E8"
+                                        FontSize="13" CornerRadius="20" Padding="16,8">
+                                    <Button.Triggers>
+                                        <DataTrigger TargetType="Button" Binding="{Binding AlarmSound}" Value="Siren">
+                                            <Setter Property="BackgroundColor" Value="#7B3FA0" />
+                                            <Setter Property="TextColor" Value="White" />
+                                        </DataTrigger>
+                                    </Button.Triggers>
+                                </Button>
                             </HorizontalStackLayout>
                         </ScrollView>
                     </VerticalStackLayout>

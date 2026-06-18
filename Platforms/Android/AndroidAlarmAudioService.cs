@@ -322,19 +322,65 @@ public class AndroidAlarmAudioService : IAlarmAudioService
         await DisableCriticalAudioAsync();
     }
 
-    // Map each option to a DISTINCT, loud system sound so the rider hears a clear difference in the
-    // Settings preview (the old map pointed "Default" and "Alarm" at the same alarm tone, so they were
-    // indistinguishable). "Default" = the device alarm tone, "Alarm" = the phone's ringtone (a longer,
-    // melodic, attention-grabbing sound), "Chime" = the notification tone (a short, bright chime).
+    // The five Settings options, in display order. Each maps by index to a distinct entry in the
+    // device's sound catalogue (see GetDistinctSoundUris) so all five are audibly different and loud.
+    private static readonly string[] SoundOrder = { "Default", "Alarm", "Chime", "Bell", "Siren" };
+    private static IReadOnlyList<global::Android.Net.Uri>? _distinctSoundUris;
+    private static readonly object _soundUriLock = new();
+
+    // Build (once) a list of distinct, loud sound URIs from the device's own ringtone catalogue. We seed
+    // with the three system defaults (alarm / ringtone / notification) and then top up from the ringtone
+    // lists until we have five different sounds, so every Settings option is clearly distinguishable on
+    // whatever device or emulator this runs on (the old map reused the same tone for several options).
+    private static IReadOnlyList<global::Android.Net.Uri> GetDistinctSoundUris()
+    {
+        if (_distinctSoundUris is not null) return _distinctSoundUris;
+        lock (_soundUriLock)
+        {
+            if (_distinctSoundUris is not null) return _distinctSoundUris;
+
+            var list = new List<global::Android.Net.Uri>();
+            void AddIfNew(global::Android.Net.Uri? u)
+            {
+                if (u is null) return;
+                var s = u.ToString();
+                if (!list.Any(x => x.ToString() == s)) list.Add(u);
+            }
+
+            AddIfNew(RingtoneManager.GetDefaultUri(RingtoneType.Alarm));
+            AddIfNew(RingtoneManager.GetDefaultUri(RingtoneType.Ringtone));
+            AddIfNew(RingtoneManager.GetDefaultUri(RingtoneType.Notification));
+
+            foreach (var type in new[] { RingtoneType.Alarm, RingtoneType.Ringtone, RingtoneType.Notification })
+            {
+                if (list.Count >= 5) break;
+                try
+                {
+                    var mgr = new RingtoneManager(AndroidApplication.Context);
+                    mgr.SetType(type);
+                    var cursor = mgr.Cursor;
+                    if (cursor is not null)
+                    {
+                        while (list.Count < 5 && cursor.MoveToNext())
+                            AddIfNew(mgr.GetRingtoneUri(cursor.Position));
+                    }
+                }
+                catch { /* enumeration unsupported on this device — defaults above still stand */ }
+            }
+
+            _distinctSoundUris = list;
+            return _distinctSoundUris;
+        }
+    }
+
     private static global::Android.Net.Uri? GetRingtoneUri(string soundKey)
     {
-        return soundKey switch
-        {
-            "Alarm" => RingtoneManager.GetDefaultUri(RingtoneType.Ringtone)
-                       ?? RingtoneManager.GetDefaultUri(RingtoneType.Alarm),
-            "Chime" => RingtoneManager.GetDefaultUri(RingtoneType.Notification)
-                       ?? RingtoneManager.GetDefaultUri(RingtoneType.Alarm),
-            _ => RingtoneManager.GetDefaultUri(RingtoneType.Alarm),  // "Default"
-        };
+        var uris = GetDistinctSoundUris();
+        if (uris.Count == 0)
+            return RingtoneManager.GetDefaultUri(RingtoneType.Alarm);
+
+        var idx = Array.IndexOf(SoundOrder, soundKey);
+        if (idx < 0) idx = 0;
+        return uris[Math.Min(idx, uris.Count - 1)];
     }
 }
