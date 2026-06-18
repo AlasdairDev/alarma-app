@@ -68,6 +68,11 @@ public class AndroidAlarmAudioService : IAlarmAudioService
                 _savedRingerMode = null;
             }
 
+            // Kill any vibration still mid-pattern too — when the rider slides to stop we want the
+            // phone to go quiet AND still, not keep buzzing out the tail of the last waveform.
+            var vibrator = AndroidApplication.Context.GetSystemService(Context.VibratorService) as Vibrator;
+            try { vibrator?.Cancel(); } catch { }
+
             if (saved.HasValue)
             {
                 var audioManager = AndroidApplication.Context.GetSystemService(Context.AudioService) as AudioManager;

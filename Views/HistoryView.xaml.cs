@@ -25,15 +25,21 @@ public partial class HistoryView : ContentPage
         Content.FadeTo(1, 220, Easing.CubicOut);
     }
 
-    // Wiping the whole history has no undo, so make the rider confirm before we hand off to the
-    // controller's purge command. Per-trip deletes are low-stakes and skip this prompt.
+    // Wiping history has no undo, so make the rider confirm first. The prompt spells out exactly what's
+    // about to go: with a search active we only delete the filtered trips on screen, otherwise everything.
+    // Per-trip swipe/trash deletes are low-stakes and skip this prompt.
     private async void OnClearAllClicked(object? sender, EventArgs e)
     {
-        var confirm = await DisplayAlert(
-            "Clear Trip History",
-            "This permanently deletes every recorded trip. This can't be undone.",
-            "Clear All",
-            "Cancel");
+        var isFiltered = !string.IsNullOrWhiteSpace(_controller.HistorySearchQuery);
+        var shownCount = _controller.TripHistoryEntries.Count;
+
+        var title = isFiltered ? "Delete Filtered Trips" : "Clear Trip History";
+        var message = isFiltered
+            ? $"This deletes the {shownCount} trip(s) currently shown by your search. Other trips stay. This can't be undone."
+            : "This permanently deletes every recorded trip. This can't be undone.";
+        var accept = isFiltered ? "Delete Shown" : "Clear All";
+
+        var confirm = await DisplayAlert(title, message, accept, "Cancel");
         if (confirm)
             _controller.ClearTripHistoryCommand.Execute(null);
     }
