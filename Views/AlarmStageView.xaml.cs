@@ -156,6 +156,14 @@ public partial class AlarmStageView : ContentPage
         }
     }
 
+    // Floating Back arrow — just leave the page. We deliberately do NOT stop tracking or dismiss any
+    // alarm here; the foreground location service keeps running and the rider can reopen the trip from
+    // the "View Active Trip" pill on Home.
+    private async void OnBackArrowTapped(object? sender, TappedEventArgs e)
+    {
+        await Shell.Current.GoToAsync("..", animate: false);
+    }
+
     // "Stop Trip" button — shown when tracking is active but no alarm stage is firing.
     // Stops the trip then exits so the user is not stranded on this view.
     private async void OnStopTripClicked(object? sender, EventArgs e)

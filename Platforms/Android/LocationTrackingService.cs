@@ -81,8 +81,8 @@ public class LocationTrackingService : Service, ILocationListener
         var timestamp = DateTimeOffset.FromUnixTimeMilliseconds(location.Time);
         var accuracy = location.HasAccuracy ? location.Accuracy : 0f;
 
-        // Gate out low-confidence fixes so cell-tower bounce can't move the live position or the
-        // distance. accuracy == 0 means the provider reported none → accept.
+        // Skip shaky fixes so a bad cell-tower reading can't make the position or distance jump around.
+        // accuracy == 0 means the provider didn't report one, so we let those through.
         if (accuracy > MaxAcceptableAccuracyMeters)
         {
             return;

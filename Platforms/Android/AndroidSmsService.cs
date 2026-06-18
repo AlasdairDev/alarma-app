@@ -28,7 +28,8 @@ public class AndroidSmsService : ISmsService
             .Where(IsValidRecipient)
             .ToList();
 
-        // Defense-in-depth: check and request SEND_SMS at transport layer.
+        // Check (and ask for) SMS permission again right before sending. The controller already does
+        // this, but we don't want to assume it's still granted by the time we actually hit send.
         var smsStatus = await Permissions.CheckStatusAsync<SmsPermission>();
         if (smsStatus != PermissionStatus.Granted)
             smsStatus = await Permissions.RequestAsync<SmsPermission>();
@@ -89,6 +90,7 @@ public class AndroidSmsService : ISmsService
         new(@"^(09\d{9}|\+639\d{9})$",
             System.Text.RegularExpressions.RegexOptions.Compiled);
 
-    // Defense-in-depth: re-validate format at the transport layer before handing off to Android.
+    // Make sure the number still looks like a real PH mobile number before we hand it to Android.
+    // The controller checked already, but a malformed number must never reach SmsManager.
     private static bool IsValidRecipient(string number) => RecipientRegex.IsMatch(number);
 }

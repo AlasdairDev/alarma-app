@@ -149,15 +149,36 @@
                                FontSize="15"
                                TextColor="White"
                                VerticalOptions="Center" />
-                        <Picker Grid.Column="1"
-                                x:Name="AlarmSoundPicker"
-                                ItemsSource="{Binding AlarmSoundOptions}"
-                                SelectedItem="{Binding AlarmSound, Mode=TwoWay}"
-                                SelectedIndexChanged="OnAlarmSoundChanged"
-                                TextColor="#9B6FBF"
-                                FontSize="14"
-                                BackgroundColor="Transparent"
-                                MinimumWidthRequest="110" />
+                        <!-- Button-like wrapper: rounded background + a chevron on the right so it reads
+                             as a tappable dropdown. The Picker itself is transparent with its native
+                             underline stripped (OnPickerHandlerChanged), and the chevron is input-
+                             transparent so a tap anywhere in the pill still opens the dropdown. -->
+                        <Border Grid.Column="1"
+                                BackgroundColor="#2D1B4E"
+                                StrokeShape="RoundRectangle 10"
+                                Stroke="Transparent"
+                                Padding="12,4"
+                                MinimumWidthRequest="140"
+                                VerticalOptions="Center">
+                            <Grid>
+                                <Picker x:Name="AlarmSoundPicker"
+                                        HandlerChanged="OnPickerHandlerChanged"
+                                        ItemsSource="{Binding AlarmSoundOptions}"
+                                        SelectedItem="{Binding AlarmSound, Mode=TwoWay}"
+                                        SelectedIndexChanged="OnAlarmSoundChanged"
+                                        TextColor="#C8B8E8"
+                                        FontSize="14"
+                                        BackgroundColor="Transparent"
+                                        HorizontalOptions="Fill" />
+                                <Label Text="&#x25BC;"
+                                       FontSize="10"
+                                       TextColor="#9B6FBF"
+                                       HorizontalOptions="End"
+                                       VerticalOptions="Center"
+                                       Margin="0,0,2,0"
+                                       InputTransparent="True" />
+                            </Grid>
+                        </Border>
                     </Grid>
                     <BoxView HeightRequest="1" Color="#4A3570" Margin="18,0" />
                     <Grid ColumnDefinitions="*,Auto"
@@ -167,13 +188,31 @@
                                FontSize="15"
                                TextColor="White"
                                VerticalOptions="Center" />
-                        <Picker Grid.Column="1"
-                                ItemsSource="{Binding VibrationIntensityOptions}"
-                                SelectedItem="{Binding VibrationIntensity}"
-                                TextColor="#9B6FBF"
-                                FontSize="14"
-                                BackgroundColor="Transparent"
-                                MinimumWidthRequest="90" />
+                        <!-- Same button-like dropdown treatment as Alarm Sound above. -->
+                        <Border Grid.Column="1"
+                                BackgroundColor="#2D1B4E"
+                                StrokeShape="RoundRectangle 10"
+                                Stroke="Transparent"
+                                Padding="12,4"
+                                MinimumWidthRequest="120"
+                                VerticalOptions="Center">
+                            <Grid>
+                                <Picker HandlerChanged="OnPickerHandlerChanged"
+                                        ItemsSource="{Binding VibrationIntensityOptions}"
+                                        SelectedItem="{Binding VibrationIntensity}"
+                                        TextColor="#C8B8E8"
+                                        FontSize="14"
+                                        BackgroundColor="Transparent"
+                                        HorizontalOptions="Fill" />
+                                <Label Text="&#x25BC;"
+                                       FontSize="10"
+                                       TextColor="#9B6FBF"
+                                       HorizontalOptions="End"
+                                       VerticalOptions="Center"
+                                       Margin="0,0,2,0"
+                                       InputTransparent="True" />
+                            </Grid>
+                        </Border>
                     </Grid>
                     <BoxView HeightRequest="1" Color="#4A3570" Margin="18,0" />
                     <Grid ColumnDefinitions="*,Auto"

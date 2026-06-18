@@ -264,9 +264,8 @@ public class HomeController : INotifyPropertyChanged
     private string _primaryContactNumber = string.Empty;
 
     private DateTimeOffset? _lastSosSentAt;
-    // Re-entrancy latch for the SOS dispatch. It guards against a second press landing while an SMS send
-    // is still in flight; the finally block in SendSosAsync ALWAYS clears it, so the button can never get
-    // stuck "stuck on" after the first press (the single-fire bug).
+    // Stops a second SOS press from firing while the first one is still sending. The finally block in
+    // SendSosAsync always clears this, so the button can't get stuck after one press (the single-fire bug).
     private bool _isSendingSos;
     private static readonly TimeSpan SosCooldown = TimeSpan.FromSeconds(30);
     private const int MaxContactNameLength = 50;
@@ -702,7 +701,6 @@ public class HomeController : INotifyPropertyChanged
     public ICommand DeleteTripHistoryCommand { get; }
     public ICommand ClearTripHistoryCommand { get; }
     public ICommand SetHistoryFilterCommand { get; }
-    public ICommand SelectAndPreviewSoundCommand { get; }
 
     public HomeController(
         DatabaseService databaseService,
@@ -832,7 +830,6 @@ public class HomeController : INotifyPropertyChanged
         ClearTripHistoryCommand = new Command(async () => await ClearTripHistoryAsync());
         SetHistoryFilterCommand = new Command<string>(category => HistoryFilterCategory =
             string.IsNullOrWhiteSpace(category) ? "All" : category);
-        SelectAndPreviewSoundCommand = new Command<string>(async sound => await SelectAndPreviewSoundAsync(sound));
 
         _locationService.LocationUpdated += OnLocationUpdated;
         _emergencyContacts.CollectionChanged += (_, _) =>
@@ -2334,23 +2331,6 @@ public class HomeController : INotifyPropertyChanged
         foreach (var item in items)
         {
             collection.Add(item);
-        }
-    }
-
-    // Settings sound picker: pick the sound (which persists it via the AlarmSound setter so the 3-stage
-    // alarm uses it) and immediately play a short preview so the rider hears their choice. Tapping a
-    // different sound stops the previous preview and starts the new one — handled inside the audio service.
-    private async Task SelectAndPreviewSoundAsync(string? sound)
-    {
-        if (string.IsNullOrWhiteSpace(sound)) return;
-        AlarmSound = sound;                       // normalizes + saves to Preferences
-        try
-        {
-            await _alarmAudioService.PreviewSoundAsync(_alarmSound);
-        }
-        catch (Exception ex)
-        {
-            BlackBoxLogger.RecordHandledException(ex, "[HomeController.SelectAndPreviewSoundAsync]");
         }
     }
 
