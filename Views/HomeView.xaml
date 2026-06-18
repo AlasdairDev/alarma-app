@@ -239,8 +239,8 @@
                 </Border.GestureRecognizers>
             </Border>
 
-            <!-- Earphones connected banner -->
-            <Border IsVisible="{Binding IsEarphonesConnected}"
+            <!-- Earphones connected banner — auto-hides 3s after appearing (see HomeController). -->
+            <Border IsVisible="{Binding IsEarphonePillVisible}"
                     BackgroundColor="#5C4E75"
                     Stroke="Transparent"
                     StrokeShape="RoundRectangle 25"

@@ -71,6 +71,7 @@ public static class MauiProgram
         builder.Services.AddSingleton<IGoogleMapsLauncher, AndroidGoogleMapsLauncher>();
         builder.Services.AddSingleton<IBatteryOptimizationService, AndroidBatteryOptimizationService>();
         builder.Services.AddSingleton<IEarphoneService, AndroidEarphoneService>();
+        builder.Services.AddSingleton<IBluetoothMonitor, AndroidBluetoothMonitor>();
 #endif
 
 #if DEBUG

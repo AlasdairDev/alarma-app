@@ -5,6 +5,8 @@
              Shell.NavBarIsVisible="False"
              BackgroundColor="#2D1B4E">
 
+    <Grid HorizontalOptions="Fill" VerticalOptions="Fill">
+
     <ScrollView HorizontalOptions="Fill" VerticalOptions="Fill">
         <VerticalStackLayout Spacing="0">
 
@@ -112,19 +114,17 @@
                     Margin="16,0">
                 <Grid ColumnDefinitions="*,Auto"
                       Padding="18,16">
-                    <Grid.GestureRecognizers>
-                        <TapGestureRecognizer Command="{Binding RequestBluetoothPermissionCommand}" />
-                    </Grid.GestureRecognizers>
                     <Label Grid.Column="0"
                            Text="Enable bluetooth connection"
                            FontSize="15"
                            TextColor="White"
                            VerticalOptions="Center" />
-                    <Label Grid.Column="1"
-                           Text="{Binding BluetoothPermissionLabel}"
-                           FontSize="14"
-                           TextColor="#9B6FBF"
-                           VerticalOptions="Center" />
+                    <!-- Mirrors the live device Bluetooth state; IBluetoothMonitor keeps it in sync. -->
+                    <Switch Grid.Column="1"
+                            IsToggled="{Binding IsBluetoothOn}"
+                            ThumbColor="#9B6FBF"
+                            OnColor="#7B3FA0"
+                            VerticalOptions="Center" />
                 </Grid>
             </Border>
 
@@ -302,4 +302,27 @@
 
         </VerticalStackLayout>
     </ScrollView>
+
+        <!-- Transient "grey pill" toast — a rounded dark capsule near the bottom that pops up with the
+             Export/Import result and auto-dismisses after 3 seconds (see SettingsView.xaml.cs). It floats
+             over the scrolling content and ignores input so it can't block taps underneath. -->
+        <Border x:Name="ToastPill"
+                IsVisible="False"
+                InputTransparent="True"
+                BackgroundColor="#333333"
+                StrokeShape="RoundRectangle 25"
+                Stroke="Transparent"
+                Padding="22,12"
+                HorizontalOptions="Center"
+                VerticalOptions="End"
+                Margin="24,0,24,40">
+            <Label x:Name="ToastLabel"
+                   Text=""
+                   TextColor="White"
+                   FontSize="14"
+                   HorizontalTextAlignment="Center"
+                   LineBreakMode="WordWrap" />
+        </Border>
+
+    </Grid>
 </ContentPage>

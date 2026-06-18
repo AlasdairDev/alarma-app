@@ -70,6 +70,7 @@ public class HomeController : INotifyPropertyChanged
     private readonly BackupService _backupService;
     private readonly IBatteryOptimizationService _batteryOptimizationService;
     private readonly IEarphoneService _earphoneService;
+    private readonly IBluetoothMonitor _bluetoothMonitor;
 
     private readonly ObservableCollection<EmergencyContact> _emergencyContacts = new();
     private readonly ObservableCollection<SavedRoute> _savedRoutes = new();
@@ -478,6 +479,24 @@ public class HomeController : INotifyPropertyChanged
         private set => SetProperty(ref _bluetoothPermissionLabel, value);
     }
 
+    // Mirrors the device's Bluetooth adapter in real time (kept in sync by IBluetoothMonitor). Bound to
+    // the Settings Bluetooth switch so the toggle always reflects the actual hardware state.
+    private bool _isBluetoothOn;
+    public bool IsBluetoothOn
+    {
+        get => _isBluetoothOn;
+        set => SetProperty(ref _isBluetoothOn, value);
+    }
+
+    // Drives the "earphones connected" pill on Home. Distinct from IsEarphonesConnected so we can show
+    // the pill for a timed 3-second window (and force it hidden the moment Bluetooth drops).
+    private bool _isEarphonePillVisible;
+    public bool IsEarphonePillVisible
+    {
+        get => _isEarphonePillVisible;
+        private set => SetProperty(ref _isEarphonePillVisible, value);
+    }
+
     public string BackupStatusText
     {
         get => _backupStatusText;
@@ -688,7 +707,8 @@ public class HomeController : INotifyPropertyChanged
         IAlarmAudioService alarmAudioService,
         BackupService backupService,
         IBatteryOptimizationService batteryOptimizationService,
-        IEarphoneService earphoneService)
+        IEarphoneService earphoneService,
+        IBluetoothMonitor bluetoothMonitor)
     {
         _databaseService = databaseService;
         _preferencesService = preferencesService;
@@ -703,6 +723,8 @@ public class HomeController : INotifyPropertyChanged
         _backupService = backupService;
         _batteryOptimizationService = batteryOptimizationService;
         _earphoneService = earphoneService;
+        _bluetoothMonitor = bluetoothMonitor;
+        _bluetoothMonitor.StateChanged += OnBluetoothStateChanged;
 
         var normalizedSound = NormalizeSoundKey(_preferencesService.AlarmSound);
         _alarmSound = normalizedSound;
@@ -838,6 +860,9 @@ public class HomeController : INotifyPropertyChanged
             await _notificationService.EnsureAlarmChannelAsync();
             await RefreshAvailabilityAsync();
             UpdateBatteryOptimizationStatus();
+            // Begin watching the Bluetooth adapter and seed the switch with its current state.
+            _bluetoothMonitor.Start();
+            IsBluetoothOn = _bluetoothMonitor.IsEnabled;
             UpdateEarphoneStatus();
             UpdateBackupStatus();
             await UpdatePermissionLabelsAsync();
@@ -936,6 +961,51 @@ public class HomeController : INotifyPropertyChanged
         EarphoneStatusText = isConnected
             ? $"Earphones connected: {details}"
             : $"Earphones disconnected: {details}";
+
+        // The pill only appears on a fresh connection, then auto-hides after 3 seconds. A disconnect
+        // hides it immediately.
+        if (isConnected)
+            ShowEarphonePillTemporarily();
+        else
+            IsEarphonePillVisible = false;
+    }
+
+    // Pops the "earphones connected" pill, holds it for exactly 3 seconds, then hides it. A newer call
+    // cancels the previous timer (via the token) so the window is always a clean 3 seconds.
+    private CancellationTokenSource? _earphonePillCts;
+    private void ShowEarphonePillTemporarily()
+    {
+        _earphonePillCts?.Cancel();
+        _earphonePillCts?.Dispose();
+        _earphonePillCts = new CancellationTokenSource();
+        var token = _earphonePillCts.Token;
+
+        IsEarphonePillVisible = true;
+        _ = Task.Run(async () =>
+        {
+            try { await Task.Delay(3000, token); }
+            catch (OperationCanceledException) { return; }
+            MainThread.BeginInvokeOnMainThread(() => IsEarphonePillVisible = false);
+        });
+    }
+
+    // Real-time Bluetooth adapter changes from IBluetoothMonitor. Off → flip the Settings switch off and
+    // forcefully hide the earphones pill; On → flip the switch on. Always marshalled to the UI thread.
+    private void OnBluetoothStateChanged(object? sender, bool isOn)
+    {
+        MainThread.BeginInvokeOnMainThread(() =>
+        {
+            IsBluetoothOn = isOn;
+            BluetoothPermissionLabel = isOn ? "On" : "Off";
+            if (!isOn)
+            {
+                // Bluetooth audio is gone. Refresh the status text first, then forcefully hide the pill
+                // last so it stays hidden even if a wired device keeps the underlying status "connected".
+                UpdateEarphoneStatus();
+                _earphonePillCts?.Cancel();
+                IsEarphonePillVisible = false;
+            }
+        });
     }
 
     private void UpdateBackupStatus()
