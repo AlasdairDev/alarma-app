@@ -49,4 +49,16 @@ public partial class HistoryView : ContentPage
         if (!confirm) return;
         _controller.ClearTripHistoryCommand.Execute(null);
     }
+
+    // Tapping the trash can on a single trip card. Same strict confirm as Clear All — await the boolean,
+    // bail out on "Cancel", and only then run the delete command with this card's trip as the parameter.
+    private async void OnDeleteTripClicked(object? sender, EventArgs e)
+    {
+        if (sender is not Button button) return;
+        var trip = button.CommandParameter;
+        if (trip is null) return;
+        var confirm = await DisplayAlert("Confirm", "Are you sure you want to delete this?", "Yes", "Cancel");
+        if (!confirm) return;
+        _controller.DeleteTripHistoryCommand.Execute(trip);
+    }
 }
