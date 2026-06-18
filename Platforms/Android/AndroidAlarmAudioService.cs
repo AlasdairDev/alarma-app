@@ -27,6 +27,12 @@ public class AndroidAlarmAudioService : IAlarmAudioService
     private RingerMode? _savedRingerMode;
     private CancellationTokenSource? _playCts;
 
+    // Preview playback (Settings) is kept completely separate from the trip alarm above so previewing a
+    // sound can never touch the ringer mode the alarm relies on, nor get cut off by an alarm escalation.
+    private readonly object _previewLock = new();
+    private Ringtone? _previewRingtone;
+    private CancellationTokenSource? _previewCts;
+
     // Every public entry point hops onto a background thread before touching AudioManager / Vibrator /
     // RingtoneManager. Those calls are cheap-ish but not free — grabbing a Ringtone and flipping the
     // ringer can stall for tens of milliseconds, and the alarm fires from the location-update handler
@@ -161,6 +167,55 @@ public class AndroidAlarmAudioService : IAlarmAudioService
         return Task.CompletedTask;
     }
 
+    public Task PreviewSoundAsync(string soundKey)
+    {
+        return Task.Run(async () =>
+        {
+            CancellationToken token;
+            lock (_previewLock)
+            {
+                // Tearing down any previous preview first means tapping sound after sound just swaps the
+                // audio instantly rather than stacking overlapping ringtones.
+                _previewCts?.Cancel();
+                _previewCts?.Dispose();
+                _previewCts = new CancellationTokenSource();
+                token = _previewCts.Token;
+
+                if (_previewRingtone?.IsPlaying == true)
+                    _previewRingtone.Stop();
+
+                var uri = GetRingtoneUri(soundKey);
+                _previewRingtone = RingtoneManager.GetRingtone(AndroidApplication.Context, uri);
+                _previewRingtone?.Play();
+            }
+
+            // Keep the preview short — a ~3s taste, then stop it ourselves in case the ringtone would
+            // otherwise run long. A newer tap (or leaving the page) cancels this wait early.
+            try { await Task.Delay(TimeSpan.FromSeconds(3), token); }
+            catch (System.OperationCanceledException) { return; }
+
+            lock (_previewLock)
+            {
+                if (_previewRingtone?.IsPlaying == true)
+                    _previewRingtone.Stop();
+            }
+        });
+    }
+
+    public Task StopPreviewAsync()
+    {
+        return Task.Run(() =>
+        {
+            lock (_previewLock)
+            {
+                _previewCts?.Cancel();
+                if (_previewRingtone?.IsPlaying == true)
+                    _previewRingtone.Stop();
+                _previewRingtone = null;
+            }
+        });
+    }
+
     private static int GetStageVolume(AlarmStage stage, int maxVolume)
     {
         return stage switch
@@ -201,19 +256,26 @@ public class AndroidAlarmAudioService : IAlarmAudioService
             .Select((v, i) => i == 0 ? 0L : Math.Max(50L, (long)(v * scale)))
             .ToArray();
 
+        // Emergency (Stage 3) is a full-screen lockout that must keep buzzing until the rider slides to
+        // stop, so we loop the waveform (repeat index 0). Earlier stages buzz once (-1 = no repeat).
+        // DisableCriticalAudioAsync calls vibrator.Cancel(), which is what ends the Emergency loop.
+        var repeat = stage >= AlarmStage.Stage3 ? 0 : -1;
+
         if (Build.VERSION.SdkInt >= BuildVersionCodes.O)
         {
-            var effect = VibrationEffect.CreateWaveform(pattern, -1);
+            var effect = VibrationEffect.CreateWaveform(pattern, repeat);
             vibrator.Vibrate(effect);
         }
         else
         {
-            vibrator.Vibrate(pattern, -1);
+            vibrator.Vibrate(pattern, repeat);
         }
     }
 
     private async Task PlayRingtoneAsync(string soundKey, AlarmStage stage)
     {
+        var isEmergency = stage >= AlarmStage.Stage3;
+
         // Cancel any previous play so its delay callback doesn't stop a newer ringtone.
         CancellationToken myToken;
         lock (_ringtoneLock)
@@ -228,14 +290,24 @@ public class AndroidAlarmAudioService : IAlarmAudioService
 
             var uri = GetRingtoneUri(soundKey);
             _ringtone = RingtoneManager.GetRingtone(AndroidApplication.Context, uri);
+
+            // Emergency keeps sounding until the rider slides to stop, so loop the ringtone instead of
+            // letting it play through once. Looping is API 28+; on older devices it simply plays once.
+            if (_ringtone is not null && isEmergency && Build.VERSION.SdkInt >= BuildVersionCodes.P)
+                _ringtone.Looping = true;
+
             _ringtone?.Play();
         }
+
+        // Emergency: leave it looping. DisableCriticalAudioAsync (fired by Slide to Stop / Stop Trip)
+        // is what stops the ringtone and restores the ringer — we must NOT auto-stop it here.
+        if (isEmergency)
+            return;
 
         var duration = stage switch
         {
             AlarmStage.Stage1 => TimeSpan.FromSeconds(2),
             AlarmStage.Stage2 => TimeSpan.FromSeconds(4),
-            AlarmStage.Stage3 => TimeSpan.FromSeconds(6),
             _ => TimeSpan.FromSeconds(2)
         };
 

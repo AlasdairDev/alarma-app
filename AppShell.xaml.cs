@@ -40,6 +40,11 @@ public partial class AppShell : Shell
 
     private async void OnAlarmStageActivated(object? sender, AlarmStage stage)
     {
+        // Only the Emergency stage takes over the whole screen. Stage 1 (gentle) and Stage 2 (louder)
+        // are deliberately non-intrusive — they fire their sound/vibration + a local notification but
+        // leave the rider on whatever screen they're on, so the lockout is reserved for the real
+        // "you're at your stop / you missed it" moment.
+        if (stage < AlarmStage.Stage3) return;
         if (_alarmStageShowing) return;
         _alarmStageShowing = true;
         await GoToAsync("alarmstage", animate: false);

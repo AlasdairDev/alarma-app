@@ -24,6 +24,9 @@ public class HomeController : INotifyPropertyChanged
     private const double EarthRadiusMeters = 6_371_000;
     private const double MetersPerKilometer = 1000;
     private const double ArrivalThresholdMeters = 200;
+    // Keeps the Stage-2 ring a safe margin outside the arrival/Emergency ring so the escalation order
+    // (Stage 1 → Stage 2 → Emergency) can never invert when the trigger radius is small or floored.
+    private const double Stage2BufferMeters = 100;
     private const double OvershootBufferMeters = 250;
     private const double OvershootThresholdMeters = ArrivalThresholdMeters + OvershootBufferMeters;
     // Route-deviation detection (multi-leg-commute aware). A flat buffer is too tight for city
@@ -196,6 +199,10 @@ public class HomeController : INotifyPropertyChanged
     private string _primaryContactNumber = string.Empty;
 
     private DateTimeOffset? _lastSosSentAt;
+    // Re-entrancy latch for the SOS dispatch. It guards against a second press landing while an SMS send
+    // is still in flight; the finally block in SendSosAsync ALWAYS clears it, so the button can never get
+    // stuck "stuck on" after the first press (the single-fire bug).
+    private bool _isSendingSos;
     private static readonly TimeSpan SosCooldown = TimeSpan.FromSeconds(30);
     private const int MaxContactNameLength = 50;
     private const int MaxDisplayNameLength = 200;
@@ -373,7 +380,7 @@ public class HomeController : INotifyPropertyChanged
     {
         AlarmStage.Stage1 => "Get ready to go down.",
         AlarmStage.Stage2 => "You are near your destination.",
-        AlarmStage.Stage3 => "YOU MIGHT MISS YOUR STOP.",
+        AlarmStage.Stage3 => "YOU'VE REACHED YOUR STOP.",
         _ => DistanceToDestinationText
     };
 
@@ -624,6 +631,7 @@ public class HomeController : INotifyPropertyChanged
     public ICommand DeleteTripHistoryCommand { get; }
     public ICommand ClearTripHistoryCommand { get; }
     public ICommand SetHistoryFilterCommand { get; }
+    public ICommand SelectAndPreviewSoundCommand { get; }
 
     public HomeController(
         DatabaseService databaseService,
@@ -728,6 +736,7 @@ public class HomeController : INotifyPropertyChanged
         ClearTripHistoryCommand = new Command(async () => await ClearTripHistoryAsync());
         SetHistoryFilterCommand = new Command<string>(category => HistoryFilterCategory =
             string.IsNullOrWhiteSpace(category) ? "All" : category);
+        SelectAndPreviewSoundCommand = new Command<string>(async sound => await SelectAndPreviewSoundAsync(sound));
 
         _locationService.LocationUpdated += OnLocationUpdated;
         _emergencyContacts.CollectionChanged += (_, _) =>
@@ -1510,66 +1519,84 @@ public class HomeController : INotifyPropertyChanged
 
     private async Task SendSosAsync()
     {
-        if (_lastSosSentAt.HasValue && DateTimeOffset.UtcNow - _lastSosSentAt.Value < SosCooldown)
+        // Single-fire guard: ignore a press while a previous dispatch is still running. The finally at
+        // the bottom always clears this, so the button stays usable for every subsequent press.
+        if (_isSendingSos)
         {
-            var remaining = (int)(SosCooldown - (DateTimeOffset.UtcNow - _lastSosSentAt.Value)).TotalSeconds;
-            LastActionText = $"SOS sent recently. Wait {remaining}s before sending again.";
             return;
         }
-
-        if (!await _permissionsService.EnsureSmsPermissionAsync())
-        {
-            LastActionText = "SMS permission is required to send SOS alerts.";
-            SmsDenied?.Invoke(this, EventArgs.Empty);
-            return;
-        }
-
-        var recipients = _emergencyContacts
-            .Select(contact => contact.PhoneNumber)
-            .ToList();
-        if (!recipients.Any())
-        {
-            if (!string.IsNullOrWhiteSpace(_primaryContactNumber))
-                recipients.Add(_primaryContactNumber);
-        }
-
-        recipients = recipients
-            .Where(number => !string.IsNullOrWhiteSpace(number))
-            .Select(number => number.Trim())
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToList();
-
-        if (!recipients.Any())
-        {
-            LastActionText = "Configure an emergency contact before sending SOS.";
-            return;
-        }
-
-        // Grab the freshest fix we can at the instant SOS is pressed. If a trip is running, the
-        // in-memory _lastTrackedLocation is the exact accepted coordinate the hardened tracking loop
-        // just produced — so we use that first. Otherwise (or if it's somehow still null right at the
-        // start of a trip) we fall back to the platform's last-known/fresh location. Both are passive
-        // reads: nothing here writes back into or disturbs the Haversine tracking loop.
-        var location = (IsTracking ? _lastTrackedLocation : null)
-                       ?? await _locationService.GetLastKnownLocationAsync();
-        string message;
-        if (location is null)
-        {
-            // Last resort — location briefly unavailable. The SOS itself still goes out so contacts
-            // are alerted even without a pin.
-            message = "Alarma SOS: Location unavailable. Please check on me.";
-        }
-        else
-        {
-            // Clickable Google Maps link so a contact can tap straight through to the rider's spot.
-            var lat = location.Latitude.ToString("F5", System.Globalization.CultureInfo.InvariantCulture);
-            var lon = location.Longitude.ToString("F5", System.Globalization.CultureInfo.InvariantCulture);
-            var phtTime = location.Timestamp.ToOffset(TimeSpan.FromHours(8));
-            message = $"Alarma SOS: I may need help. https://maps.google.com/?q={lat},{lon} — {phtTime:hh:mm tt} PHT";
-        }
+        _isSendingSos = true;
 
         try
         {
+            // Mandatory location check FIRST — before we fetch any coordinates or send anything. An SOS
+            // with no location is far less useful, so if the device's master GPS switch is off we halt
+            // and push the user to turn it on (the view turns this event into a settings prompt).
+            if (!_locationService.IsLocationServiceEnabled())
+            {
+                LastActionText = "Turn on device location before sending an SOS.";
+                LocationServicesDisabled?.Invoke(this, EventArgs.Empty);
+                return;
+            }
+
+            if (_lastSosSentAt.HasValue && DateTimeOffset.UtcNow - _lastSosSentAt.Value < SosCooldown)
+            {
+                var remaining = (int)(SosCooldown - (DateTimeOffset.UtcNow - _lastSosSentAt.Value)).TotalSeconds;
+                LastActionText = $"SOS sent recently. Wait {remaining}s before sending again.";
+                return;
+            }
+
+            if (!await _permissionsService.EnsureSmsPermissionAsync())
+            {
+                LastActionText = "SMS permission is required to send SOS alerts.";
+                SmsDenied?.Invoke(this, EventArgs.Empty);
+                return;
+            }
+
+            var recipients = _emergencyContacts
+                .Select(contact => contact.PhoneNumber)
+                .ToList();
+            if (!recipients.Any())
+            {
+                if (!string.IsNullOrWhiteSpace(_primaryContactNumber))
+                    recipients.Add(_primaryContactNumber);
+            }
+
+            recipients = recipients
+                .Where(number => !string.IsNullOrWhiteSpace(number))
+                .Select(number => number.Trim())
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            if (!recipients.Any())
+            {
+                LastActionText = "Configure an emergency contact before sending SOS.";
+                return;
+            }
+
+            // Grab the freshest fix we can at the instant SOS is pressed. If a trip is running, the
+            // in-memory _lastTrackedLocation is the exact accepted coordinate the hardened tracking loop
+            // just produced — so we use that first. Otherwise (or if it's somehow still null right at the
+            // start of a trip) we fall back to the platform's last-known/fresh location. Both are passive
+            // reads: nothing here writes back into or disturbs the Haversine tracking loop.
+            var location = (IsTracking ? _lastTrackedLocation : null)
+                           ?? await _locationService.GetLastKnownLocationAsync();
+            string message;
+            if (location is null)
+            {
+                // Last resort — location briefly unavailable. The SOS itself still goes out so contacts
+                // are alerted even without a pin.
+                message = "Alarma SOS: Location unavailable. Please check on me.";
+            }
+            else
+            {
+                // Clickable Google Maps link so a contact can tap straight through to the rider's spot.
+                var lat = location.Latitude.ToString("F5", System.Globalization.CultureInfo.InvariantCulture);
+                var lon = location.Longitude.ToString("F5", System.Globalization.CultureInfo.InvariantCulture);
+                var phtTime = location.Timestamp.ToOffset(TimeSpan.FromHours(8));
+                message = $"Alarma SOS: I may need help. https://maps.google.com/?q={lat},{lon} — {phtTime:hh:mm tt} PHT";
+            }
+
             // SOS is strictly an SMS dispatch. It must NOT hijack the ringer, force volume, or touch
             // Do-Not-Disturb the way the trip alarm does — a discreet confirmation cue is all we want
             // so the user knows the press registered without broadcasting it.
@@ -1583,6 +1610,11 @@ public class HomeController : INotifyPropertyChanged
         {
             BlackBoxLogger.RecordHandledException(ex, "[HomeController.SendSosAsync]");
             LastActionText = "Failed to send SOS. Ensure SMS permission is granted and try again.";
+        }
+        finally
+        {
+            // ALWAYS release the latch — this is the core of the multi-fire fix.
+            _isSendingSos = false;
         }
     }
 
@@ -1813,6 +1845,15 @@ public class HomeController : INotifyPropertyChanged
         await _notificationService.UpdateTrackingNotificationAsync(
             $"{distanceLabel} to {DestinationShortNameText}{stageSuffix}");
 
+        // ── 3-stage progressive escalation ────────────────────────────────────────
+        // The trigger radius is the adaptive lead distance (speed × lead-time, floored). Stage 1 is the
+        // gentle alert at that radius; Stage 2 is the louder alert once the rider is halfway inside it;
+        // the Emergency stage is the full-screen lockout at the actual drop-off. We keep Stage 2 a little
+        // outside the arrival ring so the order never inverts when the radius is small / floored.
+        var stage2Threshold = Math.Max(adaptiveLeadDistance * 0.5, ArrivalThresholdMeters + Stage2BufferMeters)
+                              + accuracyBuffer;
+
+        // Stage 1 — gentle alert at the initial trigger radius. No screen lockout (see AppShell).
         if (_currentAlarmStage == AlarmStage.None && distanceToDestination <= adaptiveLeadThreshold)
         {
             await TriggerAlarmStageAsync(
@@ -1823,6 +1864,21 @@ public class HomeController : INotifyPropertyChanged
                 allowRepeat: false);
         }
 
+        // Stage 2 — louder alert once we cross ~50% of the trigger radius and aren't yet at the stop.
+        if (_currentAlarmStage < AlarmStage.Stage2
+            && !_hasArrivedAtDestination
+            && distanceToDestination <= stage2Threshold)
+        {
+            await TriggerAlarmStageAsync(
+                AlarmStage.Stage2,
+                "Alarm stage 2",
+                "Closing in on your stop. Get ready now.",
+                reroute: false,
+                allowRepeat: false);
+        }
+
+        // Emergency — the final drop-off coordinate is reached. This escalates to Stage 3, which AppShell
+        // turns into the full-screen lockout (max volume + continuous vibration until Slide to Stop).
         if (!_hasArrivedAtDestination && distanceToDestination <= ArrivalThresholdMeters)
         {
             // Require the arrival to hold across a couple of fixes — one outlier dropping inside the
@@ -1832,9 +1888,9 @@ public class HomeController : INotifyPropertyChanged
             {
                 _hasArrivedAtDestination = true;
                 await TriggerAlarmStageAsync(
-                    AlarmStage.Stage2,
-                    "Alarm stage 2",
-                    "Arrived near destination. Stay alert.",
+                    AlarmStage.Stage3,
+                    "WAKE UP",
+                    "You have reached your destination.",
                     reroute: false,
                     allowRepeat: false);
                 return;
@@ -2125,6 +2181,33 @@ public class HomeController : INotifyPropertyChanged
         foreach (var item in items)
         {
             collection.Add(item);
+        }
+    }
+
+    // Settings sound picker: pick the sound (which persists it via the AlarmSound setter so the 3-stage
+    // alarm uses it) and immediately play a short preview so the rider hears their choice. Tapping a
+    // different sound stops the previous preview and starts the new one — handled inside the audio service.
+    private async Task SelectAndPreviewSoundAsync(string? sound)
+    {
+        if (string.IsNullOrWhiteSpace(sound)) return;
+        AlarmSound = sound;                       // normalizes + saves to Preferences
+        try
+        {
+            await _alarmAudioService.PreviewSoundAsync(_alarmSound);
+        }
+        catch (Exception ex)
+        {
+            BlackBoxLogger.RecordHandledException(ex, "[HomeController.SelectAndPreviewSoundAsync]");
+        }
+    }
+
+    // Called when the rider leaves Settings so a preview can't keep playing after the page is gone.
+    public void StopSoundPreview()
+    {
+        try { _ = _alarmAudioService.StopPreviewAsync(); }
+        catch (Exception ex)
+        {
+            BlackBoxLogger.RecordHandledException(ex, "[HomeController.StopSoundPreview]");
         }
     }
 
