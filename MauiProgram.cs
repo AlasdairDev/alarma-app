@@ -2,6 +2,7 @@ using AlarmaApp.Controllers;
 using AlarmaApp.Services;
 using AlarmaApp.Services.Interfaces;
 using AlarmaApp.Platforms.Android;
+using CommunityToolkit.Maui;
 using Microsoft.Extensions.Logging;
 
 namespace AlarmaApp;
@@ -25,6 +26,8 @@ public static class MauiProgram
 
         var builder = MauiApp.CreateBuilder();
         builder.UseMauiApp<App>()
+            // Community Toolkit — gives us FileSaver (native "Save As" dialog) for the backup export.
+            .UseMauiCommunityToolkit()
             .ConfigureFonts(fonts =>
             {
                 // Material Symbols — icon ligatures (search, location_on, etc.) used across the views.

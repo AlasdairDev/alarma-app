@@ -6,6 +6,7 @@
 
 using AlarmaApp.Controllers;
 using AlarmaApp.Models;
+using AlarmaApp.Services;
 
 namespace AlarmaApp.Views;
 
@@ -147,16 +148,24 @@ public partial class EmergencyView : ContentPage
         SosSentOverlay.IsVisible = false;
     }
 
-    private void OnCall911Clicked(object? sender, EventArgs e)
+    private async void OnCall911Clicked(object? sender, EventArgs e)
     {
         SosSentOverlay.IsVisible = false;
         try
         {
+            // Hand the emergency number straight to the system dialer (pre-filled, the user still taps
+            // call). This is the strict path the spec asks for.
             PhoneDialer.Default.Open("911");
         }
-        catch
+        catch (Exception ex)
         {
-            // PhoneDialer not supported on this device/emulator — silently ignore
+            // No dialer app on this device/emulator (tablets, some emulators). Tell the user instead of
+            // failing silently so they know to call another way.
+            BlackBoxLogger.RecordHandledException(ex, "[EmergencyView.OnCall911Clicked]");
+            await DisplayAlert(
+                "Can't Place Call",
+                "This device doesn't have a phone dialer available. Please call 911 from another phone.",
+                "OK");
         }
     }
 }
