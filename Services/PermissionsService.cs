@@ -67,6 +67,27 @@ public class PermissionsService
         return status == PermissionStatus.Granted;
     }
 
+    // Asks for BLUETOOTH_CONNECT (Android 12+). It's the gate on launching the system "turn Bluetooth on?"
+    // dialog — skip it and ACTION_REQUEST_ENABLE just throws SecurityException, which is exactly why the
+    // in-app toggle couldn't turn Bluetooth on. On pre-12 devices the permission list is empty so this
+    // returns Granted immediately.
+    public async Task<bool> EnsureBluetoothConnectPermissionAsync()
+    {
+        var status = await Permissions.CheckStatusAsync<BluetoothConnectPermission>();
+        if (status != PermissionStatus.Granted)
+        {
+            status = await Permissions.RequestAsync<BluetoothConnectPermission>();
+        }
+
+        if (status == PermissionStatus.Denied)
+        {
+            OpenAppSettings();
+            return false;
+        }
+
+        return status == PermissionStatus.Granted;
+    }
+
     public async Task<bool> EnsureNotificationPermissionAsync()
     {
         var status = await Permissions.CheckStatusAsync<PostNotificationsPermission>();
@@ -122,6 +143,22 @@ public class SmsPermission : Permissions.BasePlatformPermission
 #if ANDROID
     public override (string androidPermission, bool isRuntime)[] RequiredPermissions =>
         new[] { (Android.Manifest.Permission.SendSms, true) };
+#else
+    public override (string androidPermission, bool isRuntime)[] RequiredPermissions =>
+        Array.Empty<(string, bool)>();
+#endif
+}
+
+// BLUETOOTH_CONNECT is the Android 12+ (API 31) runtime permission that gates launching the system
+// "turn Bluetooth on?" dialog (ACTION_REQUEST_ENABLE). On older devices there's no runtime permission to
+// request, so the list is empty and the check resolves to Granted without prompting.
+public class BluetoothConnectPermission : Permissions.BasePlatformPermission
+{
+#if ANDROID
+    public override (string androidPermission, bool isRuntime)[] RequiredPermissions =>
+        Android.OS.Build.VERSION.SdkInt >= Android.OS.BuildVersionCodes.S
+            ? new[] { (Android.Manifest.Permission.BluetoothConnect, true) }
+            : Array.Empty<(string, bool)>();
 #else
     public override (string androidPermission, bool isRuntime)[] RequiredPermissions =>
         Array.Empty<(string, bool)>();

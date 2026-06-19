@@ -1086,19 +1086,39 @@ public class HomeController : INotifyPropertyChanged
 #endif
     }
 
+    // Re-reads the live adapter state and pushes it into the bound switch. Called when Settings appears so
+    // the toggle always opens reflecting the real hardware — even if Bluetooth was changed while the app
+    // was in the background and a broadcast was somehow missed.
+    public void RefreshBluetoothState() => IsBluetoothOn = _bluetoothMonitor.IsEnabled;
+
+    // Fire-and-forget entry point for the Settings switch (the handler is a synchronous Toggled event), so
+    // it just kicks off the async request below.
+    public void RequestBluetoothChange(bool desiredOn) => _ = RequestBluetoothChangeAsync(desiredOn);
+
     // Called when the rider physically toggles the Settings switch. We deliberately never call
     // BluetoothAdapter.Enable()/Disable() ourselves — that's been blocked for normal apps since Android 13
     // and throws/crashes there. Instead we hand it to the OS: a system "turn Bluetooth on?" dialog for
     // enabling, or the Bluetooth settings page for disabling (there's no public request-disable dialog
     // any more). The real flip then comes back through the BroadcastReceiver, which is what actually moves
     // the switch — so if the rider dismisses the prompt, nothing changes and the switch stays put.
-    public void RequestBluetoothChange(bool desiredOn)
+    public async Task RequestBluetoothChangeAsync(bool desiredOn)
     {
 #if ANDROID
         try
         {
             if (desiredOn)
             {
+                // Android 12+ (API 31): ACTION_REQUEST_ENABLE requires the BLUETOOTH_CONNECT runtime
+                // permission. Without it the intent throws SecurityException and the toggle silently does
+                // nothing — the "can't turn Bluetooth on" bug. Ask for it first; if the rider declines we
+                // bail out and the switch just stays on its true hardware state.
+                var granted = await _permissionsService.EnsureBluetoothConnectPermissionAsync();
+                if (!granted)
+                {
+                    LastActionText = "Bluetooth permission is needed to turn Bluetooth on from the app.";
+                    return;
+                }
+
                 var intent = new Android.Content.Intent(Android.Bluetooth.BluetoothAdapter.ActionRequestEnable);
                 var activity = Microsoft.Maui.ApplicationModel.Platform.CurrentActivity;
                 if (activity is not null)
@@ -1122,6 +1142,8 @@ public class HomeController : INotifyPropertyChanged
         {
             BlackBoxLogger.RecordHandledException(ex, "[HomeController.RequestBluetoothChange]");
         }
+#else
+        await Task.CompletedTask;
 #endif
     }
 

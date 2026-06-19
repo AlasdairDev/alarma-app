@@ -22,6 +22,9 @@ public partial class SettingsView : ContentPage
         Content.Opacity = 0;
         base.OnAppearing();
         Content.FadeTo(1, 220, Easing.CubicOut);
+        // Re-read the real Bluetooth adapter state every time Settings opens, so the switch always reflects
+        // the actual hardware even if the rider changed it from the OS while the app was backgrounded.
+        _controller.RefreshBluetoothState();
         // The initial binding-driven selection has already happened by now, so any change from here on
         // is the user choosing a sound — enable previews.
         _pickerReady = true;
