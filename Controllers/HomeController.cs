@@ -40,6 +40,9 @@ public class HomeController : INotifyPropertyChanged
     private const int TripHistoryLimit = 20;
     private const int MaxSavedRoutes = 5;
     private const int MaxEmergencyContacts = 3;
+    // Hard cap on how many recent destination picks we remember. Kept small on purpose so the list
+    // stays glanceable and the stored Preferences blob never balloons.
+    private const int MaxRecentSearches = 5;
     // Floor for the Stage-1 lead distance — the alarm never arms closer than this regardless of speed.
     private const double MinAlarmDistanceMeters = 300;
     // Ceiling for the lead distance — even a (possibly GPS-spiked) high speed can't arm the alarm more
@@ -79,6 +82,9 @@ public class HomeController : INotifyPropertyChanged
     // in the list; we filter from this so clearing the search box restores the full list without a re-query.
     private readonly List<TripHistory> _allTripHistory = new();
     private readonly ObservableCollection<GeocodingResult> _searchResults = new();
+    // The rider's last few destinations, newest first. Persisted to Preferences so it survives restarts,
+    // and capped at MaxRecentSearches so it can't grow without bound.
+    private readonly ObservableCollection<GeocodingResult> _recentSearches = new();
 
     private string _statusText = "Loading...";
     private string _connectivityText = string.Empty;
@@ -366,7 +372,10 @@ public class HomeController : INotifyPropertyChanged
         set
         {
             if (SetProperty(ref _destinationQuery, value))
+            {
                 OnPropertyChanged(nameof(ShowNoResults));
+                OnPropertyChanged(nameof(ShowRecentSearches));
+            }
         }
     }
 
@@ -488,6 +497,10 @@ public class HomeController : INotifyPropertyChanged
         set => SetProperty(ref _isBluetoothOn, value);
     }
 
+    // The adapter's true state, read live from the monitor. The Settings switch checks this when the user
+    // flips it so it can tell a real user request apart from the switch simply mirroring the hardware.
+    public bool IsBluetoothHardwareOn => _bluetoothMonitor.IsEnabled;
+
     // Drives the "earphones connected" pill on Home. Distinct from IsEarphonesConnected so we can show
     // the pill for a timed 3-second window (and force it hidden the moment Bluetooth drops).
     private bool _isEarphonePillVisible;
@@ -567,8 +580,17 @@ public class HomeController : INotifyPropertyChanged
 
     public ObservableCollection<string> AlarmSoundOptions => _alarmSoundOptions;
     public ObservableCollection<GeocodingResult> SearchResults => _searchResults;
+    public ObservableCollection<GeocodingResult> RecentSearches => _recentSearches;
 
     public bool HasSearchResults => _searchResults.Count > 0;
+
+    public bool HasRecentSearches => _recentSearches.Count > 0;
+
+    // Only surface the recent list while the search box is idle: nothing typed, no live results, and no
+    // search running. The instant the rider starts typing we get out of the way and show live results.
+    public bool ShowRecentSearches =>
+        HasRecentSearches && !HasSearchResults
+        && string.IsNullOrWhiteSpace(_destinationQuery) && !_isSearchingDestination;
 
     public bool IsSearchingDestination
     {
@@ -576,7 +598,10 @@ public class HomeController : INotifyPropertyChanged
         private set
         {
             if (SetProperty(ref _isSearchingDestination, value))
+            {
                 OnPropertyChanged(nameof(ShowNoResults));
+                OnPropertyChanged(nameof(ShowRecentSearches));
+            }
         }
     }
 
@@ -852,7 +877,18 @@ public class HomeController : INotifyPropertyChanged
         {
             OnPropertyChanged(nameof(HasSearchResults));
             OnPropertyChanged(nameof(ShowNoResults));
+            OnPropertyChanged(nameof(ShowRecentSearches));
         };
+        _recentSearches.CollectionChanged += (_, _) =>
+        {
+            OnPropertyChanged(nameof(HasRecentSearches));
+            OnPropertyChanged(nameof(ShowRecentSearches));
+        };
+
+        // Pull the saved recent destinations straight away so the list is ready the first time the
+        // rider opens Search, and start listening for earphone broadcasts coming through AppMessenger.
+        LoadRecentSearches();
+        AppMessenger.EarphoneStatusChanged += OnEarphoneStatusMessage;
     }
 
     public async Task InitializeAsync()
@@ -976,18 +1012,32 @@ public class HomeController : INotifyPropertyChanged
         _lastEarphoneConnected = isConnected;
 
         // A real hardware transition reported by the ACL broadcast flashes the grey-pill either way —
-        // "Earphones Connected" when they go in, "Earphones Disconnected" when they come out — and
-        // auto-hides after 3 seconds.
+        // "Earphones Connected" when they go in, "Earphones Disconnected" when they come out. Rather than
+        // flip the pill right here (which only works if this exact instance is the one the visible screen
+        // is bound to), we hand the change to the global aggregator. The subscriber below picks it up and
+        // drives the pill, so it fires globally — and in particular on the Main Page.
         if (announceTransitions && changed)
         {
-            EarphonePillText = isConnected ? "Earphones Connected" : "Earphones Disconnected";
-            ShowEarphonePillTemporarily();
+            var pillText = isConnected ? "Earphones Connected" : "Earphones Disconnected";
+            AppMessenger.PublishEarphoneStatus(new EarphoneStatusChange(isConnected, pillText));
             return;
         }
 
         // A plain (non-announcing) refresh — init or a manual re-check — never leaves a stale pill up.
         if (!isConnected)
             IsEarphonePillVisible = false;
+    }
+
+    // Aggregator callback: a genuine earphone transition was just broadcast through AppMessenger, so pop
+    // the transient grey pill. We marshal onto the UI thread because the broadcast can originate from the
+    // background ACL re-check, and EarphonePillText/IsEarphonePillVisible feed the bound Main Page pill.
+    private void OnEarphoneStatusMessage(EarphoneStatusChange change)
+    {
+        MainThread.BeginInvokeOnMainThread(() =>
+        {
+            EarphonePillText = change.Message;
+            ShowEarphonePillTemporarily();
+        });
     }
 
     // ACL connect/disconnect fired on the hardware. A2DP audio routing settles a beat after the raw ACL
@@ -1105,6 +1155,45 @@ public class HomeController : INotifyPropertyChanged
             Android.App.Application.Context.StartActivity(intent);
         }
         catch { }
+#endif
+    }
+
+    // Called when the rider physically toggles the Settings switch. We deliberately never call
+    // BluetoothAdapter.Enable()/Disable() ourselves — that's been blocked for normal apps since Android 13
+    // and throws/crashes there. Instead we hand it to the OS: a system "turn Bluetooth on?" dialog for
+    // enabling, or the Bluetooth settings page for disabling (there's no public request-disable dialog
+    // any more). The real flip then comes back through the BroadcastReceiver, which is what actually moves
+    // the switch — so if the rider dismisses the prompt, nothing changes and the switch stays put.
+    public void RequestBluetoothChange(bool desiredOn)
+    {
+#if ANDROID
+        try
+        {
+            if (desiredOn)
+            {
+                var intent = new Android.Content.Intent(Android.Bluetooth.BluetoothAdapter.ActionRequestEnable);
+                var activity = Microsoft.Maui.ApplicationModel.Platform.CurrentActivity;
+                if (activity is not null)
+                {
+                    activity.StartActivity(intent);
+                }
+                else
+                {
+                    intent.SetFlags(Android.Content.ActivityFlags.NewTask);
+                    Android.App.Application.Context.StartActivity(intent);
+                }
+            }
+            else
+            {
+                // No safe, supported way to pop a "turn Bluetooth off?" dialog on modern Android, so send
+                // the rider to the Bluetooth settings page to switch it off themselves.
+                OpenBluetoothSettings();
+            }
+        }
+        catch (Exception ex)
+        {
+            BlackBoxLogger.RecordHandledException(ex, "[HomeController.RequestBluetoothChange]");
+        }
 #endif
     }
 
@@ -1328,6 +1417,7 @@ public class HomeController : INotifyPropertyChanged
             ? result with { DisplayName = result.DisplayName[..MaxDisplayNameLength] }
             : result;
         SetDestination(safeResult, "Search result");
+        AddRecentSearch(safeResult);
         LastActionText = $"Destination set: {safeResult.DisplayName}.";
         return Task.CompletedTask;
     }
@@ -1389,6 +1479,78 @@ public class HomeController : INotifyPropertyChanged
     {
         DestinationQuery = string.Empty;
         ReplaceCollection(_searchResults, Array.Empty<GeocodingResult>());
+    }
+
+    // Read the saved recent destinations back from Preferences on startup. Anything malformed is simply
+    // ignored — a corrupt blob shouldn't stop the app from launching — and we still trim to the cap in
+    // case an older build wrote a longer list.
+    private void LoadRecentSearches()
+    {
+        try
+        {
+            var json = _preferencesService.RecentSearchesJson;
+            if (string.IsNullOrWhiteSpace(json)) return;
+
+            var saved = System.Text.Json.JsonSerializer.Deserialize<List<GeocodingResult>>(json);
+            if (saved is null) return;
+
+            ReplaceCollection(_recentSearches, saved.Take(MaxRecentSearches));
+        }
+        catch (Exception ex)
+        {
+            BlackBoxLogger.RecordHandledException(ex, "[HomeController.LoadRecentSearches]");
+        }
+    }
+
+    // Drop a freshly-picked destination onto the top of the recent list. If the same place is already in
+    // there we pull the old copy out first so it jumps back to the top rather than appearing twice, then
+    // we clamp the whole thing to the 5-item cap and persist.
+    private void AddRecentSearch(GeocodingResult result)
+    {
+        if (result is null) return;
+
+        try
+        {
+            var existing = _recentSearches
+                .FirstOrDefault(r => IsSameRecentSearch(r, result));
+            if (existing is not null)
+                _recentSearches.Remove(existing);
+
+            _recentSearches.Insert(0, result);
+
+            // Enforce the cap from the bottom up — oldest entries fall off first.
+            while (_recentSearches.Count > MaxRecentSearches)
+                _recentSearches.RemoveAt(_recentSearches.Count - 1);
+
+            SaveRecentSearches();
+        }
+        catch (Exception ex)
+        {
+            BlackBoxLogger.RecordHandledException(ex, "[HomeController.AddRecentSearch]");
+        }
+    }
+
+    private void SaveRecentSearches()
+    {
+        try
+        {
+            _preferencesService.RecentSearchesJson =
+                System.Text.Json.JsonSerializer.Serialize(_recentSearches.ToList());
+        }
+        catch (Exception ex)
+        {
+            BlackBoxLogger.RecordHandledException(ex, "[HomeController.SaveRecentSearches]");
+        }
+    }
+
+    // Two recent entries count as "the same place" when they sit on basically the same coordinate — the
+    // same tolerance we use for saved routes, so re-picking a spot updates its position instead of
+    // stacking a near-identical duplicate.
+    private static bool IsSameRecentSearch(GeocodingResult a, GeocodingResult b)
+    {
+        const double tolerance = 0.0001;
+        return Math.Abs(a.Latitude - b.Latitude) <= tolerance
+            && Math.Abs(a.Longitude - b.Longitude) <= tolerance;
     }
 
     private async Task SaveSelectedRouteToFavoritesAsync(GeocodingResult result)

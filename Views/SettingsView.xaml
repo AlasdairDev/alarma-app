@@ -119,9 +119,14 @@
                            FontSize="15"
                            TextColor="White"
                            VerticalOptions="Center" />
-                    <!-- Mirrors the live device Bluetooth state; IBluetoothMonitor keeps it in sync. -->
+                    <!-- Mirrors the live device Bluetooth state; IBluetoothMonitor keeps it in sync. The
+                         binding is OneWay so the hardware drives the switch, never the other way around —
+                         a user flip is intercepted in OnBluetoothToggled, which prompts the OS instead of
+                         silently flipping the adapter (that crashes on Android 13+). -->
                     <Switch Grid.Column="1"
-                            IsToggled="{Binding IsBluetoothOn}"
+                            x:Name="BluetoothSwitch"
+                            IsToggled="{Binding IsBluetoothOn, Mode=OneWay}"
+                            Toggled="OnBluetoothToggled"
                             ThumbColor="#9B6FBF"
                             OnColor="#7B3FA0"
                             VerticalOptions="Center" />
