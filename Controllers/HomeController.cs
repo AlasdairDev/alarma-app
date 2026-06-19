@@ -2723,19 +2723,22 @@ public class HomeController : INotifyPropertyChanged
               <script src="leaflet.js"></script>
               <style>
                 html,body,#map{margin:0;padding:0;width:100%;height:100%;will-change:transform}
-                /* Soft light-violet "day" theme. The pure-white light tiles were too glaring (and off-brand),
-                   the old dark-purple filter was too dark to read in sunlight — so we keep the light, readable
-                   base tiles and lay a gentle violet wash over them:
+                /* Light-violet "day" theme — a brightened take on the app's original dark-violet map, NOT a
+                   white map with a faint tint. The earlier 0.12 wash was far too weak and read as plain
+                   white, so the violet is now cranked up to clearly belong to the purple branding while
+                   staying readable in daylight:
                      - #map background is an on-brand light violet, so the load-in flash matches the theme.
-                     - tiles get only a tiny brightness/saturate lift to stay crisp and daytime-readable.
-                     - the violet itself comes from a low-opacity multiply overlay on the TILE pane only. We
-                       scope it to .leaflet-tile-pane::after (z-index below the overlay/marker panes) so the
-                       wash tints the whole map evenly — white gaps included — WITHOUT muddying the blue
-                       location dot or the destination pin, which live in the panes above it. */
-                #map{background:#ECE7F6}
-                .leaflet-tile{filter:brightness(1.03) saturate(1.05)}
+                     - tiles get a brightness lift FIRST so the heavier wash on top doesn't muddy the labels
+                       and roads — this is what keeps it daytime-legible.
+                     - the violet comes from a strong (0.42) #7B3FA0 multiply overlay scoped to the TILE pane
+                       only (.leaflet-tile-pane::after, below the overlay/marker panes), so it tints the whole
+                       map evenly — white gaps included — WITHOUT muddying the blue location dot or the
+                       destination pin, which live in the panes above it. Multiplying #7B3FA0 over the light
+                       tiles drives even the white areas to a distinct light violet (~#CAB2D9). */
+                #map{background:#D9CEEA}
+                .leaflet-tile{filter:brightness(1.10) saturate(1.12)}
                 .leaflet-tile-pane{position:absolute}
-                .leaflet-tile-pane::after{content:"";position:absolute;inset:0;background:#7B3FA0;opacity:0.12;mix-blend-mode:multiply;pointer-events:none}
+                .leaflet-tile-pane::after{content:"";position:absolute;inset:0;background:#7B3FA0;opacity:0.42;mix-blend-mode:multiply;pointer-events:none}
                 .leaflet-zoom-animated{transition:transform 0.4s cubic-bezier(0,0,0.25,1)!important}
                 .leaflet-interactive{will-change:transform;transition:none!important}
                 /* The dot is now driven frame-by-frame from JS (see _animateUserMarker), so we kill the
