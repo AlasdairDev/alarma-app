@@ -10,15 +10,9 @@ public class OnboardingSlide
     public string Title { get; set; } = "";
     public string Subtitle { get; set; } = "";
     public bool IsLastSlide { get; set; }
-}
 
-public class OnboardingTemplateSelector : DataTemplateSelector
-{
-    public DataTemplate ImageTemplate { get; set; } = null!;
-    public DataTemplate CardTemplate { get; set; } = null!;
-
-    protected override DataTemplate OnSelectTemplate(object item, BindableObject container)
-        => item is OnboardingSlide { IsLastSlide: true } ? CardTemplate : ImageTemplate;
+    // Convenience inverse so the Skip/Next grid can bind IsVisible directly (hidden on the last slide).
+    public bool IsNotLastSlide => !IsLastSlide;
 }
 
 public partial class OnboardingView : ContentPage
