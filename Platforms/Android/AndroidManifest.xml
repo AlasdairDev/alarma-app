@@ -18,6 +18,11 @@
   <!-- Legacy normal permission (auto-granted, no runtime prompt) so the app can read the Bluetooth
        adapter state and receive ACTION_STATE_CHANGED on pre-Android-12 devices. -->
   <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
+  <!-- Android 12+ (API 31) runtime permission. Required to launch the system "turn Bluetooth on?" dialog
+       (ACTION_REQUEST_ENABLE) — without it that intent throws SecurityException and the in-app toggle can't
+       turn Bluetooth on at all. We never scan for or read connected-device details, so BLUETOOTH_SCAN is
+       deliberately NOT requested; CONNECT alone is what gates the enable prompt. -->
+  <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
 
   <uses-feature android:name="android.hardware.location.gps" android:required="false" />
   <uses-feature android:name="android.hardware.telephony" android:required="false" />
