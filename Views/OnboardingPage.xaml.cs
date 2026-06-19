@@ -1,76 +1,61 @@
 using AlarmaApp.Services;
-using System.Collections.ObjectModel;
-using System.Windows.Input;
 
 namespace AlarmaApp.Views;
-
-public class OnboardingSlide
-{
-    public string ImageSource { get; set; } = "";
-    public bool IsLastSlide { get; set; }
-}
 
 public partial class OnboardingPage : ContentPage
 {
     private readonly PreferencesService _preferencesService;
     private bool _finishing;
-    private bool _showTermsPopup;
     private bool _isAgreed;
+    private int _index;
 
     // Full-design PNGs: the title, subtitle, dots and Skip/Next pills are baked into each image.
-    public ObservableCollection<OnboardingSlide> Slides { get; } = new()
+    private static readonly string[] SlideImages =
     {
-        new OnboardingSlide { ImageSource = "onboarding_full_1.png" },
-        new OnboardingSlide { ImageSource = "onboarding_full_2.png" },
-        new OnboardingSlide { ImageSource = "onboarding_full_3.png" },
-        new OnboardingSlide { ImageSource = "onboarding_full_4.png", IsLastSlide = true },
+        "onboarding_full_1.png",
+        "onboarding_full_2.png",
+        "onboarding_full_3.png",
+        "onboarding_full_4.png",
     };
 
-    public bool ShowTermsPopup
-    {
-        get => _showTermsPopup;
-        set { _showTermsPopup = value; OnPropertyChanged(); }
-    }
-
-    public bool IsAgreed
-    {
-        get => _isAgreed;
-        set { _isAgreed = value; OnPropertyChanged(); }
-    }
-
-    public ICommand NextCommand { get; }
-    public ICommand SkipCommand { get; }
-    public ICommand GetStartedCommand { get; }
-    public ICommand CloseTermsCommand { get; }
+    private bool IsLastSlide => _index == SlideImages.Length - 1;
 
     public OnboardingPage(PreferencesService preferencesService)
     {
         _preferencesService = preferencesService;
-
-        NextCommand = new Command(() =>
-        {
-            // On the final slide, Next opens the Terms & Conditions popup instead of advancing.
-            if (carousel.Position < Slides.Count - 1)
-                carousel.ScrollTo(carousel.Position + 1, position: ScrollToPosition.Center, animate: false);
-            else
-                ShowTermsPopup = true;
-        });
-
-        SkipCommand = new Command(() =>
-        {
-            // Skip jumps straight to the last slide; on the last slide it opens the popup.
-            if (carousel.Position < Slides.Count - 1)
-                carousel.ScrollTo(Slides.Count - 1, position: ScrollToPosition.Center, animate: false);
-            else
-                ShowTermsPopup = true;
-        });
-
-        GetStartedCommand = new Command(async () => await OnGetStartedAsync());
-        CloseTermsCommand = new Command(() => ShowTermsPopup = false);
-
-        BindingContext = this;
         InitializeComponent();
+        ShowSlide(0);
     }
+
+    private void ShowSlide(int index)
+    {
+        _index = Math.Clamp(index, 0, SlideImages.Length - 1);
+        SlideImage.Source = SlideImages[_index];
+    }
+
+    private void OnNextTapped(object? sender, TappedEventArgs e)
+    {
+        // On the final slide, Next opens the Terms & Conditions popup instead of advancing.
+        if (IsLastSlide)
+            TermsPopup.IsVisible = true;
+        else
+            ShowSlide(_index + 1);
+    }
+
+    private void OnSkipTapped(object? sender, TappedEventArgs e)
+    {
+        // Skip jumps straight to the last slide; on the last slide it opens the popup.
+        if (IsLastSlide)
+            TermsPopup.IsVisible = true;
+        else
+            ShowSlide(SlideImages.Length - 1);
+    }
+
+    private void OnAgreeCheckChanged(object? sender, CheckedChangedEventArgs e)
+        => _isAgreed = e.Value;
+
+    private void OnCloseTermsTapped(object? sender, TappedEventArgs e)
+        => TermsPopup.IsVisible = false;
 
     private async void OnTermsLinkTapped(object? sender, TappedEventArgs e)
         => await Navigation.PushModalAsync(new TermsAndPrivacyView(initialTab: 0), animated: false);
@@ -78,10 +63,10 @@ public partial class OnboardingPage : ContentPage
     private async void OnPrivacyPolicyLinkTapped(object? sender, TappedEventArgs e)
         => await Navigation.PushModalAsync(new TermsAndPrivacyView(initialTab: 1), animated: false);
 
-    private async Task OnGetStartedAsync()
+    private async void OnGetStartedClicked(object? sender, EventArgs e)
     {
         // The checkbox must be ticked before onboarding can complete.
-        if (!IsAgreed)
+        if (!_isAgreed)
         {
             await DisplayAlert(
                 "Agreement Required",

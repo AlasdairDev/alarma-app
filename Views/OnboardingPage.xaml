@@ -8,56 +8,34 @@
              BackgroundColor="#0F0822">
 
     <Grid>
-        <!-- Each slide is the full-design PNG; invisible tap zones sit over the baked-in
-             Skip / Next buttons to make them functional. -->
-        <CarouselView x:Name="carousel"
-                      ItemsSource="{Binding Slides}"
-                      IsSwipeEnabled="False"
-                      IsBounceEnabled="False"
-                      PeekAreaInsets="0"
-                      HorizontalScrollBarVisibility="Never"
-                      HorizontalOptions="Fill"
-                      VerticalOptions="Fill">
-            <CarouselView.ItemsLayout>
-                <LinearItemsLayout Orientation="Horizontal"
-                                   SnapPointsType="MandatorySingle"
-                                   SnapPointsAlignment="Center"
-                                   ItemSpacing="0" />
-            </CarouselView.ItemsLayout>
-            <CarouselView.ItemTemplate>
-                <DataTemplate>
-                    <Grid WidthRequest="{Binding Source={x:Reference carousel}, Path=Width}">
-                        <!-- The image absorbs taps outside the button zones (it has no gesture,
-                             so no click sound) instead of passing them to the carousel surface. -->
-                        <Image Source="{Binding ImageSource}"
-                               Aspect="AspectFill"
-                               HorizontalOptions="Fill"
-                               VerticalOptions="Fill" />
+        <!-- The current slide is a full-design PNG. It has no gesture, so it silently absorbs
+             taps everywhere except the button zones (no carousel = no screen-wide click sound). -->
+        <Image x:Name="SlideImage"
+               Aspect="AspectFill"
+               HorizontalOptions="Fill"
+               VerticalOptions="Fill" />
 
-                        <!-- Tap zones aligned over the baked-in Skip / Next pills -->
-                        <Grid VerticalOptions="End"
-                              Margin="32,0,32,52"
-                              HeightRequest="56"
-                              ColumnDefinitions="*,*"
-                              ColumnSpacing="16">
-                            <Grid Grid.Column="0" BackgroundColor="Transparent">
-                                <Grid.GestureRecognizers>
-                                    <TapGestureRecognizer Command="{Binding Source={x:Reference ThisPage}, Path=SkipCommand}" />
-                                </Grid.GestureRecognizers>
-                            </Grid>
-                            <Grid Grid.Column="1" BackgroundColor="Transparent">
-                                <Grid.GestureRecognizers>
-                                    <TapGestureRecognizer Command="{Binding Source={x:Reference ThisPage}, Path=NextCommand}" />
-                                </Grid.GestureRecognizers>
-                            </Grid>
-                        </Grid>
-                    </Grid>
-                </DataTemplate>
-            </CarouselView.ItemTemplate>
-        </CarouselView>
+        <!-- Tap zones aligned over the baked-in Skip / Next pills -->
+        <Grid VerticalOptions="End"
+              Margin="32,0,32,52"
+              HeightRequest="56"
+              ColumnDefinitions="*,*"
+              ColumnSpacing="16">
+            <Grid Grid.Column="0" BackgroundColor="Transparent">
+                <Grid.GestureRecognizers>
+                    <TapGestureRecognizer Tapped="OnSkipTapped" />
+                </Grid.GestureRecognizers>
+            </Grid>
+            <Grid Grid.Column="1" BackgroundColor="Transparent">
+                <Grid.GestureRecognizers>
+                    <TapGestureRecognizer Tapped="OnNextTapped" />
+                </Grid.GestureRecognizers>
+            </Grid>
+        </Grid>
 
-        <!-- SLIDE 4 TERMS POPUP: a modal scrim + card with the agreement checkbox -->
-        <Grid IsVisible="{Binding ShowTermsPopup}"
+        <!-- SLIDE 4 TERMS POPUP: a modal scrim (absorbs taps, no sound) + agreement card -->
+        <Grid x:Name="TermsPopup"
+              IsVisible="False"
               BackgroundColor="#CC000000"
               ZIndex="100">
             <Border VerticalOptions="Center"
@@ -98,8 +76,9 @@
                     </Label>
 
                     <HorizontalStackLayout Spacing="10" HorizontalOptions="Center">
-                        <CheckBox IsChecked="{Binding IsAgreed}"
+                        <CheckBox x:Name="AgreeCheckBox"
                                   Color="#8A2BE2"
+                                  CheckedChanged="OnAgreeCheckChanged"
                                   VerticalOptions="Center" />
                         <Label Text="I have read and agree to the Privacy Policy and T&amp;C"
                                FontSize="13"
@@ -115,14 +94,14 @@
                             CornerRadius="25"
                             HeightRequest="52"
                             FontAttributes="Bold"
-                            Command="{Binding GetStartedCommand}" />
+                            Clicked="OnGetStartedClicked" />
 
                     <Label Text="Maybe later"
                            FontSize="13"
                            TextColor="#A098B0"
                            HorizontalTextAlignment="Center">
                         <Label.GestureRecognizers>
-                            <TapGestureRecognizer Command="{Binding CloseTermsCommand}" />
+                            <TapGestureRecognizer Tapped="OnCloseTermsTapped" />
                         </Label.GestureRecognizers>
                     </Label>
                 </VerticalStackLayout>
