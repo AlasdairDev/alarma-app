@@ -10,36 +10,42 @@
 
     <ContentPage.Resources>
 
-        <!-- Slides 1-3: full-screen image with a solid rounded card anchored to the bottom -->
-        <DataTemplate x:Key="ImageSlideTemplate">
-            <Grid WidthRequest="{Binding Source={x:Reference OnboardingCarousel}, Path=Width}">
+        <!-- One template for every slide. The illustration fills the top 55%; the title,
+             subtitle and controls float directly over the master grid background below it.
+             Skip/Next show on slides 1-3; the legal panel shows only on the last slide. -->
+        <DataTemplate x:Key="SlideTemplate">
+            <Grid RowDefinitions="5.5*, 4.5*"
+                  WidthRequest="{Binding Source={x:Reference OnboardingCarousel}, Path=Width}">
 
-                <!-- Full-bleed illustration sitting behind the card -->
-                <Image Source="{Binding ImageSource}"
+                <!-- TOP HALF: seamless illustration -->
+                <Image Grid.Row="0"
+                       Source="{Binding ImageSource}"
                        Aspect="AspectFill"
                        HorizontalOptions="Fill"
                        VerticalOptions="Fill" />
 
-                <!-- Solid dark-purple bottom card -->
-                <Border VerticalOptions="End"
-                        BackgroundColor="#25174A"
-                        StrokeThickness="0"
-                        StrokeShape="RoundRectangle 30,30,0,0">
-                    <!-- Bottom padding leaves room for the indicator dots below the buttons -->
-                    <VerticalStackLayout Spacing="12" Padding="28,28,28,46">
+                <!-- BOTTOM HALF: floating text + controls over the grid background -->
+                <Grid Grid.Row="1" Padding="20,0,20,0">
+
+                    <VerticalStackLayout Margin="20,20,20,30"
+                                         Spacing="5"
+                                         VerticalOptions="Start">
                         <Label Text="{Binding Title}"
                                FontSize="26"
                                FontAttributes="Bold"
                                TextColor="White"
                                HorizontalTextAlignment="Center" />
                         <Label Text="{Binding Subtitle}"
-                               FontSize="15"
-                               TextColor="#C8B8E8"
+                               FontSize="16"
+                               TextColor="#B0A8C0"
                                HorizontalTextAlignment="Center"
                                LineBreakMode="WordWrap" />
+
+                        <!-- Skip / Next: hidden on the final slide -->
                         <Grid ColumnDefinitions="*,*"
                               ColumnSpacing="14"
-                              Margin="0,12,0,0">
+                              Margin="0,16,0,0"
+                              IsVisible="{Binding IsNotLastSlide}">
                             <Button Grid.Column="0"
                                     Text="Skip"
                                     FontSize="16"
@@ -60,99 +66,77 @@
                                     Command="{Binding Source={x:Reference ThisPage}, Path=NextCommand}" />
                         </Grid>
                     </VerticalStackLayout>
-                </Border>
+
+                    <!-- SLIDE 4 PANEL: anchored to the absolute bottom, bleeds to the screen edges -->
+                    <Border IsVisible="{Binding IsLastSlide}"
+                            VerticalOptions="End"
+                            BackgroundColor="#1E1533"
+                            StrokeThickness="0"
+                            StrokeShape="RoundRectangle 20,20,0,0"
+                            Padding="20,20,20,40"
+                            Margin="-20,0,-20,-20">
+                        <VerticalStackLayout Spacing="16">
+                            <HorizontalStackLayout Spacing="10">
+                                <CheckBox Color="#C39BE8"
+                                          CheckedChanged="OnAgreeCheckChanged"
+                                          VerticalOptions="Center" />
+                                <Label FontSize="13"
+                                       MaximumWidthRequest="260"
+                                       TextColor="#C8B8E8"
+                                       VerticalOptions="Center"
+                                       LineBreakMode="WordWrap">
+                                    <Label.FormattedText>
+                                        <FormattedString>
+                                            <Span Text="I have read and agree to the " />
+                                            <Span Text="Terms and Conditions"
+                                                  TextColor="#C39BE8"
+                                                  TextDecorations="Underline">
+                                                <Span.GestureRecognizers>
+                                                    <TapGestureRecognizer Tapped="OnTermsLinkTapped" />
+                                                </Span.GestureRecognizers>
+                                            </Span>
+                                            <Span Text=" and " />
+                                            <Span Text="Privacy Policy"
+                                                  TextColor="#C39BE8"
+                                                  TextDecorations="Underline">
+                                                <Span.GestureRecognizers>
+                                                    <TapGestureRecognizer Tapped="OnPrivacyPolicyLinkTapped" />
+                                                </Span.GestureRecognizers>
+                                            </Span>
+                                            <Span Text="." />
+                                        </FormattedString>
+                                    </Label.FormattedText>
+                                </Label>
+                            </HorizontalStackLayout>
+
+                            <Button Text="Get Started"
+                                    FontSize="17"
+                                    FontAttributes="Bold"
+                                    BackgroundColor="#7B3FA0"
+                                    TextColor="White"
+                                    CornerRadius="28"
+                                    HeightRequest="56"
+                                    HorizontalOptions="Fill"
+                                    Clicked="OnGetStartedClicked" />
+                        </VerticalStackLayout>
+                    </Border>
+                </Grid>
             </Grid>
         </DataTemplate>
-
-        <!-- Slide 4: full-screen image + card with legal links, agreement checkbox and Get Started -->
-        <DataTemplate x:Key="CardSlideTemplate">
-            <Grid WidthRequest="{Binding Source={x:Reference OnboardingCarousel}, Path=Width}">
-
-                <Image Source="{Binding ImageSource}"
-                       Aspect="AspectFill"
-                       HorizontalOptions="Fill"
-                       VerticalOptions="Fill" />
-
-                <Border VerticalOptions="End"
-                        BackgroundColor="#25174A"
-                        StrokeThickness="0"
-                        StrokeShape="RoundRectangle 30,30,0,0">
-                    <VerticalStackLayout Spacing="12" Padding="28,26,28,46">
-                        <Label Text="{Binding Title}"
-                               FontSize="26"
-                               FontAttributes="Bold"
-                               TextColor="White"
-                               HorizontalTextAlignment="Center" />
-                        <Label Text="{Binding Subtitle}"
-                               FontSize="15"
-                               TextColor="#C8B8E8"
-                               HorizontalTextAlignment="Center"
-                               LineBreakMode="WordWrap" />
-
-                        <Label FontSize="13"
-                               Margin="0,4,0,0"
-                               HorizontalTextAlignment="Center">
-                            <Label.FormattedText>
-                                <FormattedString>
-                                    <Span Text="Read our " TextColor="#C8B8E8" />
-                                    <Span Text="Privacy Policy"
-                                          TextColor="#C39BE8"
-                                          TextDecorations="Underline">
-                                        <Span.GestureRecognizers>
-                                            <TapGestureRecognizer Tapped="OnPrivacyPolicyLinkTapped" />
-                                        </Span.GestureRecognizers>
-                                    </Span>
-                                    <Span Text=" and " TextColor="#C8B8E8" />
-                                    <Span Text="Terms &amp; Conditions"
-                                          TextColor="#C39BE8"
-                                          TextDecorations="Underline">
-                                        <Span.GestureRecognizers>
-                                            <TapGestureRecognizer Tapped="OnTermsLinkTapped" />
-                                        </Span.GestureRecognizers>
-                                    </Span>
-                                </FormattedString>
-                            </Label.FormattedText>
-                        </Label>
-
-                        <Grid ColumnDefinitions="Auto, *" ColumnSpacing="8">
-                            <CheckBox Grid.Column="0"
-                                      x:Name="AgreeCheckBox"
-                                      Color="#C39BE8"
-                                      CheckedChanged="OnAgreeCheckChanged"
-                                      VerticalOptions="Center" />
-                            <Label Grid.Column="1"
-                                   Text="I have read and agree to the Terms and Conditions and Privacy Policy."
-                                   FontSize="13"
-                                   TextColor="#C8B8E8"
-                                   VerticalOptions="Center"
-                                   LineBreakMode="WordWrap" />
-                        </Grid>
-
-                        <Button Text="Get Started"
-                                FontSize="17"
-                                FontAttributes="Bold"
-                                BackgroundColor="#7B3FA0"
-                                TextColor="White"
-                                CornerRadius="28"
-                                HeightRequest="56"
-                                Margin="0,4,0,0"
-                                HorizontalOptions="Fill"
-                                Clicked="OnGetStartedClicked" />
-                    </VerticalStackLayout>
-                </Border>
-            </Grid>
-        </DataTemplate>
-
-        <local:OnboardingTemplateSelector x:Key="SlideSelector"
-                                          ImageTemplate="{StaticResource ImageSlideTemplate}"
-                                          CardTemplate="{StaticResource CardSlideTemplate}" />
     </ContentPage.Resources>
 
+    <!-- Root layout: the master grid background fills the whole page -->
     <Grid>
+        <Image Source="onboarding_grid.png"
+               Aspect="AspectFill"
+               HorizontalOptions="Fill"
+               VerticalOptions="Fill"
+               InputTransparent="True" />
+
         <CarouselView x:Name="OnboardingCarousel"
                       BackgroundColor="Transparent"
                       ItemsSource="{Binding Slides}"
-                      ItemTemplate="{StaticResource SlideSelector}"
+                      ItemTemplate="{StaticResource SlideTemplate}"
                       IsSwipeEnabled="False"
                       IsBounceEnabled="False"
                       PeekAreaInsets="0"
@@ -168,15 +152,13 @@
             </CarouselView.ItemsLayout>
         </CarouselView>
 
-        <!-- Page-level dots overlaid at the absolute bottom margin of the purple card,
-             sitting below the Skip/Next (and Get Started) buttons. -->
+        <!-- Dots float near the vertical centre, between the image and the Title -->
         <IndicatorView x:Name="indicatorView"
                        MaximumVisible="4"
                        IndicatorColor="#5A4080"
                        SelectedIndicatorColor="White"
                        IndicatorSize="8"
                        HorizontalOptions="Center"
-                       VerticalOptions="End"
-                       Margin="0,0,0,16" />
+                       VerticalOptions="Center" />
     </Grid>
 </ContentPage>
