@@ -2723,22 +2723,21 @@ public class HomeController : INotifyPropertyChanged
               <script src="leaflet.js"></script>
               <style>
                 html,body,#map{margin:0;padding:0;width:100%;height:100%;will-change:transform}
-                /* Light-violet "day" theme — a brightened take on the app's original dark-violet map, NOT a
-                   white map with a faint tint. The earlier 0.12 wash was far too weak and read as plain
-                   white, so the violet is now cranked up to clearly belong to the purple branding while
-                   staying readable in daylight:
-                     - #map background is an on-brand light violet, so the load-in flash matches the theme.
-                     - tiles get a brightness lift FIRST so the heavier wash on top doesn't muddy the labels
-                       and roads — this is what keeps it daytime-legible.
-                     - the violet comes from a strong (0.42) #7B3FA0 multiply overlay scoped to the TILE pane
-                       only (.leaflet-tile-pane::after, below the overlay/marker panes), so it tints the whole
-                       map evenly — white gaps included — WITHOUT muddying the blue location dot or the
-                       destination pin, which live in the panes above it. Multiplying #7B3FA0 over the light
-                       tiles drives even the white areas to a distinct light violet (~#CAB2D9). */
+                /* Light-violet "day" theme via a DIRECT tile filter.
+                   We previously tried tinting with a #7B3FA0 mix-blend-mode:multiply wash on a
+                   .leaflet-tile-pane::after pseudo-element — but the MAUI Android WebView silently ignored
+                   both the pseudo-element and the blend mode, so the map kept rendering pure white. A CSS
+                   filter applied straight to the tile IMAGES is the well-supported, can't-be-skipped path in
+                   the Chromium WebView, so that's what we use now:
+                     - sepia() colourises the near-grayscale CARTO "light" tiles (white→warm, grays→tan),
+                     - hue-rotate() swings that cast round to the app's ~277deg brand purple (#7B3FA0),
+                     - saturate() gives the violet real presence so it reads as purple, not washed-out grey,
+                     - a gentle brightness() keeps it soft and daytime-readable instead of the old dark map.
+                   The filter hits only the tiles, so the blue location dot and the destination pin (separate
+                   Leaflet panes) keep their true colours. #map's background is an on-brand light violet so
+                   the load-in flash already matches the theme before the first tiles paint. */
                 #map{background:#D9CEEA}
-                .leaflet-tile{filter:brightness(1.10) saturate(1.12)}
-                .leaflet-tile-pane{position:absolute}
-                .leaflet-tile-pane::after{content:"";position:absolute;inset:0;background:#7B3FA0;opacity:0.42;mix-blend-mode:multiply;pointer-events:none}
+                .leaflet-tile{filter:sepia(100%) hue-rotate(235deg) saturate(185%) brightness(108%)}
                 .leaflet-zoom-animated{transition:transform 0.4s cubic-bezier(0,0,0.25,1)!important}
                 .leaflet-interactive{will-change:transform;transition:none!important}
                 /* The dot is now driven frame-by-frame from JS (see _animateUserMarker), so we kill the
