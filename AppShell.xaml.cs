@@ -21,7 +21,7 @@ public partial class AppShell : Shell
         Routing.RegisterRoute("search", typeof(Views.SearchView));
         Routing.RegisterRoute("add-favorite", typeof(Views.AddFavoriteView));
         Routing.RegisterRoute("alarmstage", typeof(Views.AlarmStageView));
-        Routing.RegisterRoute("onboarding", typeof(Views.OnboardingView));
+        Routing.RegisterRoute("onboarding", typeof(Views.OnboardingPage));
         Routing.RegisterRoute("permissions-setup", typeof(Views.PermissionsSetupView));
 
         controller.AlarmStageActivated += OnAlarmStageActivated;
