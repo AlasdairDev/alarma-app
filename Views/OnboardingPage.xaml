@@ -1,42 +1,131 @@
 <?xml version="1.0" encoding="utf-8" ?>
-<ContentPage BackgroundColor="#0F0822" NavigationPage.HasNavigationBar="False" x:Class="AlarmaApp.Views.OnboardingPage" xmlns="http://schemas.microsoft.com/dotnet/2021/maui" xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml">
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="AlarmaApp.Views.OnboardingPage"
+             x:Name="ThisPage"
+             Shell.NavBarIsVisible="False"
+             Shell.TabBarIsVisible="False"
+             BackgroundColor="#0F0822">
+
     <Grid>
-        <Image Source="onboarding_grid.png" Aspect="AspectFill" HorizontalOptions="Fill" VerticalOptions="Fill" />
-        <CarouselView x:Name="carousel" ItemsSource="{Binding Slides}" HorizontalScrollBarVisibility="Never">
+        <!-- Each slide is the full-design PNG; invisible tap zones sit over the baked-in
+             Skip / Next buttons to make them functional. -->
+        <CarouselView x:Name="carousel"
+                      ItemsSource="{Binding Slides}"
+                      IsSwipeEnabled="False"
+                      IsBounceEnabled="False"
+                      PeekAreaInsets="0"
+                      HorizontalScrollBarVisibility="Never"
+                      HorizontalOptions="Fill"
+                      VerticalOptions="Fill">
+            <CarouselView.ItemsLayout>
+                <LinearItemsLayout Orientation="Horizontal"
+                                   SnapPointsType="MandatorySingle"
+                                   SnapPointsAlignment="Center"
+                                   ItemSpacing="0" />
+            </CarouselView.ItemsLayout>
             <CarouselView.ItemTemplate>
                 <DataTemplate>
-                    <Grid RowDefinitions="55*, 45*">
-                        <Image Grid.Row="0" Source="{Binding ImageSource}" Aspect="AspectFill" HorizontalOptions="Fill" VerticalOptions="Fill" />
-                        <Grid Grid.Row="1" Padding="20, 45, 20, 20">
-                            <VerticalStackLayout Spacing="8">
-                                <VerticalStackLayout.Triggers>
-                                    <DataTrigger TargetType="VerticalStackLayout" Binding="{Binding IsLastSlide}" Value="True">
-                                        <Setter Property="IsVisible" Value="False" />
-                                    </DataTrigger>
-                                </VerticalStackLayout.Triggers>
-                                <Label Text="{Binding Title}" TextColor="White" FontSize="26" FontAttributes="Bold" HorizontalOptions="Center" />
-                                <Label Text="{Binding Subtitle}" TextColor="#A098B0" FontSize="16" HorizontalTextAlignment="Center" HorizontalOptions="Center" Margin="0,0,0,30" />
-                                <Grid ColumnDefinitions="*, *" ColumnSpacing="15" Margin="10,0,10,0">
-                                    <Button Text="Skip" BackgroundColor="White" TextColor="#1A0B2E" CornerRadius="25" HeightRequest="52" FontAttributes="Bold" Command="{Binding Source={RelativeSource AncestorType={x:Type ContentPage}}, Path=BindingContext.SkipCommand}" />
-                                    <Button Text="Next" BackgroundColor="#8A2BE2" TextColor="White" CornerRadius="25" HeightRequest="52" FontAttributes="Bold" Command="{Binding Source={RelativeSource AncestorType={x:Type ContentPage}}, Path=BindingContext.NextCommand}" />
-                                </Grid>
-                            </VerticalStackLayout>
-                            <Border IsVisible="{Binding IsLastSlide}" BackgroundColor="#170F26" VerticalOptions="End" StrokeThickness="0" StrokeShape="RoundRectangle 24,24,0,0" Padding="20,25,20,30" Margin="-20,0,-20,-20">
-                                <VerticalStackLayout Spacing="20">
-                                    <HorizontalStackLayout HorizontalOptions="Center" Spacing="10">
-                                        <CheckBox IsChecked="{Binding TermsAccepted}" Color="#8A2BE2" />
-                                        <Label Text="I agree to the Terms and Privacy Policy" TextColor="#A098B0" VerticalOptions="Center" FontSize="14" />
-                                    </HorizontalStackLayout>
-                                    <Button Text="Get Started" BackgroundColor="#8A2BE2" TextColor="White" CornerRadius="25" HeightRequest="52" FontAttributes="Bold" Command="{Binding Source={RelativeSource AncestorType={x:Type ContentPage}}, Path=BindingContext.GetStartedCommand}" />
-                                </VerticalStackLayout>
-                            </Border>
+                    <Grid WidthRequest="{Binding Source={x:Reference carousel}, Path=Width}">
+                        <Image Source="{Binding ImageSource}"
+                               Aspect="AspectFill"
+                               InputTransparent="True"
+                               HorizontalOptions="Fill"
+                               VerticalOptions="Fill" />
+
+                        <!-- Tap zones aligned over the baked-in Skip / Next pills -->
+                        <Grid VerticalOptions="End"
+                              Margin="32,0,32,52"
+                              HeightRequest="56"
+                              ColumnDefinitions="*,*"
+                              ColumnSpacing="16">
+                            <Grid Grid.Column="0" BackgroundColor="Transparent">
+                                <Grid.GestureRecognizers>
+                                    <TapGestureRecognizer Command="{Binding Source={x:Reference ThisPage}, Path=SkipCommand}" />
+                                </Grid.GestureRecognizers>
+                            </Grid>
+                            <Grid Grid.Column="1" BackgroundColor="Transparent">
+                                <Grid.GestureRecognizers>
+                                    <TapGestureRecognizer Command="{Binding Source={x:Reference ThisPage}, Path=NextCommand}" />
+                                </Grid.GestureRecognizers>
+                            </Grid>
                         </Grid>
                     </Grid>
                 </DataTemplate>
             </CarouselView.ItemTemplate>
         </CarouselView>
-        <Grid RowDefinitions="55*, 45*" InputTransparent="True">
-            <IndicatorView Grid.Row="1" x:Name="indicator" HorizontalOptions="Center" VerticalOptions="Start" Margin="0, 15, 0, 0" IndicatorColor="#554D6B" SelectedIndicatorColor="White" IndicatorSize="8" />
+
+        <!-- SLIDE 4 TERMS POPUP: a modal scrim + card with the agreement checkbox -->
+        <Grid IsVisible="{Binding ShowTermsPopup}"
+              BackgroundColor="#CC000000"
+              ZIndex="100">
+            <Border VerticalOptions="Center"
+                    HorizontalOptions="Center"
+                    Margin="28"
+                    BackgroundColor="#1E1533"
+                    StrokeThickness="0"
+                    StrokeShape="RoundRectangle 24"
+                    Padding="24,28,24,24">
+                <VerticalStackLayout Spacing="18">
+                    <Label Text="Almost there"
+                           FontSize="20"
+                           FontAttributes="Bold"
+                           TextColor="White"
+                           HorizontalTextAlignment="Center" />
+
+                    <Label FontSize="13" HorizontalTextAlignment="Center">
+                        <Label.FormattedText>
+                            <FormattedString>
+                                <Span Text="Read our " TextColor="#A098B0" />
+                                <Span Text="Privacy Policy"
+                                      TextColor="#C39BE8"
+                                      TextDecorations="Underline">
+                                    <Span.GestureRecognizers>
+                                        <TapGestureRecognizer Tapped="OnPrivacyPolicyLinkTapped" />
+                                    </Span.GestureRecognizers>
+                                </Span>
+                                <Span Text=" and " TextColor="#A098B0" />
+                                <Span Text="Terms &amp; Conditions"
+                                      TextColor="#C39BE8"
+                                      TextDecorations="Underline">
+                                    <Span.GestureRecognizers>
+                                        <TapGestureRecognizer Tapped="OnTermsLinkTapped" />
+                                    </Span.GestureRecognizers>
+                                </Span>
+                            </FormattedString>
+                        </Label.FormattedText>
+                    </Label>
+
+                    <HorizontalStackLayout Spacing="10" HorizontalOptions="Center">
+                        <CheckBox IsChecked="{Binding IsAgreed}"
+                                  Color="#8A2BE2"
+                                  VerticalOptions="Center" />
+                        <Label Text="I have read and agree to the Privacy Policy and T&amp;C"
+                               FontSize="13"
+                               TextColor="#C8B8E8"
+                               VerticalOptions="Center"
+                               MaximumWidthRequest="220"
+                               LineBreakMode="WordWrap" />
+                    </HorizontalStackLayout>
+
+                    <Button Text="Get Started"
+                            BackgroundColor="#8A2BE2"
+                            TextColor="White"
+                            CornerRadius="25"
+                            HeightRequest="52"
+                            FontAttributes="Bold"
+                            Command="{Binding GetStartedCommand}" />
+
+                    <Label Text="Maybe later"
+                           FontSize="13"
+                           TextColor="#A098B0"
+                           HorizontalTextAlignment="Center">
+                        <Label.GestureRecognizers>
+                            <TapGestureRecognizer Command="{Binding CloseTermsCommand}" />
+                        </Label.GestureRecognizers>
+                    </Label>
+                </VerticalStackLayout>
+            </Border>
         </Grid>
     </Grid>
 </ContentPage>

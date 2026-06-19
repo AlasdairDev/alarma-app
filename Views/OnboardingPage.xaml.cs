@@ -1,69 +1,47 @@
 using AlarmaApp.Services;
 using System.Collections.ObjectModel;
-using System.ComponentModel;
-using System.Linq;
-using System.Runtime.CompilerServices;
 using System.Windows.Input;
 
 namespace AlarmaApp.Views;
 
-public class OnboardingSlide : INotifyPropertyChanged
+public class OnboardingSlide
 {
     public string ImageSource { get; set; } = "";
-    public string Title { get; set; } = "";
-    public string Subtitle { get; set; } = "";
     public bool IsLastSlide { get; set; }
-
-    // Two-way bound to the agreement checkbox on the final slide.
-    private bool _termsAccepted;
-    public bool TermsAccepted
-    {
-        get => _termsAccepted;
-        set { _termsAccepted = value; OnPropertyChanged(); }
-    }
-
-    public event PropertyChangedEventHandler? PropertyChanged;
-    private void OnPropertyChanged([CallerMemberName] string? name = null)
-        => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
 }
 
 public partial class OnboardingPage : ContentPage
 {
     private readonly PreferencesService _preferencesService;
     private bool _finishing;
+    private bool _showTermsPopup;
+    private bool _isAgreed;
 
+    // Full-design PNGs: the title, subtitle, dots and Skip/Next pills are baked into each image.
     public ObservableCollection<OnboardingSlide> Slides { get; } = new()
     {
-        new OnboardingSlide
-        {
-            ImageSource = "onboarding_1.jpg",
-            Title = "Welcome to Alarma.",
-            Subtitle = "Never miss your stop again.",
-        },
-        new OnboardingSlide
-        {
-            ImageSource = "onboarding_2.jpg",
-            Title = "Set Your Destination",
-            Subtitle = "Pick a spot on the map and track your destination in real-time.",
-        },
-        new OnboardingSlide
-        {
-            ImageSource = "onboarding_3.jpg",
-            Title = "Rest Easy",
-            Subtitle = "Close your eyes and let us handle the rest. Wake up to personalized sounds and vibrations.",
-        },
-        new OnboardingSlide
-        {
-            ImageSource = "onboarding_4.jpg",
-            Title = "Smart Travel Safety",
-            Subtitle = "Get adaptive ETA alarms, travel stop alerts, overshoot detection, and SOS features.",
-            IsLastSlide = true,
-        },
+        new OnboardingSlide { ImageSource = "onboarding_full_1.png" },
+        new OnboardingSlide { ImageSource = "onboarding_full_2.png" },
+        new OnboardingSlide { ImageSource = "onboarding_full_3.png" },
+        new OnboardingSlide { ImageSource = "onboarding_full_4.png", IsLastSlide = true },
     };
+
+    public bool ShowTermsPopup
+    {
+        get => _showTermsPopup;
+        set { _showTermsPopup = value; OnPropertyChanged(); }
+    }
+
+    public bool IsAgreed
+    {
+        get => _isAgreed;
+        set { _isAgreed = value; OnPropertyChanged(); }
+    }
 
     public ICommand NextCommand { get; }
     public ICommand SkipCommand { get; }
     public ICommand GetStartedCommand { get; }
+    public ICommand CloseTermsCommand { get; }
 
     public OnboardingPage(PreferencesService preferencesService)
     {
@@ -71,28 +49,43 @@ public partial class OnboardingPage : ContentPage
 
         NextCommand = new Command(() =>
         {
+            // On the final slide, Next opens the Terms & Conditions popup instead of advancing.
             if (carousel.Position < Slides.Count - 1)
                 carousel.ScrollTo(carousel.Position + 1, position: ScrollToPosition.Center, animate: false);
+            else
+                ShowTermsPopup = true;
         });
+
         SkipCommand = new Command(() =>
-            carousel.ScrollTo(Slides.Count - 1, position: ScrollToPosition.Center, animate: false));
+        {
+            // Skip jumps straight to the last slide; on the last slide it opens the popup.
+            if (carousel.Position < Slides.Count - 1)
+                carousel.ScrollTo(Slides.Count - 1, position: ScrollToPosition.Center, animate: false);
+            else
+                ShowTermsPopup = true;
+        });
+
         GetStartedCommand = new Command(async () => await OnGetStartedAsync());
+        CloseTermsCommand = new Command(() => ShowTermsPopup = false);
 
         BindingContext = this;
         InitializeComponent();
-
-        // Wire the page-level indicator to the carousel so the dots track position.
-        carousel.IndicatorView = indicator;
     }
+
+    private async void OnTermsLinkTapped(object? sender, TappedEventArgs e)
+        => await Navigation.PushModalAsync(new TermsAndPrivacyView(initialTab: 0), animated: false);
+
+    private async void OnPrivacyPolicyLinkTapped(object? sender, TappedEventArgs e)
+        => await Navigation.PushModalAsync(new TermsAndPrivacyView(initialTab: 1), animated: false);
 
     private async Task OnGetStartedAsync()
     {
-        var lastSlide = Slides.FirstOrDefault(s => s.IsLastSlide);
-        if (lastSlide is null || !lastSlide.TermsAccepted)
+        // The checkbox must be ticked before onboarding can complete.
+        if (!IsAgreed)
         {
             await DisplayAlert(
                 "Agreement Required",
-                "Please agree to the Terms and Privacy Policy to continue.",
+                "Please agree to the Privacy Policy and Terms & Conditions to continue.",
                 "OK");
             return;
         }
