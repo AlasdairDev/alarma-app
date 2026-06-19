@@ -98,7 +98,19 @@ public partial class OnboardingView : ContentPage
         => await Navigation.PushModalAsync(new TermsAndPrivacyView(initialTab: 1), animated: false);
 
     private async void OnGetStartedClicked(object? sender, EventArgs e)
-        => await FinishOnboardingAsync();
+    {
+        // Gate on the agreement checkbox: warn instead of silently doing nothing.
+        if (!IsAgreed)
+        {
+            await DisplayAlert(
+                "Agreement Required",
+                "Please read and agree to the Terms and Conditions and Privacy Policy to continue.",
+                "OK");
+            return;
+        }
+
+        await FinishOnboardingAsync();
+    }
 
     private async Task FinishOnboardingAsync()
     {
