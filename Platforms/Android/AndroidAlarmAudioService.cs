@@ -327,11 +327,12 @@ public class AndroidAlarmAudioService : IAlarmAudioService
         await DisableCriticalAudioAsync();
     }
 
-    // The five Settings options, in display order. "Siren" and "Buzzer" are bundled, intentionally loud
-    // and aggressive alarm assets shipped in res/raw (see GetBundledAlarmUri); the rest map by index to a
-    // distinct entry in the device's sound catalogue (see GetDistinctSoundUris) so all five are audibly
-    // different and loud. ("Chime" was retired — too gentle to wake a sleeping commuter.)
-    private static readonly string[] SoundOrder = { "Default", "Alarm", "Buzzer", "Bell", "Siren" };
+    // The five Settings options, in display order. ALL five are now bundled, intentionally high-intensity
+    // alarm assets shipped in res/raw (see GetBundledAlarmUri) — real files, so they sound identical and
+    // loud on every device and route through the alarm channel below. The device sound catalogue
+    // (GetDistinctSoundUris) is kept only as an emergency fallback if a bundled resource ever fails to
+    // resolve. (Soft notification tones like "Chime" were retired — too gentle to wake a sleeping commuter.)
+    private static readonly string[] SoundOrder = { "Digital Clock", "Siren", "Buzzer", "Bell", "Air Horn" };
     private static IReadOnlyList<global::Android.Net.Uri>? _distinctSoundUris;
     private static readonly object _soundUriLock = new();
 
@@ -396,17 +397,24 @@ public class AndroidAlarmAudioService : IAlarmAudioService
         return uris[Math.Min(idx, uris.Count - 1)];
     }
 
-    // Resolves "Siren" / "Buzzer" to the bundled res/raw audio files via an android.resource:// URI.
-    // Returns null for every other key so the caller falls back to the device sound catalogue. Wrapped in
-    // try/catch so a missing resource can never take the alarm down — it just degrades to a system sound.
+    // Resolves each of the five Settings options to its bundled res/raw audio file via an
+    // android.resource:// URI. Returns null for an unknown key so the caller falls back to the device
+    // sound catalogue. Wrapped in try/catch so a missing resource can never take the alarm down — it just
+    // degrades to a system sound.
     private static global::Android.Net.Uri? GetBundledAlarmUri(string soundKey)
     {
         try
         {
             int resId;
-            if (soundKey == "Siren") resId = global::AlarmaApp.Resource.Raw.siren;
-            else if (soundKey == "Buzzer") resId = global::AlarmaApp.Resource.Raw.buzzer;
-            else return null;
+            switch (soundKey)
+            {
+                case "Digital Clock": resId = global::AlarmaApp.Resource.Raw.digital_clock; break;
+                case "Siren":         resId = global::AlarmaApp.Resource.Raw.siren;         break;
+                case "Buzzer":        resId = global::AlarmaApp.Resource.Raw.buzzer;        break;
+                case "Bell":          resId = global::AlarmaApp.Resource.Raw.bell;          break;
+                case "Air Horn":      resId = global::AlarmaApp.Resource.Raw.air_horn;      break;
+                default: return null;
+            }
 
             var pkg = AndroidApplication.Context.PackageName;
             return global::Android.Net.Uri.Parse($"android.resource://{pkg}/{resId}");

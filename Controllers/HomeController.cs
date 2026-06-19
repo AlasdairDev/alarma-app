@@ -249,16 +249,16 @@ public class HomeController : INotifyPropertyChanged
     private string _currentLocationText = "Fetching location...";
     private readonly SemaphoreSlim _initializeSemaphore = new(1, 1);
     private readonly SemaphoreSlim _databaseInitSemaphore = new(1, 1);
-    // Exactly five clearly-distinct alarm voices. "Buzzer" and "Siren" are loud, aggressive audio files
-    // we bundle in res/raw; the rest map to distinct, loud system sound URIs from the device's ringtone
-    // catalogue — so the live preview in Settings sounds obviously different between every option.
+    // Exactly five high-intensity alarm voices, all loud, aggressive audio files we bundle in res/raw —
+    // so the live preview in Settings sounds obviously different between every option and is guaranteed
+    // loud on every device. (Soft notification tones like "Chime" were retired.)
     private readonly ObservableCollection<string> _alarmSoundOptions = new()
     {
-        "Default",
-        "Alarm",
+        "Digital Clock",
+        "Siren",
         "Buzzer",
         "Bell",
-        "Siren"
+        "Air Horn"
     };
     private bool _wasOnline;
     private bool _availabilityChecked;
@@ -2487,15 +2487,19 @@ public class HomeController : INotifyPropertyChanged
 
     private string NormalizeSoundKey(string? value)
     {
+        // "Digital Clock" is the default voice — any blank, retired ("Default"/"Alarm"/"Chime"), or
+        // otherwise-unknown key normalizes to it so a saved preference can never point at a sound that no
+        // longer exists.
+        const string fallback = "Digital Clock";
         if (string.IsNullOrWhiteSpace(value))
         {
-            return "Default";
+            return fallback;
         }
 
         var trimmed = value.Trim();
         return _alarmSoundOptions.Contains(trimmed, StringComparer.OrdinalIgnoreCase)
             ? _alarmSoundOptions.First(option => option.Equals(trimmed, StringComparison.OrdinalIgnoreCase))
-            : "Default";
+            : fallback;
     }
 
     private static bool IsSameDestination(SavedRoute route, GeocodingResult destination)

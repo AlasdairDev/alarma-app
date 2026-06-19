@@ -16,7 +16,7 @@ public class PreferencesService
 
     public string AlarmSound
     {
-        get => Preferences.Get(AlarmSoundKey, "Default");
+        get => Preferences.Get(AlarmSoundKey, "Digital Clock");
         set => Preferences.Set(AlarmSoundKey, value);
     }
 
