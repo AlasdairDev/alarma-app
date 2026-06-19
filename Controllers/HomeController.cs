@@ -2760,17 +2760,19 @@ public class HomeController : INotifyPropertyChanged
                    on the tile IMAGES did colour the map but dragged the dark CARTO street/place labels
                    off-colour and hurt legibility. So now we leave the CARTO "light" tiles completely untouched
                    — their crisp dark text stays perfectly readable — and float one violet sheet on top
-                   instead. It's a real <div> (not a pseudo-element, no blend mode), which the WebView always
-                   paints, so the daytime tint is dependable and even. We landed on a richer medium violet:
-                   the old wash was so faint the map barely read as themed, and the dark-mode tiles were the
-                   other extreme. This sits in the middle — enough colour to feel on-brand, but the opacity is
-                   still capped so the CARTO labels read straight through it. pointer-events:none lets every
+                   instead. It's a real <div> (not a pseudo-element), which the WebView always paints, so the
+                   daytime tint is dependable and even. The twist: a plain opaque wash was greying out the dark
+                   CARTO text (the word "MANILA" was washing into the violet), so we let the div blend with
+                   mix-blend-mode:multiply. Multiply keeps dark pixels dark — the street/place labels stay crisp
+                   and black — while only the lighter pixels (roads, water) pick up the violet. Multiply darkens
+                   the whole thing a touch, so we lightened the purple to rgba(160,120,220,0.70) to keep the map
+                   from going murky, with text legibility as the priority. pointer-events:none lets every
                    tap/drag fall through to the live map; and the z-index keeps it above the tiles while the
                    markers (the blue dot and the destination pin) still read clearly through it. #map's own
                    background is an on-brand light violet so the load-in flash already matches the theme before
                    the first tiles paint. */
                 #map{background:#D9CEEA}
-                #violet-tint{position:absolute;inset:0;background:rgba(90,40,140,0.40);pointer-events:none;z-index:300}
+                #violet-tint{position:absolute;inset:0;background:rgba(160,120,220,0.70);mix-blend-mode:multiply;pointer-events:none;z-index:300}
                 .leaflet-zoom-animated{transition:transform 0.4s cubic-bezier(0,0,0.25,1)!important}
                 .leaflet-interactive{will-change:transform;transition:none!important}
                 /* The dot is now driven frame-by-frame from JS (see _animateUserMarker), so we kill the
