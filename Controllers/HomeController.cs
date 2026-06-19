@@ -2802,14 +2802,16 @@ public class HomeController : INotifyPropertyChanged
                    background is an on-brand light violet so the load-in flash already matches the theme before
                    the first tiles paint. */
                 #map{background:#D9CEEA}
-                /* The legibility trick: hammer the raw tiles BEFORE the purple multiply lands on top. A pure
-                   contrast/brightness filter (no hue shift, so labels don't drift off-colour) — contrast(2.0)
-                   drives the grey CARTO text and streets to near-pure black, and brightness(0.85) pulls the
-                   tile down a touch so that blackness reads even harder. Because this happens underneath the
-                   tint, the now-jet-black text punches straight through the vivid violet multiply and stays
-                   hyper-visible, while the lighter areas still take the colour. Scoped to .leaflet-tile-pane so
-                   the markers (blue dot, destination pin) and the tint div stay untouched. */
-                .leaflet-tile-pane{filter:contrast(2.0) brightness(0.85)}
+                /* The legibility trick: nudge the raw tiles BEFORE the purple multiply lands on top. A pure
+                   contrast/brightness filter (no hue shift, so labels don't drift off-colour). We learned the
+                   hard way that cranking contrast too far (2.0) clipped the light-grey streets clean to white
+                   and gutted the basemap structure — so the heavy lifting is done by brightness(0.85→0.8),
+                   which deepens the dark text without blowing out the mid-greys, paired with a gentle
+                   contrast(1.3) that keeps the streets distinct from their background. The result still reads
+                   dark enough to punch through the violet multiply, but the road network survives the blend.
+                   Scoped to .leaflet-tile-pane so the markers (blue dot, destination pin) and the tint div
+                   stay untouched. */
+                .leaflet-tile-pane{filter:brightness(0.8) contrast(1.3)}
                 #violet-tint{position:absolute;inset:0;background:rgba(170,90,255,0.40);mix-blend-mode:multiply;pointer-events:none;z-index:300}
                 .leaflet-zoom-animated{transition:transform 0.4s cubic-bezier(0,0,0.25,1)!important}
                 .leaflet-interactive{will-change:transform;transition:none!important}
