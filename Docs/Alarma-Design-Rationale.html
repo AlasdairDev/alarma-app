@@ -200,7 +200,7 @@
     <strong>Project:</strong> Capstone &amp; Application Development<br>
     <strong>Program:</strong> BS Information Technology — Polytechnic University of the Philippines<br>
     <strong>Development Team:</strong> BS Information Technology Capstone Project Group<br>
-    <strong>Platform:</strong> Android (.NET MAUI, .NET 9) &nbsp;·&nbsp; <strong>Version:</strong> 1.0.0<br>
+    <strong>Platform:</strong> Android (.NET MAUI, .NET 9) &nbsp;·&nbsp; <strong>Version:</strong> 10.0.0<br>
     <strong>Document:</strong> Design &amp; Technology Justification
   </div>
 </section>
@@ -421,10 +421,11 @@
   </div>
 
   <div class="decision">
-    <h3>Why the onboarding layers split background from touch targets</h3>
-    <span class="choice">Chosen: back-layer Grid + InputTransparent</span>
-    <p class="why"><b>Why:</b> The tutorial illustrations first shipped in an aspect-fit box, which letterboxed them with black bars and — worse — left the image's container sitting over the Skip / Next / Get Started controls, swallowing every tap. The fix isolates each illustration into the back layer of a <code>Grid</code> with <code>Aspect="AspectFill"</code> so it fills the canvas edge-to-edge with no bars, and marks it <code>InputTransparent="True"</code> so the OS ignores it entirely for hit-testing. Foreground text and the navigation controls live in later layers with an explicit high <code>ZIndex</code>, so they always render on top and keep an unobstructed touch vector.</p>
-    <p class="why"><b>Over the alternatives:</b> Stacking everything in one flow layout is what caused the occlusion; absolute-positioning the buttons over an image would have re-broken on every new aspect ratio.</p>
+    <h3>Why the onboarding became a single asset-mapped image per slide</h3>
+    <span class="choice">Chosen: full-design PNG + transparent tap zones</span>
+    <p class="why"><b>Why:</b> The tutorial went through a few layouts — an aspect-fit box that letterboxed the art, then a layered <code>Grid</code> stack, then a <code>CarouselView</code>. Each design ran the title, subtitle and buttons as live MAUI controls drawn over the illustration, and every one had its own occlusion or input bug. The carousel was the worst offender: on Android its <code>RecyclerView</code> item containers are clickable, so the system click sound fired no matter <em>where</em> on the screen the rider tapped, not just on the buttons. We settled on the simplest design that can't go wrong: each slide is now a <b>single full-bleed PNG</b> (<code>onboarding_full_1…4.png</code>) with the title, subtitle, progress dots and the Skip / Next pills already baked into the artwork, mapped one-to-one from the reference mockups. The image is shown <code>Aspect="AspectFill"</code> with <b>no gesture recognizer</b>, so it silently absorbs every stray tap — no carousel, no screen-wide click sound. Only two transparent <code>Grid</code> tap zones are laid over the baked-in Skip and Next pills, so the click sound and the navigation now fire <em>only</em> on the buttons.</p>
+    <p class="why"><b>Updated navigation logic:</b> Tapping <em>Next</em> swaps the source to the next PNG; <em>Skip</em> jumps straight to the last slide. On the final slide both actions raise a modal consent popup carrying the <em>Privacy Policy</em> and <em>Terms &amp; Conditions</em> links plus an agreement checkbox — <em>Get Started</em> stays inert until it is ticked. Only then does onboarding persist <code>HasSeenTutorial</code> and <code>HasAgreedToTerms</code> and route to <code>//home</code>. <code>HomeView</code> keeps the gate: if either flag is unset it forwards back to onboarding, and once both are set it advances to the permissions-setup screen — so the legal consent can never be skipped.</p>
+    <p class="why"><b>Over the alternatives:</b> Keeping the carousel meant fighting the native click sound on every container; rebuilding the title/subtitle/dots as live controls re-invited the occlusion and alignment bugs that earlier layouts had. Baking the chrome into the image and swapping a single source is both pixel-faithful to the mockups and impossible to mis-hit-test.</p>
   </div>
 
   <div class="decision">
@@ -477,13 +478,13 @@
     <tr><td>SOS</td><td>Cellular SMS + discreet cue</td><td>Works offline; no backend; haptic/beep only, no ringer or DND hijack.</td></tr>
     <tr><td>Trip reliability</td><td>GPS enforcement + jitter-gated distance</td><td>Blocks dead trips when location is off; rejects GPS noise; clean state resets on stop.</td></tr>
     <tr><td>Iconography</td><td>Material Symbols font</td><td>Vector-sharp at any density; identical across OEMs.</td></tr>
-    <tr><td>Onboarding layout</td><td>AspectFill back-layer + InputTransparent</td><td>Full-bleed art with unobstructed touch targets.</td></tr>
+    <tr><td>Onboarding layout</td><td>Asset-mapped PNG + transparent tap zones</td><td>Full-bleed reference art; click sound and navigation fire only on the Skip/Next buttons; T&amp;C consent gate before home.</td></tr>
     <tr><td>Favorite accent</td><td>Gold-yellow #FFC107</td><td>High-contrast, recognizable favorited state.</td></tr>
     <tr><td>Release</td><td>AOT + full trim</td><td>Smaller, faster, harder to reverse-engineer.</td></tr>
   </table>
 
   <footer>
-    Alarma — Technical Design Rationale · BS Information Technology, Polytechnic University of the Philippines · Version 1.0.0<br>
+    Alarma — Technical Design Rationale · BS Information Technology, Polytechnic University of the Philippines · Version 10.0.0<br>
     Companion to README.md · This document explains the reasoning behind each technology and architecture decision.
   </footer>
 </section>
