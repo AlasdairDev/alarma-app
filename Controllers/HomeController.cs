@@ -2723,21 +2723,21 @@ public class HomeController : INotifyPropertyChanged
               <script src="leaflet.js"></script>
               <style>
                 html,body,#map{margin:0;padding:0;width:100%;height:100%;will-change:transform}
-                /* Light-violet "day" theme via a DIRECT tile filter.
-                   We previously tried tinting with a #7B3FA0 mix-blend-mode:multiply wash on a
-                   .leaflet-tile-pane::after pseudo-element — but the MAUI Android WebView silently ignored
-                   both the pseudo-element and the blend mode, so the map kept rendering pure white. A CSS
-                   filter applied straight to the tile IMAGES is the well-supported, can't-be-skipped path in
-                   the Chromium WebView, so that's what we use now:
-                     - sepia() colourises the near-grayscale CARTO "light" tiles (white→warm, grays→tan),
-                     - hue-rotate() swings that cast round to the app's ~277deg brand purple (#7B3FA0),
-                     - saturate() gives the violet real presence so it reads as purple, not washed-out grey,
-                     - a gentle brightness() keeps it soft and daytime-readable instead of the old dark map.
-                   The filter hits only the tiles, so the blue location dot and the destination pin (separate
-                   Leaflet panes) keep their true colours. #map's background is an on-brand light violet so
-                   the load-in flash already matches the theme before the first tiles paint. */
+                /* Light-violet "day" theme via a transparent tint DIV laid over the map.
+                   The road here: a #7B3FA0 mix-blend-mode:multiply wash on a .leaflet-tile-pane::after
+                   pseudo-element got silently dropped by the MAUI Android WebView, and a CSS filter() straight
+                   on the tile IMAGES did colour the map but dragged the dark CARTO street/place labels
+                   off-colour and hurt legibility. So now we leave the CARTO "light" tiles completely untouched
+                   — their crisp dark text stays perfectly readable — and float one soft violet sheet on top
+                   instead. It's a real <div> (not a pseudo-element, no blend mode), which the WebView always
+                   paints, so the daytime tint is dependable and even. The opacity is deliberately low so the
+                   labels underneath read straight through it; pointer-events:none lets every tap/drag fall
+                   through to the live map; and the z-index keeps it above the tiles while the markers (the blue
+                   dot and the destination pin) still read clearly through such a light wash. #map's own
+                   background is an on-brand light violet so the load-in flash already matches the theme before
+                   the first tiles paint. */
                 #map{background:#D9CEEA}
-                .leaflet-tile{filter:sepia(100%) hue-rotate(235deg) saturate(185%) brightness(108%)}
+                #violet-tint{position:absolute;inset:0;background:rgba(147,112,219,0.18);pointer-events:none;z-index:300}
                 .leaflet-zoom-animated{transition:transform 0.4s cubic-bezier(0,0,0.25,1)!important}
                 .leaflet-interactive{will-change:transform;transition:none!important}
                 /* The dot is now driven frame-by-frame from JS (see _animateUserMarker), so we kill the
@@ -2748,6 +2748,9 @@ public class HomeController : INotifyPropertyChanged
             </head>
             <body>
               <div id="map"></div>
+              <!-- Soft light-violet daytime tint. Floats over the map, ignores pointer events so taps and
+                   drags pass through, and stays low-opacity so the CARTO labels read straight through it. -->
+              <div id="violet-tint"></div>
               <script>
                 var map = L.map('map',{zoomControl:false}).setView([14.5995,120.9842],12);
                 var _layer=L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',{attribution:'&copy; OSM &copy; CARTO',subdomains:'abcd',maxZoom:19}).addTo(map);
