@@ -275,10 +275,12 @@ public class AndroidAlarmAudioService : IAlarmAudioService
             .Select((v, i) => i == 0 ? 0L : Math.Max(50L, (long)(v * scale)))
             .ToArray();
 
-        // Emergency (Stage 3) is a full-screen lockout that must keep buzzing until the rider slides to
-        // stop, so we loop the waveform (repeat index 0). Earlier stages buzz once (-1 = no repeat).
-        // DisableCriticalAudioAsync calls vibrator.Cancel(), which is what ends the Emergency loop.
-        var repeat = stage >= AlarmStage.Stage3 ? 0 : -1;
+        // Every stage now buzzes CONTINUOUSLY (repeat from index 0) until it's superseded by the next stage
+        // or the rider dismisses the alarm. A single one-shot buzz was too easy to sleep through, and Stage 1
+        // in particular "didn't seem to vibrate" because it fired once and went silent. Re-issuing Vibrate()
+        // for the next stage replaces the running waveform, and DisableCriticalAudioAsync (Slide to Stop /
+        // Stop Trip) calls vibrator.Cancel(), which is what finally ends the loop.
+        var repeat = 0;
 
         if (Build.VERSION.SdkInt >= BuildVersionCodes.O)
         {
@@ -309,7 +311,11 @@ public class AndroidAlarmAudioService : IAlarmAudioService
 
     private async Task PlayRingtoneAsync(string soundKey, AlarmStage stage, bool routeToEarphones)
     {
-        var isEmergency = stage >= AlarmStage.Stage3;
+        // Stage 2 AND the Emergency stage now LOOP until they're superseded or dismissed. Stage 2 used to ring
+        // exactly once, which a sleeping commuter could easily miss in the gap before the next escalation —
+        // it now keeps sounding until Stage 3 takes over or the rider slides to stop. (Looping is API 28+;
+        // on older devices it plays through once, the same limitation the emergency path always had.)
+        var shouldLoop = stage >= AlarmStage.Stage2;
 
         // Cancel any previous play so its delay callback doesn't stop a newer ringtone.
         CancellationToken myToken;
@@ -333,17 +339,18 @@ public class AndroidAlarmAudioService : IAlarmAudioService
             if (_ringtone is not null)
                 RouteThroughAlarmChannel(_ringtone, routeToEarphones);
 
-            // Emergency keeps sounding until the rider slides to stop, so loop the ringtone instead of
+            // Stage 2 + Emergency keep sounding until superseded/dismissed, so loop the ringtone instead of
             // letting it play through once. Looping is API 28+; on older devices it simply plays once.
-            if (_ringtone is not null && isEmergency && Build.VERSION.SdkInt >= BuildVersionCodes.P)
+            if (_ringtone is not null && shouldLoop && Build.VERSION.SdkInt >= BuildVersionCodes.P)
                 _ringtone.Looping = true;
 
             _ringtone?.Play();
         }
 
-        // Emergency: leave it looping. DisableCriticalAudioAsync (fired by Slide to Stop / Stop Trip)
-        // is what stops the ringtone and restores the ringer — we must NOT auto-stop it here.
-        if (isEmergency)
+        // Looping stages (Stage 2 + Emergency): leave them sounding. DisableCriticalAudioAsync (fired by
+        // Slide to Stop / Stop Trip) or the next stage taking over is what stops the ringtone and restores
+        // the ringer — we must NOT auto-stop it here.
+        if (shouldLoop)
             return;
 
         var duration = stage switch

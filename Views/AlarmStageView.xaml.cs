@@ -219,11 +219,30 @@ public partial class AlarmStageView : ContentPage
         await Shell.Current.GoToAsync("..", animate: false);
     }
 
-    // "Done" on the rerouting screen — tear down the recovery flow in the controller, then leave the
-    // full-screen alarm page the same way a normal dismiss does.
-    private async void OnReroutingDoneClicked(object? sender, EventArgs e)
+    // "Done" on the overshoot alert — the trip is over (the rider already passed their stop), so we END it
+    // outright rather than just hiding the prompt. StopTrackingCommand tears down the location service,
+    // silences the looping alarm, resets the overshoot state, and clears the destination, so the alarm can't
+    // come back to life the next time the app is opened. Then we leave this page.
+    private async void OnOvershootDoneClicked(object? sender, EventArgs e)
     {
-        _controller.FinishReroutingCommand.Execute(null);
+        await EndTripAndExitAsync();
+    }
+
+    // "Open in Google Maps" on the overshoot alert — hand off directions back to the stop FIRST, then end the
+    // trip the same way "Done" does. Both buttons close the trip out so the overshoot alarm never loops on
+    // return; this one just launches Maps on the way out.
+    private async void OnOvershootOpenMapsClicked(object? sender, EventArgs e)
+    {
+        _controller.OpenInGMapsCommand.Execute(null);
+        await EndTripAndExitAsync();
+    }
+
+    // Shared teardown for the overshoot buttons: stop the whole trip, then animate off this page.
+    private async Task EndTripAndExitAsync()
+    {
+        if (_isDismissing) return;
+        _isDismissing = true;
+        _controller.StopTrackingCommand.Execute(null);
         await Task.WhenAll(
             Content.FadeTo(0, 200, Easing.CubicIn),
             Content.TranslateTo(0, 40, 200, Easing.CubicIn));
