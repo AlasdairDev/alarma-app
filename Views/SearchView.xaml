@@ -10,18 +10,24 @@
 
     <Grid HorizontalOptions="Fill" VerticalOptions="Fill" RowDefinitions="Auto,Auto,*">
 
-        <!-- Header: back chevron + centered title -->
+        <!-- Header: back chevron + centered title. The chevron is a big, easy one-handed touch target —
+             a 56x56 button (above the 48dp accessibility minimum) with an oversized glyph — since commuters
+             tap it on the move. The side columns are kept equal (56 each) so the title stays truly centred. -->
         <Grid Grid.Row="0"
-              ColumnDefinitions="44,*,44"
+              ColumnDefinitions="56,*,56"
               Padding="8,48,8,8">
             <Button Grid.Column="0"
                     Text="&#8249;"
-                    FontSize="28"
+                    FontSize="40"
                     BackgroundColor="Transparent"
                     TextColor="White"
                     Padding="0"
-                    WidthRequest="44"
-                    HeightRequest="44"
+                    WidthRequest="56"
+                    HeightRequest="56"
+                    HorizontalOptions="Start"
+                    VerticalOptions="Center"
+                    SemanticProperties.Description="Back"
+                    SemanticProperties.Hint="Double tap to return to the previous screen"
                     Clicked="OnBackClicked" />
             <Label Grid.Column="1"
                    Text="Where to?"
