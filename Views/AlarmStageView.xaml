@@ -42,6 +42,28 @@
             </Border.GestureRecognizers>
         </Border>
 
+        <!-- Recenter / "Focus on Current Location" FAB — the exact same control as the main map page, so
+             the rider can snap the camera back to their live blue dot here too. Only shown during plain
+             tracking (IsNotAlarmActive) so it never sits on top of an alarm or overshoot overlay, and
+             lifted above the bottom trip sheet. CenterOnUserCommand raises CenterMapRequested, which the
+             code-behind runs against THIS page's own WebView. -->
+        <Button HorizontalOptions="End"
+                VerticalOptions="End"
+                Text="my_location"
+                FontFamily="MaterialSymbols"
+                FontSize="20"
+                WidthRequest="52"
+                HeightRequest="52"
+                CornerRadius="26"
+                BackgroundColor="White"
+                TextColor="#7B3FA0"
+                Margin="0,0,20,316"
+                Padding="0"
+                IsVisible="{Binding IsNotAlarmActive}"
+                SemanticProperties.Description="Center map on your location"
+                SemanticProperties.Hint="Double tap to center the map on your current GPS position"
+                Command="{Binding CenterOnUserCommand}" />
+
         <!-- Stage 3 WAKE UP red tint — hidden during overshoot dialogs (Figma 17 has clear map) -->
         <BoxView BackgroundColor="#881A0000"
                  IsVisible="{Binding IsStage3Wake}"

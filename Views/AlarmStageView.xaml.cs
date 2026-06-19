@@ -46,6 +46,9 @@ public partial class AlarmStageView : ContentPage
         // has its own WebView, separate from Home's — without this it never received location updates,
         // which is why the dot didn't show up here).
         _controller.LiveLocationUpdated += OnLiveLocationUpdated;
+        // The recenter FAB raises CenterMapRequested; this page has its own WebView, so we listen here
+        // and run centerOnUser against AlarmMapWebView (same as Home does for its map).
+        _controller.CenterMapRequested += OnCenterMapRequested;
         await Task.WhenAll(
             Content.FadeTo(1, 280, Easing.CubicOut),
             Content.TranslateTo(0, 0, 280, Easing.CubicOut));
@@ -69,6 +72,7 @@ public partial class AlarmStageView : ContentPage
         _controller.MapJsRequested -= OnMapJsRequested;
         _controller.PropertyChanged -= OnControllerPropertyChanged;
         _controller.LiveLocationUpdated -= OnLiveLocationUpdated;
+        _controller.CenterMapRequested -= OnCenterMapRequested;
         _stage3Announced = false;
     }
 
@@ -126,6 +130,15 @@ public partial class AlarmStageView : ContentPage
         var lon = loc.Lon.ToString("F6", CultureInfo.InvariantCulture);
         MainThread.BeginInvokeOnMainThread(async () =>
             await AlarmMapWebView.EvaluateJavaScriptAsync($"updateUserLocation({lat},{lon})"));
+    }
+
+    // Recenter FAB tapped — fly this map's camera back to the rider's current GPS position.
+    private void OnCenterMapRequested(object? sender, (double Lat, double Lon) loc)
+    {
+        var lat = loc.Lat.ToString("F6", CultureInfo.InvariantCulture);
+        var lon = loc.Lon.ToString("F6", CultureInfo.InvariantCulture);
+        MainThread.BeginInvokeOnMainThread(async () =>
+            await AlarmMapWebView.EvaluateJavaScriptAsync($"centerOnUser({lat},{lon})"));
     }
 
     protected override bool OnBackButtonPressed()

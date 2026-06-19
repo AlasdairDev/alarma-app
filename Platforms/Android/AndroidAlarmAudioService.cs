@@ -27,6 +27,15 @@ public class AndroidAlarmAudioService : IAlarmAudioService
     private RingerMode? _savedRingerMode;
     private CancellationTokenSource? _playCts;
 
+    // We ask the earphone service (the same one that drives the grey pill) whether earbuds / a wired
+    // headset are plugged in, so the alarm can pick the right output stream at trigger time.
+    private readonly IEarphoneService _earphoneService;
+
+    public AndroidAlarmAudioService(IEarphoneService earphoneService)
+    {
+        _earphoneService = earphoneService;
+    }
+
     // Preview playback (Settings) is kept completely separate from the trip alarm above so previewing a
     // sound can never touch the ringer mode the alarm relies on, nor get cut off by an alarm escalation.
     private readonly object _previewLock = new();
@@ -113,13 +122,23 @@ public class AndroidAlarmAudioService : IAlarmAudioService
                 lock (_ringtoneLock) { _savedRingerMode ??= audioManager.RingerMode; }
                 audioManager.RingerMode = RingerMode.Vibrate;
             }
-            else
+            // STREAM_ALARM always blasts the phone's own speaker by Android's design — even with earbuds
+            // in — so the alarm used to double up, playing out loud AND in the rider's ears. To stop that
+            // dual playback we check for earphones at the moment the alarm fires: if they're connected we
+            // send the audio down the MUSIC stream (which honours the earbuds and stays out of the
+            // speaker); if not, we use the ALARM stream so it punches through the phone speaker as normal.
+            var routeToEarphones = false;
+
+            if (!vibrationOnly)
             {
+                routeToEarphones = ShouldRouteToEarphones();
+                var targetStream = routeToEarphones ? AndroidStream.Music : AndroidStream.Alarm;
+
                 lock (_ringtoneLock) { _savedRingerMode ??= audioManager.RingerMode; }
                 audioManager.RingerMode = RingerMode.Normal;
-                var maxVolume = audioManager.GetStreamMaxVolume(AndroidStream.Alarm);
+                var maxVolume = audioManager.GetStreamMaxVolume(targetStream);
                 var targetVolume = GetStageVolume(stage, maxVolume);
-                audioManager.SetStreamVolume(AndroidStream.Alarm, targetVolume, VolumeNotificationFlags.ShowUi);
+                audioManager.SetStreamVolume(targetStream, targetVolume, VolumeNotificationFlags.ShowUi);
 
                 if (notificationManager?.IsNotificationPolicyAccessGranted == true)
                     notificationManager.SetInterruptionFilter(InterruptionFilter.All);
@@ -128,7 +147,7 @@ public class AndroidAlarmAudioService : IAlarmAudioService
             TriggerVibration(stage, vibrationIntensity);
             if (!vibrationOnly)
             {
-                await PlayRingtoneAsync(soundKey, stage);
+                await PlayRingtoneAsync(soundKey, stage, routeToEarphones);
             }
         });
     }
@@ -272,7 +291,23 @@ public class AndroidAlarmAudioService : IAlarmAudioService
         }
     }
 
-    private async Task PlayRingtoneAsync(string soundKey, AlarmStage stage)
+    // True when there's an external listening device (Bluetooth A2DP/LE or a wired/USB headset) plugged
+    // in right now. Reuses the same detection the earphone pill uses, so the routing decision and the UI
+    // always agree. Any failure falls back to "not connected" → the alarm plays through the speaker, which
+    // is the safe default (better a loud speaker alarm than a silent one).
+    private bool ShouldRouteToEarphones()
+    {
+        try
+        {
+            return _earphoneService.GetConnectionStatus().IsConnected;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private async Task PlayRingtoneAsync(string soundKey, AlarmStage stage, bool routeToEarphones)
     {
         var isEmergency = stage >= AlarmStage.Stage3;
 
@@ -291,10 +326,12 @@ public class AndroidAlarmAudioService : IAlarmAudioService
             var uri = GetRingtoneUri(soundKey);
             _ringtone = RingtoneManager.GetRingtone(AndroidApplication.Context, uri);
 
-            // Pin it to the alarm channel so Stage 3's maxed alarm volume actually applies (a ringtone
-            // would otherwise ride the ringer stream).
+            // Pin it to the right output: when earphones are in we tag it as MEDIA so it follows the
+            // MUSIC stream into the earbuds only; otherwise we tag it as ALARM so Stage 3's maxed alarm
+            // volume applies and it rides the speaker (a ringtone would otherwise default to the ringer
+            // stream).
             if (_ringtone is not null)
-                RouteThroughAlarmChannel(_ringtone);
+                RouteThroughAlarmChannel(_ringtone, routeToEarphones);
 
             // Emergency keeps sounding until the rider slides to stop, so loop the ringtone instead of
             // letting it play through once. Looping is API 28+; on older devices it simply plays once.
@@ -425,16 +462,19 @@ public class AndroidAlarmAudioService : IAlarmAudioService
         }
     }
 
-    // Forces a ringtone onto the ALARM usage/stream so it plays through the alarm channel we've maxed out
-    // (GetStageVolume → Stage 3 = max alarm volume), rather than the ringer stream a ringtone would
-    // default to. API 21+, so always available at our min SDK 26.
-    private static void RouteThroughAlarmChannel(Ringtone ringtone)
+    // Tags the ringtone with the audio attributes for whichever output we picked. ALARM usage rides the
+    // alarm channel we've maxed out (GetStageVolume → Stage 3 = max alarm volume) and hits the speaker;
+    // MEDIA usage follows the MUSIC stream so, with earbuds in, the sound stays in the rider's ears
+    // instead of also blaring out the phone speaker. API 21+, so always available at our min SDK 26.
+    private static void RouteThroughAlarmChannel(Ringtone ringtone, bool routeToEarphones)
     {
         try
         {
+            var usage = routeToEarphones ? AudioUsageKind.Media : AudioUsageKind.Alarm;
+            var contentType = routeToEarphones ? AudioContentType.Music : AudioContentType.Sonification;
             ringtone.AudioAttributes = new AudioAttributes.Builder()
-                .SetUsage(AudioUsageKind.Alarm)!
-                .SetContentType(AudioContentType.Sonification)!
+                .SetUsage(usage)!
+                .SetContentType(contentType)!
                 .Build();
         }
         catch

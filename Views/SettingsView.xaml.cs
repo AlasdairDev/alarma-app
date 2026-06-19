@@ -43,6 +43,35 @@ public partial class SettingsView : ContentPage
         _controller.PreviewSelectedSound();
     }
 
+    // Guards against the revert below re-triggering this handler when we snap the switch back to the real
+    // hardware state.
+    private bool _suppressBluetoothToggle;
+
+    // Two-way sync without ever silently flipping the adapter. The switch is OneWay-bound to the live
+    // hardware state, so when this fires we compare what the user just asked for against what the adapter
+    // is actually doing:
+    //   • already in agreement  → this was the hardware mirroring itself, nothing to do.
+    //   • they differ           → a real user request, so prompt the OS (system enable dialog / settings
+    //                             page) and snap the switch back to the true state. If the rider goes
+    //                             through with it, the BroadcastReceiver flips IsBluetoothOn and the
+    //                             switch follows; if they cancel, the switch is already back where it was.
+    private void OnBluetoothToggled(object? sender, ToggledEventArgs e)
+    {
+        if (_suppressBluetoothToggle) return;
+
+        var desired = e.Value;
+        var actual = _controller.IsBluetoothHardwareOn;
+        if (desired == actual) return; // just the switch echoing the hardware — leave it be
+
+        _controller.RequestBluetoothChange(desired);
+
+        // Revert immediately to the real state; only the actual hardware change (via the receiver) should
+        // move this switch. This is what makes it visually bounce back when the user denies the prompt.
+        _suppressBluetoothToggle = true;
+        BluetoothSwitch.IsToggled = actual;
+        _suppressBluetoothToggle = false;
+    }
+
     // Strip the native Android underline/background off the Picker so our rounded pill wrapper is the
     // only thing the user sees. No-op on other platforms.
     private void OnPickerHandlerChanged(object? sender, EventArgs e)

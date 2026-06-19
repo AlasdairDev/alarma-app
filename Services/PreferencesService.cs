@@ -13,6 +13,7 @@ public class PreferencesService
     private const string HasAgreedToTermsKey = "has_agreed_to_terms";
     private const string HasCompletedPermissionsSetupKey = "has_completed_permissions_setup";
     private const string HasSeenSosWarningKey = "has_seen_sos_warning";
+    private const string RecentSearchesKey = "recent_searches";
 
     public string AlarmSound
     {
@@ -70,6 +71,15 @@ public class PreferencesService
     {
         get => Preferences.Get(HasSeenSosWarningKey, false);
         set => Preferences.Set(HasSeenSosWarningKey, value);
+    }
+
+    // The rider's last few destination picks, stored as a JSON blob. The controller is the one that
+    // serializes/deserializes the list and enforces the 5-item cap — here we just keep the raw string so
+    // the recent-searches list survives an app restart. Empty string means "nothing saved yet".
+    public string RecentSearchesJson
+    {
+        get => Preferences.Get(RecentSearchesKey, string.Empty);
+        set => Preferences.Set(RecentSearchesKey, value);
     }
 
 }

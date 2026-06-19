@@ -115,6 +115,70 @@
                          Margin="16,0,16,4"
                          Opacity="0.8" />
 
+                <!-- Recent searches — only shown while the box is empty (ShowRecentSearches). Tapping a row
+                     re-selects that destination through the same handler as a live result. Capped at 5 in
+                     the controller, so this list never grows past a handful of rows. -->
+                <VerticalStackLayout IsVisible="{Binding ShowRecentSearches}"
+                                     Spacing="0">
+                    <Label Text="Recent Searches"
+                           TextColor="#C0A8E8"
+                           FontSize="12"
+                           FontAttributes="Bold"
+                           Margin="16,8,16,2" />
+                    <CollectionView ItemsSource="{Binding RecentSearches}">
+                        <CollectionView.ItemTemplate>
+                            <DataTemplate x:DataType="services:GeocodingResult">
+                                <Grid ColumnDefinitions="Auto,*"
+                                      Padding="16,10"
+                                      BackgroundColor="Transparent">
+
+                                    <Border Grid.Column="0"
+                                            BackgroundColor="#3D2B5E"
+                                            StrokeShape="Ellipse"
+                                            Stroke="Transparent"
+                                            WidthRequest="44"
+                                            HeightRequest="44">
+                                        <Label Text="history"
+                                               FontFamily="MaterialSymbols"
+                                               FontSize="18"
+                                               TextColor="#C8B8E8"
+                                               HorizontalOptions="Center"
+                                               VerticalOptions="Center" />
+                                    </Border>
+
+                                    <VerticalStackLayout Grid.Column="1"
+                                                         Margin="14,0,0,0"
+                                                         Spacing="2"
+                                                         VerticalOptions="Center">
+                                        <Label Text="{Binding DisplayName}"
+                                               TextColor="White"
+                                               FontSize="14"
+                                               FontAttributes="Bold"
+                                               LineBreakMode="TailTruncation"
+                                               MaxLines="2" />
+                                        <Label Text="{Binding PlaceType}"
+                                               TextColor="#D4C4F0"
+                                               FontSize="11"
+                                               LineBreakMode="TailTruncation">
+                                            <Label.Triggers>
+                                                <DataTrigger TargetType="Label"
+                                                             Binding="{Binding PlaceType}"
+                                                             Value="{x:Null}">
+                                                    <Setter Property="IsVisible" Value="False" />
+                                                </DataTrigger>
+                                            </Label.Triggers>
+                                        </Label>
+                                    </VerticalStackLayout>
+
+                                    <Grid.GestureRecognizers>
+                                        <TapGestureRecognizer Tapped="OnResultTapped" />
+                                    </Grid.GestureRecognizers>
+                                </Grid>
+                            </DataTemplate>
+                        </CollectionView.ItemTemplate>
+                    </CollectionView>
+                </VerticalStackLayout>
+
                 <!-- Search results list -->
                 <CollectionView ItemsSource="{Binding SearchResults}"
                                 IsVisible="{Binding HasSearchResults}">
