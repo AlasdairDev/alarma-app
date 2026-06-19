@@ -2,7 +2,6 @@
 <ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
              xmlns:local="clr-namespace:AlarmaApp.Views"
-             xmlns:toolkit="http://schemas.microsoft.com/dotnet/2022/maui/toolkit"
              x:Class="AlarmaApp.Views.OnboardingView"
              x:Name="ThisPage"
              Shell.NavBarIsVisible="False"
@@ -11,24 +10,22 @@
 
     <ContentPage.Resources>
 
-        <toolkit:InvertedBoolConverter x:Key="InvertedBoolConverter" />
-
         <!-- Single template: the illustration bleeds across the top 55%; the title, subtitle
-             and controls float over the master grid background below. Skip/Next show on
-             slides 1-3, the legal panel only on the last slide. -->
+             and controls float directly over the global grid below. Skip/Next hide on the
+             final slide via a DataTrigger; the legal panel shows only there. -->
         <DataTemplate x:Key="SlideTemplate">
             <Grid RowDefinitions="55*, 45*"
                   WidthRequest="{Binding Source={x:Reference OnboardingCarousel}, Path=Width}">
 
-                <!-- TOP ILLUSTRATION: edge-to-edge, no pillarbox borders -->
+                <!-- TOP ILLUSTRATION: edge-to-edge, no pillarboxing -->
                 <Image Grid.Row="0"
                        Source="{Binding ImageSource}"
                        Aspect="AspectFill"
                        HorizontalOptions="Fill"
                        VerticalOptions="Fill" />
 
-                <!-- BOTTOM CONTENT: floats over the grid background -->
-                <Grid Grid.Row="1" Padding="24,30,24,30">
+                <!-- BOTTOM FLOATING TEXT -->
+                <Grid Grid.Row="1" Padding="20,45,20,20">
 
                     <VerticalStackLayout VerticalOptions="Start">
                         <Label Text="{Binding Title}"
@@ -38,15 +35,20 @@
                                HorizontalTextAlignment="Center" />
                         <Label Text="{Binding Subtitle}"
                                FontSize="16"
-                               TextColor="#B0A8C0"
+                               TextColor="#A098B0"
                                HorizontalTextAlignment="Center"
                                LineBreakMode="WordWrap"
                                Margin="0,0,0,30" />
 
-                        <!-- Skip / Next: hidden on the final slide, no background card -->
-                        <Grid ColumnDefinitions="*,*"
-                              ColumnSpacing="14"
-                              IsVisible="{Binding IsLastSlide, Converter={StaticResource InvertedBoolConverter}}">
+                        <!-- Skip / Next: no background card; hidden on the final slide -->
+                        <Grid ColumnDefinitions="*,*" ColumnSpacing="14">
+                            <Grid.Triggers>
+                                <DataTrigger TargetType="Grid"
+                                             Binding="{Binding IsLastSlide}"
+                                             Value="True">
+                                    <Setter Property="IsVisible" Value="False" />
+                                </DataTrigger>
+                            </Grid.Triggers>
                             <Button Grid.Column="0"
                                     Text="Skip"
                                     FontSize="16"
@@ -68,20 +70,20 @@
                         </Grid>
                     </VerticalStackLayout>
 
-                    <!-- SLIDE 4 TERMS PANEL: flush dark card snapped to the bottom/side edges -->
+                    <!-- SLIDE 4 TERMS PANEL: flush dark card snapped to bottom/side edges -->
                     <Border IsVisible="{Binding IsLastSlide}"
                             VerticalOptions="End"
                             BackgroundColor="#170F26"
                             StrokeThickness="0"
                             StrokeShape="RoundRectangle 24,24,0,0"
-                            Padding="24,20,24,40"
-                            Margin="-24,0,-24,-30">
+                            Padding="20,20,20,40"
+                            Margin="-20,0,-20,-20">
                         <VerticalStackLayout Spacing="14">
                             <Label FontSize="12"
                                    HorizontalTextAlignment="Center">
                                 <Label.FormattedText>
                                     <FormattedString>
-                                        <Span Text="Read our " TextColor="#B0A8C0" />
+                                        <Span Text="Read our " TextColor="#A098B0" />
                                         <Span Text="Privacy Policy"
                                               TextColor="#C39BE8"
                                               TextDecorations="Underline">
@@ -89,7 +91,7 @@
                                                 <TapGestureRecognizer Tapped="OnPrivacyPolicyLinkTapped" />
                                             </Span.GestureRecognizers>
                                         </Span>
-                                        <Span Text=" and " TextColor="#B0A8C0" />
+                                        <Span Text=" and " TextColor="#A098B0" />
                                         <Span Text="Terms &amp; Conditions"
                                               TextColor="#C39BE8"
                                               TextDecorations="Underline">
@@ -106,7 +108,7 @@
                                           CheckedChanged="OnAgreeCheckChanged"
                                           VerticalOptions="Center" />
                                 <Label Text="I have read and agree to the Terms and Conditions and Privacy Policy."
-                                       FontSize="13"
+                                       FontSize="14"
                                        MaximumWidthRequest="280"
                                        TextColor="#C8B8E8"
                                        VerticalOptions="Center"
@@ -129,6 +131,7 @@
         </DataTemplate>
     </ContentPage.Resources>
 
+    <!-- ROOT: global grid background (page level) + carousel + invisible dots overlay -->
     <Grid>
         <CarouselView x:Name="OnboardingCarousel"
                       BackgroundColor="Transparent"
@@ -149,14 +152,17 @@
             </CarouselView.ItemsLayout>
         </CarouselView>
 
-        <!-- Dots sit on the horizontal seam between the illustration and the text -->
-        <IndicatorView x:Name="indicatorView"
-                       MaximumVisible="4"
-                       IndicatorColor="#5A4080"
-                       SelectedIndicatorColor="White"
-                       IndicatorSize="8"
-                       HorizontalOptions="Center"
-                       VerticalOptions="Center"
-                       Margin="0,40,0,0" />
+        <!-- Invisible overlay mirrors the 55*/45* split so the dots lock onto the seam -->
+        <Grid InputTransparent="True" RowDefinitions="55*, 45*">
+            <IndicatorView x:Name="indicatorView"
+                           Grid.Row="1"
+                           MaximumVisible="4"
+                           IndicatorColor="#5A4080"
+                           SelectedIndicatorColor="White"
+                           IndicatorSize="8"
+                           HorizontalOptions="Center"
+                           VerticalOptions="Start"
+                           Margin="0,15,0,0" />
+        </Grid>
     </Grid>
 </ContentPage>
