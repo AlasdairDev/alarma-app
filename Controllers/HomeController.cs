@@ -2723,11 +2723,19 @@ public class HomeController : INotifyPropertyChanged
               <script src="leaflet.js"></script>
               <style>
                 html,body,#map{margin:0;padding:0;width:100%;height:100%;will-change:transform}
-                /* Day mode: a light loading backdrop behind the tiles so there's no dark flash before they
-                   paint, and NO colour filter on the tiles themselves — the dark purple sepia/hue-rotate
-                   filter that used to live here is what made the map hard to read in morning sunlight. */
-                #map{background:#e9e6df}
-                .leaflet-tile{filter:none}
+                /* Soft light-violet "day" theme. The pure-white light tiles were too glaring (and off-brand),
+                   the old dark-purple filter was too dark to read in sunlight — so we keep the light, readable
+                   base tiles and lay a gentle violet wash over them:
+                     - #map background is an on-brand light violet, so the load-in flash matches the theme.
+                     - tiles get only a tiny brightness/saturate lift to stay crisp and daytime-readable.
+                     - the violet itself comes from a low-opacity multiply overlay on the TILE pane only. We
+                       scope it to .leaflet-tile-pane::after (z-index below the overlay/marker panes) so the
+                       wash tints the whole map evenly — white gaps included — WITHOUT muddying the blue
+                       location dot or the destination pin, which live in the panes above it. */
+                #map{background:#ECE7F6}
+                .leaflet-tile{filter:brightness(1.03) saturate(1.05)}
+                .leaflet-tile-pane{position:absolute}
+                .leaflet-tile-pane::after{content:"";position:absolute;inset:0;background:#7B3FA0;opacity:0.12;mix-blend-mode:multiply;pointer-events:none}
                 .leaflet-zoom-animated{transition:transform 0.4s cubic-bezier(0,0,0.25,1)!important}
                 .leaflet-interactive{will-change:transform;transition:none!important}
                 /* The dot is now driven frame-by-frame from JS (see _animateUserMarker), so we kill the
