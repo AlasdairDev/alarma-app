@@ -4,7 +4,7 @@
 > Capstone & Application-Development Project — Bachelor of Science in Information Technology,
 > Polytechnic University of the Philippines.
 >
-> **Release:** v7.0 (Final Panel Defense Build) · **Platform:** Android 8.0+ (API 26–35) ·
+> **Release:** v10.0.0 · **Platform:** Android 8.0+ (API 26–35) ·
 > **Stack:** .NET MAUI 9 / C# / MVC · **Quality gate:** 268 passing xUnit tests.
 
 ---
@@ -252,7 +252,7 @@ platform implementations under `Platforms/Android`, and dependency injection is 
 | Minimum OS | Android 8.0 (API 26) |
 | Target OS | Android 15 (API 35) |
 | Application ID | `com.alarma.app` |
-| Release | v7.0 (Final Panel Defense Build) |
+| Release | v10.0.0 |
 | Out of scope | iOS, web, desktop |
 
 ### Release hardening pipeline
@@ -309,9 +309,16 @@ adb install -r "bin/Release/net9.0-android/publish/com.alarma.app-Signed.apk"
 The `-r` flag reinstalls over an existing copy while preserving data. **Manual install:** transfer the
 APK to the device, open it with a file manager (with *Install unknown apps* enabled), and confirm.
 
-### 6.4 First-run permissions
+### 6.4 First-run onboarding & permissions
 
-On first launch the app guides the user through granting location (including background),
+On first launch the app opens a short, swipe-free onboarding flow. Each slide is a single full-bleed
+illustration mapped one-to-one from the design mockups, with Skip and Next as transparent tap zones over
+the artwork — so navigation (and the system click sound) fires only on the buttons, never across the
+screen. The final slide raises a consent popup linking the **Privacy Policy** and **Terms & Conditions**;
+the *Get Started* button stays inert until the agreement checkbox is ticked. `HomeView` enforces this as
+a gate — onboarding and the legal consent cannot be skipped before the app initializes.
+
+Immediately after, the app guides the user through granting location (including background),
 notifications, and SMS permissions, and offers a battery-optimization exemption. All permissions are
 explained in context; location and SMS are central to the destination-alarm and emergency-SOS features.
 
