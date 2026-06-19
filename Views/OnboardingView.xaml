@@ -2,6 +2,7 @@
 <ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
              xmlns:local="clr-namespace:AlarmaApp.Views"
+             xmlns:toolkit="http://schemas.microsoft.com/dotnet/2022/maui/toolkit"
              x:Class="AlarmaApp.Views.OnboardingView"
              x:Name="ThisPage"
              Shell.NavBarIsVisible="False"
@@ -9,6 +10,8 @@
              BackgroundImageSource="onboarding_grid.png">
 
     <ContentPage.Resources>
+
+        <toolkit:InvertedBoolConverter x:Key="InvertedBoolConverter" />
 
         <!-- Single template: the illustration bleeds across the top 55%; the title, subtitle
              and controls float over the master grid background below. Skip/Next show on
@@ -43,7 +46,7 @@
                         <!-- Skip / Next: hidden on the final slide, no background card -->
                         <Grid ColumnDefinitions="*,*"
                               ColumnSpacing="14"
-                              IsVisible="{Binding IsNotLastSlide}">
+                              IsVisible="{Binding IsLastSlide, Converter={StaticResource InvertedBoolConverter}}">
                             <Button Grid.Column="0"
                                     Text="Skip"
                                     FontSize="16"
