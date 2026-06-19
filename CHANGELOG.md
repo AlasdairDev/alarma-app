@@ -3,6 +3,42 @@
 All notable changes to Alarma are recorded here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.2.0] - 2026-06-19
+
+Final defense hardening: the SOS, 911, Bluetooth, and alarm-audio paths now use true native Android
+behaviours end to end, with no reliance on the user finishing the job in another app.
+
+### Added
+
+- **True background auto-SMS.** The SOS now sends instantly in the background through
+  `Android.Telephony.SmsManager` (multipart-aware) — the rider no longer has to open the messaging app
+  and tap *Send*. The restricted `SEND_SMS` permission is requested natively, in context, right before
+  the first send, and the "sent" `PendingIntent` is created `FLAG_IMMUTABLE` for Android 12+ compliance.
+- **Bluetooth ACL hardware sync.** A single `BroadcastReceiver` now also listens for
+  `ACTION_ACL_CONNECTED` / `ACTION_ACL_DISCONNECTED` alongside the adapter state, so plugging earbuds in
+  or pulling them out flashes an *Earphones Connected* / *Earphones Disconnected* grey-pill and keeps the
+  Settings toggle mirrored to the real hardware.
+- **Bundled loud alarm assets.** *Buzzer* and *Siren* are now real audio files shipped in `res/raw`,
+  pinned to the alarm channel so Stage 3 plays them at maximum alarm volume on every device.
+
+### Changed
+
+- **Offline-safe, URL-free SOS message.** The SOS body no longer carries a Google Maps link (carriers
+  routinely block link-laden SMS). Online it reverse-geocodes the rider's *live* location into a real
+  street address — *"EMERGENCY! I need help near {address}."* — and falls back, when offline, to plain
+  coordinates a contact can paste into any map app.
+- **Replaced *Chime* with *Buzzer*.** The gentle Chime tone was retired from the picker in favour of a
+  loud, aggressive buzzer better suited to waking a sleeping commuter.
+
+### Fixed
+
+- **Bulletproof 911 dialer.** A `<queries>` `DIAL`/`tel` declaration in the manifest stops Android 11+
+  package-visibility from hiding the dialer, and *Call 911* now uses `Launcher.OpenAsync("tel:911")`,
+  surfacing a transient *"Dialer not found on this device"* grey-pill if no dialer can be resolved.
+- **Backup restore no longer downgrades the alarm sound.** The backup whitelist was out of sync with the
+  real options (it still listed *Chime* and omitted *Bell*/*Siren*/*Buzzer*), which silently reset a
+  saved choice to *Default* on restore. It now mirrors the picker exactly.
+
 ## [1.1.0] - 2026-06-19
 
 This release is our final capstone-defense polish: it puts data ownership in the commuter's hands,

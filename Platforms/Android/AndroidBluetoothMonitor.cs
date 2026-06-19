@@ -1,8 +1,11 @@
-// Real-time Bluetooth adapter watcher. We register a BroadcastReceiver for the system's
-// ACTION_STATE_CHANGED broadcast (the OS fires it whenever Bluetooth is toggled) and surface a clean
-// ON/OFF event to the controller. Reading the adapter's enabled state and receiving this broadcast need
-// no runtime permission prompt — only active scanning/connecting would. Nothing here is native Java: it
-// is all C# against the Android bindings, the same way every other service in Platforms/Android works.
+// Real-time Bluetooth hardware watcher. A single BroadcastReceiver listens for three system broadcasts:
+//   • ACTION_STATE_CHANGED      — the adapter itself toggling on/off (drives the Settings switch)
+//   • ACTION_ACL_CONNECTED      — a device linking (earbuds put in)
+//   • ACTION_ACL_DISCONNECTED   — a device unlinking (earbuds taken out)
+// and surfaces clean events to the controller. Reading the adapter state and receiving these broadcasts
+// need no runtime permission prompt — only active scanning/connecting or reading the connected device's
+// details would, and we deliberately never read EXTRA_DEVICE. Everything here is C# against the Android
+// bindings, the same way every other service in Platforms/Android works.
 
 using AlarmaApp.Services;
 using AlarmaApp.Services.Interfaces;
@@ -18,6 +21,7 @@ public class AndroidBluetoothMonitor : IBluetoothMonitor
     private StateReceiver? _receiver;
 
     public event EventHandler<bool>? StateChanged;
+    public event EventHandler? DeviceConnectionChanged;
 
     public bool IsEnabled
     {
@@ -43,11 +47,17 @@ public class AndroidBluetoothMonitor : IBluetoothMonitor
 
         try
         {
-            _receiver = new StateReceiver(isOn => StateChanged?.Invoke(this, isOn));
-            var filter = new IntentFilter(BluetoothAdapter.ActionStateChanged);
+            _receiver = new StateReceiver(
+                isOn => StateChanged?.Invoke(this, isOn),
+                () => DeviceConnectionChanged?.Invoke(this, EventArgs.Empty));
 
-            // API 33+ requires an explicit export flag. This is a system broadcast meant only for us,
-            // so it's registered NotExported.
+            var filter = new IntentFilter();
+            filter.AddAction(BluetoothAdapter.ActionStateChanged);
+            filter.AddAction(BluetoothDevice.ActionAclConnected);
+            filter.AddAction(BluetoothDevice.ActionAclDisconnected);
+
+            // API 33+ requires an explicit export flag. These are system broadcasts meant only for us,
+            // so the receiver is registered NotExported.
             if (Build.VERSION.SdkInt >= BuildVersionCodes.Tiramisu)
                 AndroidApplication.Context.RegisterReceiver(_receiver, filter, ReceiverFlags.NotExported);
             else
@@ -69,19 +79,36 @@ public class AndroidBluetoothMonitor : IBluetoothMonitor
 
     private sealed class StateReceiver : BroadcastReceiver
     {
-        private readonly Action<bool> _onChanged;
-        public StateReceiver(Action<bool> onChanged) => _onChanged = onChanged;
+        private readonly Action<bool> _onStateChanged;
+        private readonly Action _onDeviceChanged;
+
+        public StateReceiver(Action<bool> onStateChanged, Action onDeviceChanged)
+        {
+            _onStateChanged = onStateChanged;
+            _onDeviceChanged = onDeviceChanged;
+        }
 
         public override void OnReceive(Context? context, Intent? intent)
         {
-            if (intent?.Action != BluetoothAdapter.ActionStateChanged) return;
+            switch (intent?.Action)
+            {
+                case BluetoothAdapter.ActionStateChanged:
+                    // Only report the settled ON / OFF states — ignore transient TURNING_ON / TURNING_OFF.
+                    var state = intent.GetIntExtra(BluetoothAdapter.ExtraState, (int)State.Off);
+                    if (state == (int)State.On)
+                        _onStateChanged(true);
+                    else if (state == (int)State.Off)
+                        _onStateChanged(false);
+                    break;
 
-            // Only report the settled ON / OFF states — ignore the transient TURNING_ON / TURNING_OFF.
-            var state = intent.GetIntExtra(BluetoothAdapter.ExtraState, (int)State.Off);
-            if (state == (int)State.On)
-                _onChanged(true);
-            else if (state == (int)State.Off)
-                _onChanged(false);
+                case var a when a == BluetoothDevice.ActionAclConnected
+                             || a == BluetoothDevice.ActionAclDisconnected:
+                    // A device linked or unlinked. We don't trust the raw broadcast to mean "earbuds" —
+                    // the listener re-queries the real audio-output state to decide. (We never touch
+                    // EXTRA_DEVICE, so no BLUETOOTH_CONNECT permission is involved.)
+                    _onDeviceChanged();
+                    break;
+            }
         }
     }
 }

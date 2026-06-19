@@ -130,6 +130,50 @@ public class GeocodingService
                 new("University of Santo Tomas, Manila", 14.6097, 120.9895, "University"),
         };
 
+    // Reverse-geocode a live coordinate into a short, human-readable street address for the SOS body.
+    // Uses the platform geocoder (IGeocoding.GetPlacemarksAsync) — on Android that's the Google-backed
+    // Geocoder, which needs the network. Returns null when it can't resolve an address (offline, no
+    // match) so the caller can strictly fall back to raw coordinates per the offline-safe spec.
+    public async Task<string?> ReverseGeocodeAddressAsync(double latitude, double longitude)
+    {
+        try
+        {
+            var placemarks = await Microsoft.Maui.Devices.Sensors.Geocoding.Default
+                .GetPlacemarksAsync(latitude, longitude);
+            var placemark = placemarks?.FirstOrDefault();
+            if (placemark is null) return null;
+
+            // Assemble "{house no.} {street}, {barangay}, {city}" from the richest fields present, in
+            // most-specific-first order, skipping any the geocoder left blank.
+            var street = JoinNonEmpty(placemark.SubThoroughfare, placemark.Thoroughfare);
+            var parts = new[]
+            {
+                street,
+                placemark.SubLocality,   // barangay / district
+                placemark.Locality,      // city / municipality
+                placemark.AdminArea      // province / region
+            };
+
+            var address = string.Join(", ",
+                parts.Where(p => !string.IsNullOrWhiteSpace(p))
+                     .Select(p => p!.Trim())
+                     .Take(3)); // keep it concise — street + barangay + city is plenty to find someone
+            return string.IsNullOrWhiteSpace(address) ? null : address;
+        }
+        catch (Exception ex)
+        {
+            BlackBoxLogger.RecordHandledException(ex, "[GeocodingService.ReverseGeocodeAddressAsync]");
+            return null;
+        }
+    }
+
+    private static string? JoinNonEmpty(string? a, string? b)
+    {
+        if (string.IsNullOrWhiteSpace(a)) return b;
+        if (string.IsNullOrWhiteSpace(b)) return a;
+        return $"{a.Trim()} {b.Trim()}";
+    }
+
     public async Task<IReadOnlyList<GeocodingResult>> SearchAsync(
         string query, CancellationToken cancellationToken)
     {
