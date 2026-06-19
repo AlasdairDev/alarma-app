@@ -47,29 +47,39 @@ public partial class SettingsView : ContentPage
     // hardware state.
     private bool _suppressBluetoothToggle;
 
-    // Two-way sync without ever silently flipping the adapter. The switch is OneWay-bound to the live
-    // hardware state, so when this fires we compare what the user just asked for against what the adapter
-    // is actually doing:
-    //   • already in agreement  → this was the hardware mirroring itself, nothing to do.
-    //   • they differ           → a real user request, so prompt the OS (system enable dialog / settings
-    //                             page) and snap the switch back to the true state. If the rider goes
-    //                             through with it, the BroadcastReceiver flips IsBluetoothOn and the
-    //                             switch follows; if they cancel, the switch is already back where it was.
+    // STRICT two-way sync. The switch is a pure read-out of the Bluetooth ADAPTER — a tap must never move it
+    // on its own. The only thing allowed to move this switch is the BroadcastReceiver confirming the hardware
+    // actually changed (OnBluetoothStateChanged → IsBluetoothOn → the OneWay binding).
+    //
+    // So on every tap we do two things, in order:
+    //   1. Snap the switch straight back to the live adapter state, ALWAYS — whatever the user tapped. This
+    //      is what makes it look like the switch never reacted to the tap at all (no flip, no flicker). We
+    //      also re-assert IsBluetoothOn from the live adapter so the bound mirror can't drift out of sync
+    //      with the real hardware if a broadcast was ever missed.
+    //   2. If the tap actually requested a DIFFERENT state, hand the real change to the OS — the system
+    //      "turn Bluetooth on?" dialog (ACTION_REQUEST_ENABLE) when enabling, or the Bluetooth settings page
+    //      when disabling. We never call BluetoothAdapter.Enable()/Disable() ourselves (blocked + crashes on
+    //      Android 13+). If the rider goes through with the prompt, the receiver flips the switch for real; if
+    //      they cancel, the switch is already sitting on the true state.
     private void OnBluetoothToggled(object? sender, ToggledEventArgs e)
     {
         if (_suppressBluetoothToggle) return;
 
-        var desired = e.Value;
-        var actual = _controller.IsBluetoothHardwareOn;
-        if (desired == actual) return; // just the switch echoing the hardware — leave it be
+        var requested = e.Value;
+        var hardware = _controller.IsBluetoothHardwareOn; // live adapter truth, read right now
 
-        _controller.RequestBluetoothChange(desired);
+        // Keep the bound mirror locked to the real adapter state before we touch the control.
+        if (_controller.IsBluetoothOn != hardware)
+            _controller.IsBluetoothOn = hardware;
 
-        // Revert immediately to the real state; only the actual hardware change (via the receiver) should
-        // move this switch. This is what makes it visually bounce back when the user denies the prompt.
+        // (1) Revert the visual to hardware no matter what was tapped — the switch only ever shows the truth.
         _suppressBluetoothToggle = true;
-        BluetoothSwitch.IsToggled = actual;
+        BluetoothSwitch.IsToggled = hardware;
         _suppressBluetoothToggle = false;
+
+        // (2) Only a tap that asks for a genuinely different state triggers the OS prompt.
+        if (requested != hardware)
+            _controller.RequestBluetoothChange(requested);
     }
 
     // Strip the native Android underline/background off the Picker so our rounded pill wrapper is the
