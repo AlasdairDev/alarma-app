@@ -57,6 +57,9 @@ public class HomeController : INotifyPropertyChanged
     // Arrival (Stage 2) must be seen on this many consecutive fixes before it latches, so a single
     // outlier fix that lands near the destination can't falsely mark arrival (and then overshoot).
     private const int ArrivalPersistenceFixes = 2;
+    // Stage 3 (the full-screen WAKE UP) now fires well before the stop — around 1/3 of the lead distance —
+    // so it too is held across a couple of fixes to shrug off a single GPS outlier before locking the screen.
+    private const int Stage3PersistenceFixes = 2;
     // How many consecutive increasing-distance fixes past the stop confirm a genuine overshoot.
     private const int OvershootIncreasePersistenceFixes = 3;
 
@@ -113,14 +116,10 @@ public class HomeController : INotifyPropertyChanged
     private bool _routeDeviationAlerted;
     private int _deviationAwayStreak;
     private int _arrivalStreak;
+    // Consecutive fixes inside the Stage-3 ring; gates the WAKE UP lockout so one stray fix can't trip it.
+    private int _stage3Streak;
     private bool _isOvershootPending;
     private bool _isOvershootConfirmed;
-    // The two new recovery-flow screens that follow a confirmed overshoot.
-    private bool _isAreaSafetyVisible;
-    private bool _isReroutingVisible;
-    private string _areaSafetyText = string.Empty;
-    private string _reroutingHeadingText = string.Empty;
-    private readonly ObservableCollection<string> _reroutingSteps = new();
     private string _overshootDistanceText = string.Empty;
     private string _chipDistanceText = string.Empty;
     private AlarmStage _currentAlarmStage = AlarmStage.None;
@@ -176,51 +175,7 @@ public class HomeController : INotifyPropertyChanged
     }
 
     public bool IsStage3Wake => IsStage3Active
-        && !_isOvershootPending && !_isOvershootConfirmed
-        && !_isAreaSafetyVisible && !_isReroutingVisible;
-
-    // ── Overshoot recovery flow screens ───────────────────────────────────────
-    public bool IsAreaSafetyVisible
-    {
-        get => _isAreaSafetyVisible;
-        private set
-        {
-            if (SetProperty(ref _isAreaSafetyVisible, value))
-            {
-                OnPropertyChanged(nameof(IsStage3Wake));
-                OnPropertyChanged(nameof(IsChipVisible));
-                OnPropertyChanged(nameof(TopStatusLabel));
-            }
-        }
-    }
-
-    public bool IsReroutingVisible
-    {
-        get => _isReroutingVisible;
-        private set
-        {
-            if (SetProperty(ref _isReroutingVisible, value))
-            {
-                OnPropertyChanged(nameof(IsStage3Wake));
-                OnPropertyChanged(nameof(IsChipVisible));
-                OnPropertyChanged(nameof(TopStatusLabel));
-            }
-        }
-    }
-
-    public string AreaSafetyText
-    {
-        get => _areaSafetyText;
-        private set => SetProperty(ref _areaSafetyText, value);
-    }
-
-    public string ReroutingHeadingText
-    {
-        get => _reroutingHeadingText;
-        private set => SetProperty(ref _reroutingHeadingText, value);
-    }
-
-    public ObservableCollection<string> ReroutingSteps => _reroutingSteps;
+        && !_isOvershootPending && !_isOvershootConfirmed;
 
     public string OvershootDistanceText
     {
@@ -235,10 +190,9 @@ public class HomeController : INotifyPropertyChanged
     }
 
     public bool IsChipVisible => !IsStage3Wake
-        && !_isOvershootPending && !_isOvershootConfirmed
-        && !_isAreaSafetyVisible && !_isReroutingVisible;
+        && !_isOvershootPending && !_isOvershootConfirmed;
 
-    public string TopStatusLabel => (IsOvershootPending || IsOvershootConfirmed || IsAreaSafetyVisible || IsReroutingVisible)
+    public string TopStatusLabel => (IsOvershootPending || IsOvershootConfirmed)
         ? "Overshoot Detected"
         : AlarmStageLabel;
     private double _lastSpeedMetersPerSecond;
@@ -723,9 +677,6 @@ public class HomeController : INotifyPropertyChanged
     public ICommand ConfirmOvershootCommand { get; }
     public ICommand DismissOvershootCommand { get; }
     public ICommand OpenInGMapsCommand { get; }
-    public ICommand CloseOvershootCommand { get; }
-    public ICommand ContinueToReroutingCommand { get; }
-    public ICommand FinishReroutingCommand { get; }
     public ICommand DeleteTripHistoryCommand { get; }
     public ICommand ClearTripHistoryCommand { get; }
     public ICommand SetHistoryFilterCommand { get; }
@@ -816,38 +767,15 @@ public class HomeController : INotifyPropertyChanged
             CurrentAlarmStage = AlarmStage.None;
             await _alarmAudioService.DisableCriticalAudioAsync();
         });
-        // Pure local hand-off to Google Maps (google.navigation: intent, zero network). Does NOT reset
-        // the recovery flow, so the rider can launch Maps and still come back to the in-app screens.
+        // Pure local hand-off to Google Maps (google.navigation: intent, zero network). The overshoot alert's
+        // "Open in Google Maps" button fires this and then ends the trip from the view, so the recovery flow
+        // is just this single launch now — no multi-step rerouting screens to keep state for.
         OpenInGMapsCommand = new Command(async () =>
         {
             if (_lastDestinationResult is not null)
                 await _googleMapsLauncher.OpenRerouteAsync(
                     _lastDestinationResult.Latitude,
                     _lastDestinationResult.Longitude);
-        });
-        // Step 1 → 2 of the recovery flow: "Close" the confirmed alert. Silence the alarm and surface the
-        // Area Safety overlay rather than just dismissing everything.
-        CloseOvershootCommand = new Command(async () =>
-        {
-            await _alarmAudioService.DisableCriticalAudioAsync();
-            BuildAreaSafetyMessage();
-            IsOvershootConfirmed = false;
-            IsAreaSafetyVisible = true;
-        });
-        // Step 2 → 3: leave the safety overlay and enter the in-app rerouting screen.
-        ContinueToReroutingCommand = new Command(() =>
-        {
-            BuildReroutingGuidance();
-            IsAreaSafetyVisible = false;
-            IsReroutingVisible = true;
-        });
-        // Step 3 done: tear the whole recovery flow down and clear the alarm.
-        FinishReroutingCommand = new Command(async () =>
-        {
-            ResetOvershootUiState();
-            _overshootAlerted = false;
-            CurrentAlarmStage = AlarmStage.None;
-            await _alarmAudioService.DisableCriticalAudioAsync();
         });
         DeleteTripHistoryCommand = new Command<TripHistory>(async trip => await DeleteTripHistoryAsync(trip));
         ClearTripHistoryCommand = new Command(async () => await ClearTripHistoryAsync());
@@ -2042,6 +1970,7 @@ public class HomeController : INotifyPropertyChanged
         _routeDeviationAlerted = false;
         _deviationAwayStreak = 0;
         _arrivalStreak = 0;
+        _stage3Streak = 0;
         CurrentAlarmStage = AlarmStage.None;
         _lastSpeedMetersPerSecond = 0;
         _minDistanceToDestination = double.MaxValue;
@@ -2257,12 +2186,15 @@ public class HomeController : INotifyPropertyChanged
         // go off "right after" Alarm 1.
         var stageBeforeUpdate = _currentAlarmStage;
 
-        // Place Stage 2 exactly halfway, by distance, between the arrival ring and the Stage 1 ring. Since
-        // the lead distance is always floored well above the arrival threshold, Stage 2 is GUARANTEED to
-        // sit strictly inside Stage 1 and strictly outside arrival regardless of speed — so it can't fire
-        // early (at the same radius as Stage 1) and the 1 → 2 → arrival order can never invert.
-        var stage2Threshold = ArrivalThresholdMeters
-                              + (adaptiveLeadDistance - ArrivalThresholdMeters) * 0.5
+        // The three rings are thirds of the full lead distance, straight out of the revised adaptive spec
+        // (NavAlert_Revised_Alarm_Computation.pdf §4.2): Stage 1 at the full boundary, Stage 2 at 2/3,
+        // Stage 3 at 1/3. This is the fix for "Stage 3 fires dangerously late" — pulling the WAKE UP lockout
+        // out to ~1/3 of the lead (typically 500–800 m at city speeds) instead of the old ~200 m arrival
+        // ring gives the rider real time to wake and gather their things before the vehicle stops. Stage 3
+        // is floored at the arrival ring so, even at a crawl, it can never end up firing INSIDE the drop-off
+        // radius (which would invert the 2 → 3 → arrival order).
+        var stage2Threshold = adaptiveLeadDistance * (2.0 / 3.0) + accuracyBuffer;
+        var stage3Threshold = Math.Max(adaptiveLeadDistance * (1.0 / 3.0), ArrivalThresholdMeters)
                               + accuracyBuffer;
 
         // Stage 1 — gentle alert at the initial trigger radius. No screen lockout (see AppShell).
@@ -2292,8 +2224,37 @@ public class HomeController : INotifyPropertyChanged
                 allowRepeat: false);
         }
 
-        // Emergency — the final drop-off coordinate is reached. This escalates to Stage 3, which AppShell
-        // turns into the full-screen lockout (max volume + continuous vibration until Slide to Stop).
+        // Stage 3 — the full-screen WAKE UP lockout (AppShell turns this into the takeover: max volume +
+        // continuous looping audio/vibration until Slide to Stop). It now fires at ~1/3 of the lead distance
+        // (stage3Threshold), not at the last 200 m. Gated on Stage 2 having already fired on an EARLIER fix
+        // (the stageBeforeUpdate snapshot) and held across a couple of fixes, so the 1 → 2 → 3 order can't
+        // collapse onto one GPS update and a lone outlier can't trip the lockout early.
+        if (stageBeforeUpdate == AlarmStage.Stage2
+            && _currentAlarmStage == AlarmStage.Stage2
+            && !_hasArrivedAtDestination
+            && distanceToDestination <= stage3Threshold)
+        {
+            _stage3Streak++;
+            if (_stage3Streak >= Stage3PersistenceFixes)
+            {
+                await TriggerAlarmStageAsync(
+                    AlarmStage.Stage3,
+                    "WAKE UP",
+                    "Almost at your stop — wake up and get ready to get off.",
+                    reroute: false,
+                    allowRepeat: false);
+            }
+        }
+        else if (_currentAlarmStage != AlarmStage.Stage3)
+        {
+            // Drifted back outside the Stage-3 ring before it latched — reset the streak.
+            _stage3Streak = 0;
+        }
+
+        // Arrival ring — the actual drop-off coordinate. By now Stage 3 has normally already fired further
+        // out (see above), so this block's real job is to LATCH arrival and arm overshoot monitoring. It
+        // still escalates to Stage 3 as an idempotent backstop (allowRepeat:false) for the rare case the
+        // rider was already inside the inner ring on the very first fix.
         if (!_hasArrivedAtDestination && distanceToDestination <= ArrivalThresholdMeters)
         {
             // Require the arrival to hold across a couple of fixes — one outlier dropping inside the
@@ -2461,6 +2422,7 @@ public class HomeController : INotifyPropertyChanged
         _routeDeviationAlerted = false;
         _deviationAwayStreak = 0;
         _arrivalStreak = 0;
+        _stage3Streak = 0;
         CurrentAlarmStage = AlarmStage.None;
         _lastSpeedMetersPerSecond = 0;
         OnPropertyChanged(nameof(HasDestination));
@@ -2502,6 +2464,7 @@ public class HomeController : INotifyPropertyChanged
         _routeDeviationAlerted = false;
         _deviationAwayStreak = 0;
         _arrivalStreak = 0;
+        _stage3Streak = 0;
         CurrentAlarmStage = AlarmStage.None;
         _lastSpeedMetersPerSecond = 0;
         OnPropertyChanged(nameof(HasDestination));
@@ -2684,81 +2647,12 @@ public class HomeController : INotifyPropertyChanged
     }
 
     // Clears all four recovery-flow screens in one shot (used on dismiss, trip stop, and new trips).
+    // The overshoot UI is now a single alert (confirmed) — the old multi-step Area Safety + Rerouting
+    // recovery screens were removed, so there's just the pending/confirmed pair to clear here.
     private void ResetOvershootUiState()
     {
         IsOvershootPending = false;
         IsOvershootConfirmed = false;
-        IsAreaSafetyVisible = false;
-        IsReroutingVisible = false;
-    }
-
-    // Offline "Area Safety Alert" copy. Deliberately built locally with no network call — it leans on
-    // the destination name + how far past it we are, plus general personal-safety guidance for being
-    // dropped somewhere unplanned. (Reverse-geocoding the exact area would need the network, which the
-    // overshoot/handoff requirement forbids.)
-    private void BuildAreaSafetyMessage()
-    {
-        var dest = DestinationShortNameText;
-        var place = string.IsNullOrWhiteSpace(dest) ? "your stop" : dest;
-        AreaSafetyText =
-            $"You're about {OvershootDistanceText} past {place}, in an area you didn't plan to be.\n\n" +
-            "• Move to a well-lit, populated spot and stay aware of your surroundings.\n" +
-            "• Keep your phone and belongings close and out of sight.\n" +
-            "• Note the nearest landmark, terminal, or store you can head to.\n" +
-            "• If anything feels unsafe, call an emergency contact or 911 right away.";
-    }
-
-    // Builds the in-app rerouting guidance shown over the mini-map. Everything here is computed locally
-    // from the last GPS fix and the saved destination — no routing API / network. For full turn-by-turn
-    // the rerouting screen hands off to Google Maps via the local intent.
-    private void BuildReroutingGuidance()
-    {
-        _reroutingSteps.Clear();
-        var dest = _lastDestinationResult;
-        var place = DestinationShortNameText;
-        if (dest is null)
-        {
-            ReroutingHeadingText = "Destination unavailable.";
-            return;
-        }
-
-        var here = _lastTrackedLocation;
-        var compass = "back toward your stop";
-        var distText = OvershootDistanceText;
-        if (here is not null)
-        {
-            var bearing = CalculateBearingDegrees(here.Latitude, here.Longitude, dest.Latitude, dest.Longitude);
-            compass = $"{BearingToCompass(bearing)} (back toward your stop)";
-            var d = CalculateDistanceMeters(
-                here,
-                new LocationSnapshot(dest.Latitude, dest.Longitude, 0f, here.Timestamp));
-            distText = d >= 1000 ? $"{d / 1000:F1} km" : $"{(int)d} m";
-        }
-
-        ReroutingHeadingText = $"Head {compass} • {distText} to {place}";
-        _reroutingSteps.Add($"1. Turn around and head {compass}.");
-        _reroutingSteps.Add($"2. Travel roughly {distText} back toward {place}.");
-        _reroutingSteps.Add("3. Look for the opposite-direction stop, jeepney, or route going back.");
-        _reroutingSteps.Add("4. Tap “Open in Google Maps” for live turn-by-turn directions.");
-    }
-
-    // Initial compass bearing from one coordinate to another, in degrees [0,360).
-    private static double CalculateBearingDegrees(double lat1, double lon1, double lat2, double lon2)
-    {
-        var phi1 = DegreesToRadians(lat1);
-        var phi2 = DegreesToRadians(lat2);
-        var deltaLon = DegreesToRadians(lon2 - lon1);
-        var y = Math.Sin(deltaLon) * Math.Cos(phi2);
-        var x = Math.Cos(phi1) * Math.Sin(phi2) - Math.Sin(phi1) * Math.Cos(phi2) * Math.Cos(deltaLon);
-        var bearing = Math.Atan2(y, x) * 180.0 / Math.PI;
-        return (bearing + 360.0) % 360.0;
-    }
-
-    private static string BearingToCompass(double bearing)
-    {
-        string[] points = { "north", "north-east", "east", "south-east", "south", "south-west", "west", "north-west" };
-        var index = (int)Math.Round(bearing / 45.0) % 8;
-        return points[index];
     }
 
     private static double CalculateDistanceMeters(LocationSnapshot start, LocationSnapshot end)
@@ -2827,7 +2721,11 @@ public class HomeController : INotifyPropertyChanged
               <script src="leaflet.js"></script>
               <style>
                 html,body,#map{margin:0;padding:0;width:100%;height:100%;will-change:transform}
-                .leaflet-tile{filter:sepia(0.8) hue-rotate(250deg) saturate(2.5) brightness(0.75)}
+                /* Day mode: a light loading backdrop behind the tiles so there's no dark flash before they
+                   paint, and NO colour filter on the tiles themselves — the dark purple sepia/hue-rotate
+                   filter that used to live here is what made the map hard to read in morning sunlight. */
+                #map{background:#e9e6df}
+                .leaflet-tile{filter:none}
                 .leaflet-zoom-animated{transition:transform 0.4s cubic-bezier(0,0,0.25,1)!important}
                 .leaflet-interactive{will-change:transform;transition:none!important}
                 /* The dot is now driven frame-by-frame from JS (see _animateUserMarker), so we kill the
@@ -2840,7 +2738,7 @@ public class HomeController : INotifyPropertyChanged
               <div id="map"></div>
               <script>
                 var map = L.map('map',{zoomControl:false}).setView([14.5995,120.9842],12);
-                var _layer=L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{attribution:'&copy; OSM &copy; CARTO',subdomains:'abcd',maxZoom:19}).addTo(map);
+                var _layer=L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',{attribution:'&copy; OSM &copy; CARTO',subdomains:'abcd',maxZoom:19}).addTo(map);
                 var _userMarker=null;
                 var _userAnimFrame=null;
                 var _destMarker=null;
