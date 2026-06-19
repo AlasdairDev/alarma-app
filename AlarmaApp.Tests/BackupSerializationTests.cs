@@ -18,6 +18,7 @@
 //  before a single record would touch a database.
 // =============================================================================
 
+using System.Buffers.Binary;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -35,52 +36,80 @@ public sealed record BackupPayloadT(
     List<BackupContactT> EmergencyContacts,
     List<BackupRouteT> SavedRoutes);
 
-/// <summary>Mirror of BackupService's encrypt/serialize/decrypt pipeline.</summary>
+/// <summary>
+/// Mirror of BackupService's PORTABLE encrypt/serialize/decrypt pipeline. The key is derived from a
+/// password via PBKDF2-HMAC-SHA256 with a random salt that travels inside the file, so a backup carries
+/// everything needed to decrypt it given the password — no device key, no SecureStorage, nothing
+/// install-specific. That's what lets a backup made on one phone restore on a fresh install of another.
+/// Envelope: [1 version][16 salt][4 iterations, big-endian][12 nonce][16 GCM tag][ciphertext].
+/// </summary>
 public static class BackupCodec
 {
+    public const byte FormatVersion = 3; // v3 = PBKDF2 password-derived key (portable)
+    public const int SaltSize = 16;
     public const int NonceSize = 12;
     public const int TagSize = 16;
+    public const int Iterations = 210_000;
+    public const int HeaderSize = 1 + SaltSize + 4 + NonceSize + TagSize; // 49
+    private static readonly HashAlgorithmName Hash = HashAlgorithmName.SHA256;
     private static readonly JsonSerializerOptions Opts = new() { WriteIndented = true };
 
-    public static byte[] Serialize(BackupPayloadT payload, byte[] key)
+    public static byte[] Serialize(BackupPayloadT payload, string password)
     {
         var json = JsonSerializer.Serialize(payload, Opts);
-        return Encrypt(Encoding.UTF8.GetBytes(json), key);
+        return Encrypt(Encoding.UTF8.GetBytes(json), password);
     }
 
-    public static BackupPayloadT? Deserialize(byte[] data, byte[] key)
+    public static BackupPayloadT? Deserialize(byte[] data, string password)
     {
-        var plaintext = Decrypt(data, key);
+        var plaintext = Decrypt(data, password);
         var json = Encoding.UTF8.GetString(plaintext);
         return JsonSerializer.Deserialize<BackupPayloadT>(json, Opts);
     }
 
-    public static byte[] Encrypt(byte[] plaintext, byte[] key)
+    private static byte[] DeriveKey(string password, byte[] salt, int iterations) =>
+        Rfc2898DeriveBytes.Pbkdf2(Encoding.UTF8.GetBytes(password), salt, iterations, Hash, 32);
+
+    public static byte[] Encrypt(byte[] plaintext, string password)
     {
+        var salt = RandomNumberGenerator.GetBytes(SaltSize);
         var nonce = RandomNumberGenerator.GetBytes(NonceSize);
+        var key = DeriveKey(password, salt, Iterations);
+
         var ciphertext = new byte[plaintext.Length];
         var tag = new byte[TagSize];
-
         using var aesGcm = new AesGcm(key, TagSize);
         aesGcm.Encrypt(nonce, plaintext, ciphertext, tag);
 
-        var output = new byte[NonceSize + TagSize + ciphertext.Length];
-        nonce.CopyTo(output, 0);
-        tag.CopyTo(output, NonceSize);
-        ciphertext.CopyTo(output, NonceSize + TagSize);
+        var output = new byte[HeaderSize + ciphertext.Length];
+        var offset = 0;
+        output[offset++] = FormatVersion;
+        salt.CopyTo(output, offset); offset += SaltSize;
+        BinaryPrimitives.WriteInt32BigEndian(output.AsSpan(offset), Iterations); offset += 4;
+        nonce.CopyTo(output, offset); offset += NonceSize;
+        tag.CopyTo(output, offset); offset += TagSize;
+        ciphertext.CopyTo(output, offset);
         return output;
     }
 
-    public static byte[] Decrypt(byte[] data, byte[] key)
+    public static byte[] Decrypt(byte[] data, string password)
     {
-        if (data.Length < NonceSize + TagSize + 1)
+        if (data.Length < HeaderSize + 1)
             throw new CryptographicException("Backup data is too short to be valid.");
 
-        var nonce = data[..NonceSize];
-        var tag = data[NonceSize..(NonceSize + TagSize)];
-        var ciphertext = data[(NonceSize + TagSize)..];
-        var plaintext = new byte[ciphertext.Length];
+        var offset = 0;
+        var version = data[offset++];
+        if (version != FormatVersion)
+            throw new CryptographicException($"Unsupported backup format version: {version}.");
 
+        var salt = data[offset..(offset + SaltSize)]; offset += SaltSize;
+        var iterations = BinaryPrimitives.ReadInt32BigEndian(data.AsSpan(offset)); offset += 4;
+        var nonce = data[offset..(offset + NonceSize)]; offset += NonceSize;
+        var tag = data[offset..(offset + TagSize)]; offset += TagSize;
+        var ciphertext = data[offset..];
+
+        var key = DeriveKey(password, salt, iterations);
+        var plaintext = new byte[ciphertext.Length];
         using var aesGcm = new AesGcm(key, TagSize);
         aesGcm.Decrypt(nonce, ciphertext, tag, plaintext);
         return plaintext;
@@ -119,7 +148,10 @@ public static class BackupValidator
 
 public class BackupSerializationTests
 {
-    private static byte[] Key() => RandomNumberGenerator.GetBytes(32); // AES-256
+    // The secret the key is derived from. There is no per-device key anymore — (password + the salt baked
+    // into the file) is everything needed to decrypt, which is the whole portability fix.
+    private const string Password = "correct horse battery staple";
+    private const string WrongPassword = "Tr0ub4dor&3";
 
     private static BackupPayloadT SampleProfile() => new(
         ExportedAtUtc: new DateTimeOffset(2026, 6, 19, 8, 30, 0, TimeSpan.Zero),
@@ -145,48 +177,49 @@ public class BackupSerializationTests
         Assert.Equal(expected.SavedRoutes, actual.SavedRoutes);
     }
 
-    // A real profile must round-trip exactly through encrypt → decrypt → deserialize.
+    // PORTABILITY: a backup encrypted with a password must round-trip exactly when the SAME password is
+    // supplied — with no shared device/install state. BackupCodec holds nothing between calls, so encrypting
+    // here and decrypting there (with the same password) is exactly the "export on Phone A, restore on a
+    // fresh install of Phone B" scenario the fix is about.
     [Fact]
-    public void Profile_RoundTrips_Exactly()
+    public void Profile_RoundTrips_AcrossInstalls_WithSamePassword()
     {
-        var key = Key();
         var original = SampleProfile();
 
-        var blob = BackupCodec.Serialize(original, key);
-        var restored = BackupCodec.Deserialize(blob, key);
+        var blob = BackupCodec.Serialize(original, Password);   // "Phone A"
+        var restored = BackupCodec.Deserialize(blob, Password); // "Phone B", fresh — only the password is shared
 
         Assert.NotNull(restored);
         AssertProfilesEqual(original, restored!);
     }
 
-    // The .alarma envelope layout: [12 nonce][16 tag][ciphertext], and GCM ciphertext is the
-    // same length as the plaintext JSON.
+    // The portable .alarma envelope: [1 version][16 salt][4 iterations][12 nonce][16 tag][ciphertext], and
+    // the GCM ciphertext is the same length as the plaintext JSON. The leading byte tags the format version.
     [Fact]
-    public void EnvelopeLayout_MatchesAlarmaFormat()
+    public void EnvelopeLayout_MatchesPortableAlarmaFormat()
     {
-        var key = Key();
         var payload = SampleProfile();
         var json = JsonSerializer.Serialize(payload, new JsonSerializerOptions { WriteIndented = true });
         var plaintextLen = Encoding.UTF8.GetByteCount(json);
 
-        var blob = BackupCodec.Serialize(payload, key);
+        var blob = BackupCodec.Serialize(payload, Password);
 
-        Assert.Equal(BackupCodec.NonceSize + BackupCodec.TagSize + plaintextLen, blob.Length);
+        Assert.Equal(BackupCodec.HeaderSize + plaintextLen, blob.Length);
+        Assert.Equal(BackupCodec.FormatVersion, blob[0]);
     }
 
-    // Each export uses a fresh random nonce, so the same profile encrypts to different bytes
-    // every time (no deterministic ciphertext leakage) yet still decrypts back to the same data.
+    // Each export uses a fresh random salt AND nonce, so the same profile + same password encrypts to
+    // different bytes every time (no deterministic ciphertext leakage) yet both decrypt back to the same data.
     [Fact]
-    public void SameProfile_EncryptsToDifferentBytes_EachExport()
+    public void SameProfileAndPassword_EncryptsToDifferentBytes_EachExport()
     {
-        var key = Key();
         var payload = SampleProfile();
 
-        var a = BackupCodec.Serialize(payload, key);
-        var b = BackupCodec.Serialize(payload, key);
+        var a = BackupCodec.Serialize(payload, Password);
+        var b = BackupCodec.Serialize(payload, Password);
 
-        Assert.False(a.AsSpan().SequenceEqual(b), "Nonce reuse — ciphertext should differ per export.");
-        AssertProfilesEqual(BackupCodec.Deserialize(a, key)!, BackupCodec.Deserialize(b, key)!);
+        Assert.False(a.AsSpan().SequenceEqual(b), "Salt/nonce reuse — ciphertext should differ per export.");
+        AssertProfilesEqual(BackupCodec.Deserialize(a, Password)!, BackupCodec.Deserialize(b, Password)!);
     }
 
     // Integrity: flipping a single ciphertext byte must fail the GCM tag and throw BEFORE any
@@ -194,40 +227,41 @@ public class BackupSerializationTests
     [Fact]
     public void TamperedCiphertext_FailsAuthentication()
     {
-        var key = Key();
-        var blob = BackupCodec.Serialize(SampleProfile(), key);
+        var blob = BackupCodec.Serialize(SampleProfile(), Password);
         blob[^1] ^= 0xFF; // flip last ciphertext byte
 
-        Assert.Throws<AuthenticationTagMismatchException>(() => BackupCodec.Deserialize(blob, key));
+        Assert.Throws<AuthenticationTagMismatchException>(() => BackupCodec.Deserialize(blob, Password));
     }
 
-    // Integrity: corrupting the GCM tag itself is equally rejected.
+    // Integrity: corrupting the GCM tag itself is equally rejected. The tag now sits after the
+    // [version][salt][iterations][nonce] header.
     [Fact]
     public void TamperedTag_FailsAuthentication()
     {
-        var key = Key();
-        var blob = BackupCodec.Serialize(SampleProfile(), key);
-        blob[BackupCodec.NonceSize] ^= 0xFF; // first tag byte
+        var blob = BackupCodec.Serialize(SampleProfile(), Password);
+        var tagOffset = 1 + BackupCodec.SaltSize + 4 + BackupCodec.NonceSize;
+        blob[tagOffset] ^= 0xFF; // first tag byte
 
-        Assert.Throws<AuthenticationTagMismatchException>(() => BackupCodec.Deserialize(blob, key));
+        Assert.Throws<AuthenticationTagMismatchException>(() => BackupCodec.Deserialize(blob, Password));
     }
 
-    // A backup from a different device (different key) can't be decrypted on this one.
+    // The cross-device safety check: the WRONG password derives the wrong key and fails the GCM tag, so a
+    // backup can't be opened by anyone who doesn't know its password.
     [Fact]
-    public void WrongKey_FailsAuthentication()
+    public void WrongPassword_FailsAuthentication()
     {
-        var blob = BackupCodec.Serialize(SampleProfile(), Key());
-        Assert.Throws<AuthenticationTagMismatchException>(() => BackupCodec.Deserialize(blob, Key()));
+        var blob = BackupCodec.Serialize(SampleProfile(), Password);
+        Assert.Throws<AuthenticationTagMismatchException>(() => BackupCodec.Deserialize(blob, WrongPassword));
     }
 
     // Truncated / junk data shorter than the envelope header is rejected as too short.
     [Theory]
     [InlineData(0)]
-    [InlineData(10)]
-    [InlineData(27)] // one byte short of nonce+tag+1
+    [InlineData(24)]
+    [InlineData(49)] // header only (49 bytes), one byte short of header+1 — no ciphertext at all
     public void TooShortData_Throws(int length)
         => Assert.Throws<CryptographicException>(
-            () => BackupCodec.Decrypt(new byte[length], Key()));
+            () => BackupCodec.Decrypt(new byte[length], Password));
 }
 
 public class BackupRestoreFilterTests

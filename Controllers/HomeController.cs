@@ -1238,18 +1238,20 @@ public class HomeController : INotifyPropertyChanged
 
     // Build the encrypted backup blob + suggested file name for the Settings screen to hand to the OS
     // "Save As" dialog (FileSaver). The actual disk write happens wherever the user points the picker —
-    // we just produce the bytes here.
-    public Task<(string FileName, byte[] Data)> BuildBackupForSaveAsync()
-        => _backupService.BuildBackupAsync();
+    // we just produce the bytes here. The password is what the key is derived from, so the file is portable
+    // across reinstalls and devices (no stored key to lose).
+    public Task<(string FileName, byte[] Data)> BuildBackupForSaveAsync(string password)
+        => _backupService.BuildBackupAsync(password);
 
-    // Restore from the bytes of a backup file the user picked through the OS file browser. Decrypt +
-    // validate happens in BackupService; on success we re-sync the in-memory preference mirror and
-    // reload the local data so the UI reflects the restored state immediately. Returns true on success.
-    public async Task<bool> RestoreFromBytesAsync(byte[] data)
+    // Restore from the bytes of a backup file the user picked through the OS file browser, using the
+    // password it was exported with. Decrypt + validate happens in BackupService; on success we re-sync the
+    // in-memory preference mirror and reload the local data so the UI reflects the restored state
+    // immediately. Returns true on success.
+    public async Task<bool> RestoreFromBytesAsync(byte[] data, string password)
     {
         try
         {
-            await _backupService.RestoreFromBytesAsync(data);
+            await _backupService.RestoreFromBytesAsync(data, password);
 
             _alarmSound = NormalizeSoundKey(_preferencesService.AlarmSound);
             _preferencesService.AlarmSound = _alarmSound;
@@ -1263,7 +1265,7 @@ public class HomeController : INotifyPropertyChanged
         catch (Exception ex)
         {
             BlackBoxLogger.RecordHandledException(ex, "[HomeController.RestoreFromBytesAsync]");
-            BackupStatusText = "Backup restore failed. The file may be corrupted or from a different device.";
+            BackupStatusText = "Backup restore failed. The password may be wrong or the file is corrupted.";
             return false;
         }
     }
