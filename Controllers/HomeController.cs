@@ -455,6 +455,12 @@ public class HomeController : INotifyPropertyChanged
     // flips it so it can tell a real user request apart from the switch simply mirroring the hardware.
     public bool IsBluetoothHardwareOn => _bluetoothMonitor.IsEnabled;
 
+    // True for a short window right after the user taps the switch, while we hand the request off to the OS
+    // prompt. During that window we deliberately drop the adapter's state broadcasts so the user's tap and
+    // an incoming update can't fight over the switch and flicker it. It self-clears after 500ms — long
+    // before the rider could confirm the OS dialog — so the real settled ON/OFF still lands normally.
+    private bool _isHandlingUserInteraction;
+
     // Drives the "earphones connected" pill on Home. Distinct from IsEarphonesConnected so we can show
     // the pill for a timed 3-second window (and force it hidden the moment Bluetooth drops).
     private bool _isEarphonePillVisible;
@@ -1003,6 +1009,11 @@ public class HomeController : INotifyPropertyChanged
     // forcefully hide the earphones pill; On → flip the switch on. Always marshalled to the UI thread.
     private void OnBluetoothStateChanged(object? sender, bool isOn)
     {
+        // Mid user-tap? Ignore the broadcast — letting it move the switch in the same instant the user just
+        // toggled it is exactly what spins up the on/off flicker loop. The flag clears itself after 500ms,
+        // so the genuine settled state (which arrives once the rider confirms the OS prompt) still gets in.
+        if (_isHandlingUserInteraction) return;
+
         MainThread.BeginInvokeOnMainThread(() =>
         {
             IsBluetoothOn = isOn;
@@ -1092,8 +1103,23 @@ public class HomeController : INotifyPropertyChanged
     public void RefreshBluetoothState() => IsBluetoothOn = _bluetoothMonitor.IsEnabled;
 
     // Fire-and-forget entry point for the Settings switch (the handler is a synchronous Toggled event), so
-    // it just kicks off the async request below.
-    public void RequestBluetoothChange(bool desiredOn) => _ = RequestBluetoothChangeAsync(desiredOn);
+    // it just kicks off the async request below. We raise the user-interaction flag the instant the tap
+    // lands and auto-lower it 500ms later, so the adapter broadcast that fires while we're handing off to
+    // the OS prompt gets ignored instead of bouncing the switch around.
+    public void RequestBluetoothChange(bool desiredOn)
+    {
+        _isHandlingUserInteraction = true;
+        _ = ClearUserInteractionFlagAfterDelayAsync();
+        _ = RequestBluetoothChangeAsync(desiredOn);
+    }
+
+    // Lowers the guard flag after a brief window so normal adapter-driven sync resumes. Marshalled to the
+    // UI thread for the write since OnBluetoothStateChanged reads it from there.
+    private async Task ClearUserInteractionFlagAfterDelayAsync()
+    {
+        await Task.Delay(500);
+        MainThread.BeginInvokeOnMainThread(() => _isHandlingUserInteraction = false);
+    }
 
     // Called when the rider physically toggles the Settings switch. We deliberately never call
     // BluetoothAdapter.Enable()/Disable() ourselves — that's been blocked for normal apps since Android 13
@@ -2773,6 +2799,13 @@ public class HomeController : INotifyPropertyChanged
                    background is an on-brand light violet so the load-in flash already matches the theme before
                    the first tiles paint. */
                 #map{background:#D9CEEA}
+                /* One more nudge for legibility: a pure contrast/brightness filter on the TILE PANE only.
+                   This is not the colour filter we threw out earlier — there's no hue shift here, so the
+                   labels don't drift off-colour. It just pushes the dark CARTO text toward jet-black and
+                   sharpens it (contrast 1.4) while pulling the whole tile back a touch (brightness 0.95) so
+                   the violet sheet on top still reads vivid. Scoped to .leaflet-tile-pane so the markers
+                   (blue dot, destination pin) and the tint div stay untouched. */
+                .leaflet-tile-pane{filter:contrast(1.4) brightness(0.95)}
                 #violet-tint{position:absolute;inset:0;background:rgba(170,90,255,0.40);mix-blend-mode:multiply;pointer-events:none;z-index:300}
                 .leaflet-zoom-animated{transition:transform 0.4s cubic-bezier(0,0,0.25,1)!important}
                 .leaflet-interactive{will-change:transform;transition:none!important}
