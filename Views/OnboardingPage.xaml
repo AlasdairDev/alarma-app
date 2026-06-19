@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage BackgroundColor="#0F0822" NavigationPage.HasNavigationBar="False" x:Class="AlarmaApp.Views.OnboardingPage" xmlns="http://schemas.microsoft.com/dotnet/2021/maui" xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml">
+    <Grid>
+        <Image Source="onboarding_grid.png" Aspect="AspectFill" HorizontalOptions="Fill" VerticalOptions="Fill" />
+        <CarouselView x:Name="carousel" ItemsSource="{Binding Slides}" HorizontalScrollBarVisibility="Never">
+            <CarouselView.ItemTemplate>
+                <DataTemplate>
+                    <Grid RowDefinitions="55*, 45*">
+                        <Image Grid.Row="0" Source="{Binding ImageSource}" Aspect="AspectFill" HorizontalOptions="Fill" VerticalOptions="Fill" />
+                        <Grid Grid.Row="1" Padding="20, 45, 20, 20">
+                            <VerticalStackLayout Spacing="8">
+                                <VerticalStackLayout.Triggers>
+                                    <DataTrigger TargetType="VerticalStackLayout" Binding="{Binding IsLastSlide}" Value="True">
+                                        <Setter Property="IsVisible" Value="False" />
+                                    </DataTrigger>
+                                </VerticalStackLayout.Triggers>
+                                <Label Text="{Binding Title}" TextColor="White" FontSize="26" FontAttributes="Bold" HorizontalOptions="Center" />
+                                <Label Text="{Binding Subtitle}" TextColor="#A098B0" FontSize="16" HorizontalTextAlignment="Center" HorizontalOptions="Center" Margin="0,0,0,30" />
+                                <Grid ColumnDefinitions="*, *" ColumnSpacing="15" Margin="10,0,10,0">
+                                    <Button Text="Skip" BackgroundColor="White" TextColor="#1A0B2E" CornerRadius="25" HeightRequest="52" FontAttributes="Bold" Command="{Binding Source={RelativeSource AncestorType={x:Type ContentPage}}, Path=BindingContext.SkipCommand}" />
+                                    <Button Text="Next" BackgroundColor="#8A2BE2" TextColor="White" CornerRadius="25" HeightRequest="52" FontAttributes="Bold" Command="{Binding Source={RelativeSource AncestorType={x:Type ContentPage}}, Path=BindingContext.NextCommand}" />
+                                </Grid>
+                            </VerticalStackLayout>
+                            <Border IsVisible="{Binding IsLastSlide}" BackgroundColor="#170F26" VerticalOptions="End" StrokeThickness="0" StrokeShape="RoundRectangle 24,24,0,0" Padding="20,25,20,30" Margin="-20,0,-20,-20">
+                                <VerticalStackLayout Spacing="20">
+                                    <HorizontalStackLayout HorizontalOptions="Center" Spacing="10">
+                                        <CheckBox IsChecked="{Binding TermsAccepted}" Color="#8A2BE2" />
+                                        <Label Text="I agree to the Terms and Privacy Policy" TextColor="#A098B0" VerticalOptions="Center" FontSize="14" />
+                                    </HorizontalStackLayout>
+                                    <Button Text="Get Started" BackgroundColor="#8A2BE2" TextColor="White" CornerRadius="25" HeightRequest="52" FontAttributes="Bold" Command="{Binding Source={RelativeSource AncestorType={x:Type ContentPage}}, Path=BindingContext.GetStartedCommand}" />
+                                </VerticalStackLayout>
+                            </Border>
+                        </Grid>
+                    </Grid>
+                </DataTemplate>
+            </CarouselView.ItemTemplate>
+        </CarouselView>
+        <Grid RowDefinitions="55*, 45*" InputTransparent="True">
+            <IndicatorView Grid.Row="1" x:Name="indicator" HorizontalOptions="Center" VerticalOptions="Start" Margin="0, 15, 0, 0" IndicatorColor="#554D6B" SelectedIndicatorColor="White" IndicatorSize="8" />
+        </Grid>
+    </Grid>
+</ContentPage>

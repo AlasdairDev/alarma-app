@@ -1,22 +1,36 @@
 using AlarmaApp.Services;
 using System.Collections.ObjectModel;
+using System.ComponentModel;
+using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Windows.Input;
 
 namespace AlarmaApp.Views;
 
-public class OnboardingSlide
+public class OnboardingSlide : INotifyPropertyChanged
 {
     public string ImageSource { get; set; } = "";
     public string Title { get; set; } = "";
     public string Subtitle { get; set; } = "";
     public bool IsLastSlide { get; set; }
+
+    // Two-way bound to the agreement checkbox on the final slide.
+    private bool _termsAccepted;
+    public bool TermsAccepted
+    {
+        get => _termsAccepted;
+        set { _termsAccepted = value; OnPropertyChanged(); }
+    }
+
+    public event PropertyChangedEventHandler? PropertyChanged;
+    private void OnPropertyChanged([CallerMemberName] string? name = null)
+        => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
 }
 
-public partial class OnboardingView : ContentPage
+public partial class OnboardingPage : ContentPage
 {
     private readonly PreferencesService _preferencesService;
     private bool _finishing;
-    private bool _isAgreed;
 
     public ObservableCollection<OnboardingSlide> Slides { get; } = new()
     {
@@ -47,55 +61,38 @@ public partial class OnboardingView : ContentPage
         },
     };
 
-    public bool IsAgreed
-    {
-        get => _isAgreed;
-        set { _isAgreed = value; OnPropertyChanged(); }
-    }
-
     public ICommand NextCommand { get; }
     public ICommand SkipCommand { get; }
+    public ICommand GetStartedCommand { get; }
 
-    public OnboardingView(PreferencesService preferencesService)
+    public OnboardingPage(PreferencesService preferencesService)
     {
         _preferencesService = preferencesService;
+
         NextCommand = new Command(() =>
         {
-            if (OnboardingCarousel.Position < 3)
-                OnboardingCarousel.ScrollTo(OnboardingCarousel.Position + 1, position: ScrollToPosition.Center, animate: false);
+            if (carousel.Position < Slides.Count - 1)
+                carousel.ScrollTo(carousel.Position + 1, position: ScrollToPosition.Center, animate: false);
         });
         SkipCommand = new Command(() =>
-        {
-            OnboardingCarousel.ScrollTo(3, position: ScrollToPosition.Center, animate: false);
-        });
+            carousel.ScrollTo(Slides.Count - 1, position: ScrollToPosition.Center, animate: false));
+        GetStartedCommand = new Command(async () => await OnGetStartedAsync());
+
         BindingContext = this;
         InitializeComponent();
+
+        // Wire the page-level indicator to the carousel so the dots track position.
+        carousel.IndicatorView = indicator;
     }
 
-    protected override async void OnAppearing()
+    private async Task OnGetStartedAsync()
     {
-        Content.Opacity = 0;
-        base.OnAppearing();
-        await Content.FadeTo(1, 500, Easing.CubicOut);
-    }
-
-    private void OnAgreeCheckChanged(object? sender, CheckedChangedEventArgs e)
-        => IsAgreed = e.Value;
-
-    private async void OnTermsLinkTapped(object? sender, TappedEventArgs e)
-        => await Navigation.PushModalAsync(new TermsAndPrivacyView(initialTab: 0), animated: false);
-
-    private async void OnPrivacyPolicyLinkTapped(object? sender, TappedEventArgs e)
-        => await Navigation.PushModalAsync(new TermsAndPrivacyView(initialTab: 1), animated: false);
-
-    private async void OnGetStartedClicked(object? sender, EventArgs e)
-    {
-        // Gate on the agreement checkbox: warn instead of silently doing nothing.
-        if (!IsAgreed)
+        var lastSlide = Slides.FirstOrDefault(s => s.IsLastSlide);
+        if (lastSlide is null || !lastSlide.TermsAccepted)
         {
             await DisplayAlert(
                 "Agreement Required",
-                "Please read and agree to the Terms and Conditions and Privacy Policy to continue.",
+                "Please agree to the Terms and Privacy Policy to continue.",
                 "OK");
             return;
         }
@@ -107,11 +104,11 @@ public partial class OnboardingView : ContentPage
     {
         if (_finishing) return;
         _finishing = true;
+
         // Commit the agreement, then redirect to the main Home/Map interface.
         // HomeView's own gate forwards to permissions setup if that step is still pending.
         _preferencesService.HasSeenTutorial = true;
         _preferencesService.HasAgreedToTerms = true;
-        await Content.FadeTo(0, 300, Easing.CubicIn);
         await Shell.Current.GoToAsync("//home", animate: false);
     }
 }
