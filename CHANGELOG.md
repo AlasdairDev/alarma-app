@@ -3,6 +3,45 @@
 All notable changes to Alarma are recorded here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [7.0.0] - 2026-06-19 — Final Panel Defense Release
+
+The consolidated v7.0 build presented at the capstone panel defense. It brings the SOS, 911, Bluetooth,
+and alarm-audio paths to true native Android behaviour, finalizes the alarm-sound set, and adds a
+comprehensive automated test suite as the release quality gate. The granular history of the changes
+folded into this release is preserved in the 1.x entries below.
+
+### Added
+
+- **Five high-intensity, bundled alarm sounds.** The picker now exposes exactly *Digital Clock* (the
+  classic loud rhythmic beep-beep wake-up), *Siren*, *Buzzer*, *Bell*, and *Air Horn* — every one a real
+  audio file shipped in `res/raw` and pinned to the native alarm channel (`AudioUsageKind.Alarm` /
+  `STREAM_ALARM`) so it plays at maximum alarm volume identically on any device. Soft notification tones
+  (e.g. *Chime*) were retired.
+- **Native hardware broadcast receivers.** A single Android `BroadcastReceiver` listens for the
+  Bluetooth adapter's `ACTION_STATE_CHANGED` **and** device `ACTION_ACL_CONNECTED` /
+  `ACTION_ACL_DISCONNECTED`, mirroring the physical radio into the Settings toggle in real time and
+  flashing an *Earphones Connected* / *Earphones Disconnected* grey-pill on plug/unplug.
+- **True background, offline-safe SOS.** The emergency SMS sends instantly in the background via
+  `Android.Telephony.SmsManager` (multipart-aware, `SEND_SMS` requested natively, `FLAG_IMMUTABLE`
+  delivery intent). The body is URL-free: a reverse-geocoded street address online, raw coordinates
+  offline.
+- **Comprehensive xUnit test suite — 268 passing tests, using Moq.** Native MAUI/Android hardware
+  (geocoder, Bluetooth listener, earphone probe) is isolated behind mocked interfaces so the full C#
+  decision logic is tested offline and deterministically. Coverage spans the SOS formatter & geocoding
+  fallback, the progressive alarm state machine, the adaptive alarm mathematics, AES-256-GCM `.alarma`
+  serialization (round-trip, tamper, and validation), and the Bluetooth → ViewModel UI-sync logic.
+
+### Changed
+
+- **Default alarm voice is now *Digital Clock*;** any retired or unknown saved value normalizes to it.
+
+### Fixed
+
+- **Bulletproof 911 dialer** via `Launcher.OpenAsync("tel:911")` + a `<queries>` `DIAL`/`tel` manifest
+  declaration, with a graceful grey-pill fallback when no dialer resolves.
+- **Backup/restore whitelist matches the five sounds exactly,** so a saved choice is never reset on
+  restore.
+
 ## [1.3.0] - 2026-06-19
 
 Finalized the alarm-audio selection for the defense: the picker is now exactly five proper, bundled,
@@ -115,8 +154,8 @@ sharpens the emergency features, and replaces blocking modals with quieter, mode
   hidden during an alarm stage, so it can't be used to escape the wake-up lockout.
 - **Undo snackbar for Favorites.** Removing a favorite now asks for confirmation and then shows a brief
   snackbar with an *Undo* button to instantly restore it.
-- **Five distinct alarm sounds.** *Default, Alarm, Chime, Bell, Siren* — each mapped to a different,
-  loud system sound so the live preview is clearly differentiable.
+- **Multi-option alarm sounds with live preview.** The original picker mapped each option to a distinct
+  loud system sound; this was later finalized to the five bundled high-intensity assets in [7.0.0].
 - **Adaptive 3-stage progressive alarm escalation.** Gentle Stage 1 at the trigger radius → louder
   Stage 2 at ~50% of the radius → full-screen Emergency lockout at the drop-off, with continuous
   maximum vibration/volume that only the *Slide to Stop* gesture clears. All escalation runs on a
