@@ -48,9 +48,9 @@ public class BackupService
     private const double PhLonMax = 126.6;
 
     // Allowed alarm sound values — mirrors HomeController._alarmSoundOptions exactly, so a restore never
-    // silently downgrades a saved choice to "Default".
+    // silently downgrades a saved choice.
     private static readonly HashSet<string> ValidAlarmSounds =
-        new(StringComparer.OrdinalIgnoreCase) { "Default", "Alarm", "Buzzer", "Bell", "Siren" };
+        new(StringComparer.OrdinalIgnoreCase) { "Digital Clock", "Siren", "Buzzer", "Bell", "Air Horn" };
 
     private readonly DatabaseService _databaseService;
     private readonly PreferencesService _preferencesService;
@@ -197,7 +197,7 @@ public class BackupService
         // a raw unvalidated value, even transiently between restore and next HomeController init.
         var rawSound = payload.Preferences.AlarmSound;
         _preferencesService.AlarmSound = ValidAlarmSounds.Contains(rawSound ?? string.Empty)
-            ? rawSound! : "Default";
+            ? rawSound! : "Digital Clock";
         _preferencesService.AlarmLeadMinutes =
             Math.Clamp(payload.Preferences.AlarmLeadMinutes, MinAlarmLeadMinutes, MaxAlarmLeadMinutes);
         _preferencesService.VibrationOnly = payload.Preferences.VibrationOnly;

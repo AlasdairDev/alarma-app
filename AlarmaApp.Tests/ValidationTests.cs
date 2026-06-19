@@ -135,23 +135,25 @@ public class AlarmSoundValidationTests
 {
     private static readonly HashSet<string> ValidAlarmSounds =
         new(StringComparer.OrdinalIgnoreCase)
-        { "Default", "Alarm", "Buzzer", "Bell", "Siren" };
+        { "Digital Clock", "Siren", "Buzzer", "Bell", "Air Horn" };
+
+    private const string DefaultSound = "Digital Clock";
 
     private static string NormalizeSound(string? value)
     {
-        if (string.IsNullOrWhiteSpace(value)) return "Default";
+        if (string.IsNullOrWhiteSpace(value)) return DefaultSound;
         var trimmed = value.Trim();
-        return ValidAlarmSounds.Contains(trimmed) ? trimmed : "Default";
+        return ValidAlarmSounds.Contains(trimmed) ? trimmed : DefaultSound;
     }
 
     [Theory]
-    [InlineData("Default")]
-    [InlineData("Alarm")]
+    [InlineData("Digital Clock")]
+    [InlineData("Siren")]
     [InlineData("Buzzer")]
     [InlineData("Bell")]
-    [InlineData("Siren")]
-    [InlineData("default")]    // case-insensitive accept
-    [InlineData("ALARM")]
+    [InlineData("Air Horn")]
+    [InlineData("siren")]      // case-insensitive accept
+    [InlineData("BUZZER")]
     public void ValidSoundKeys_AreNormalised(string input)
         => Assert.Contains(NormalizeSound(input), ValidAlarmSounds);
 
@@ -159,12 +161,15 @@ public class AlarmSoundValidationTests
     [InlineData("")]
     [InlineData("  ")]
     [InlineData(null)]
+    [InlineData("Default")]    // retired
+    [InlineData("Alarm")]      // retired
+    [InlineData("Chime")]      // retired
     [InlineData("Buzz")]
     [InlineData("Custom")]
     [InlineData("../../../../etc/passwd")] // path traversal attempt
     [InlineData("<script>alert(1)</script>")] // XSS attempt
     public void InvalidSoundKeys_FallBackToDefault(string? input)
-        => Assert.Equal("Default", NormalizeSound(input));
+        => Assert.Equal(DefaultSound, NormalizeSound(input));
 }
 
 public class AlarmLeadMinutesValidationTests

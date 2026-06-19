@@ -3,6 +3,28 @@
 All notable changes to Alarma are recorded here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.3.0] - 2026-06-19
+
+Finalized the alarm-audio selection for the defense: the picker is now exactly five proper, bundled,
+high-intensity emergency alarms — no soft notification tones left anywhere.
+
+### Changed
+
+- **Five bundled high-intensity alarm sounds.** The picker, enum order, and audio manager now expose
+  exactly *Digital Clock* (the classic loud rhythmic beep-beep wake-up), *Siren* (high-pitched
+  emergency sweep), *Buzzer* (heavy-duty industrial buzz), *Bell* (sharp mechanical school/fire-alarm
+  ring), and *Air Horn* (deep piercing blast). Every one is a real audio file shipped in `res/raw` and
+  pinned to the native alarm channel (`AudioUsageKind.Alarm` / `STREAM_ALARM`), so all five play at
+  maximum alarm volume — identically — on any device, including a physical phone.
+- **Default alarm voice is now *Digital Clock*.** Any retired or unknown saved value
+  (`Default`/`Alarm`/`Chime`) normalizes to it, so a preference can never point at a sound that no
+  longer exists.
+
+### Fixed
+
+- **Backup/restore whitelist matches the five sounds exactly**, so saving or restoring a profile with
+  any of them works without resetting to the default.
+
 ## [1.2.0] - 2026-06-19
 
 Final defense hardening: the SOS, 911, Bluetooth, and alarm-audio paths now use true native Android
