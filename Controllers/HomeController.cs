@@ -2764,15 +2764,16 @@ public class HomeController : INotifyPropertyChanged
                    daytime tint is dependable and even. The twist: a plain opaque wash was greying out the dark
                    CARTO text (the word "MANILA" was washing into the violet), so we let the div blend with
                    mix-blend-mode:multiply. Multiply keeps dark pixels dark — the street/place labels stay crisp
-                   and black — while only the lighter pixels (roads, water) pick up the violet. Multiply darkens
-                   the whole thing a touch, so we lightened the purple to rgba(160,120,220,0.70) to keep the map
-                   from going murky, with text legibility as the priority. pointer-events:none lets every
+                   and black — while only the lighter pixels (roads, water) pick up the violet. The trick with
+                   multiply is that a brighter, more saturated input keeps the white areas luminous, which is
+                   what actually buys the contrast for the dark text underneath — so we feed it a vivid
+                   rgba(170,90,255,0.40) rather than a muddy low one. pointer-events:none lets every
                    tap/drag fall through to the live map; and the z-index keeps it above the tiles while the
                    markers (the blue dot and the destination pin) still read clearly through it. #map's own
                    background is an on-brand light violet so the load-in flash already matches the theme before
                    the first tiles paint. */
                 #map{background:#D9CEEA}
-                #violet-tint{position:absolute;inset:0;background:rgba(160,120,220,0.70);mix-blend-mode:multiply;pointer-events:none;z-index:300}
+                #violet-tint{position:absolute;inset:0;background:rgba(170,90,255,0.40);mix-blend-mode:multiply;pointer-events:none;z-index:300}
                 .leaflet-zoom-animated{transition:transform 0.4s cubic-bezier(0,0,0.25,1)!important}
                 .leaflet-interactive{will-change:transform;transition:none!important}
                 /* The dot is now driven frame-by-frame from JS (see _animateUserMarker), so we kill the
