@@ -1,103 +1,243 @@
-# Alarma — Adaptive Anti-Oversleep Destination Alarm and Emergency Safety System
+# Alarma — Adaptive Anti-Oversleep Destination Alarm & Emergency Safety System
 
-> An offline-first Android safety application for Metro Manila public-transport commuters.
-> Capstone and application-development project, Bachelor of Science in Information Technology, Polytechnic University of the Philippines.
+> An **offline-first** Android safety application for Metro Manila public-transport commuters.
+> Capstone & Application-Development Project — Bachelor of Science in Information Technology,
+> Polytechnic University of the Philippines.
 >
-> **Development team:** BS Information Technology Capstone Project Group.
+> **Release:** v7.0 (Final Panel Defense Build) · **Platform:** Android 8.0+ (API 26–35) ·
+> **Stack:** .NET MAUI 9 / C# / MVC · **Quality gate:** 268 passing xUnit tests.
+
+---
+
+## Table of Contents
+
+1. [Executive Summary](#1-executive-summary)
+2. [Core Features](#2-core-features)
+3. [Security & Data Protection](#3-security--data-protection)
+4. [Testing & Quality Assurance](#4-testing--quality-assurance)
+5. [Architecture & Technology Stack](#5-architecture--technology-stack)
+6. [Build, Installation & Sideloading](#6-build-installation--sideloading)
+7. [Emulator Automation & Field Telemetry](#7-emulator-automation--field-telemetry)
+8. [Appendix A — OWASP Alignment](#appendix-a--owasp-alignment)
+9. [Appendix B — Privacy & Legal](#appendix-b--privacy--legal)
+10. [Appendix C — Reliability & UX Audit Resolution](#appendix-c--reliability--ux-audit-resolution)
 
 ---
 
 ## 1. Executive Summary
 
-Alarma addresses a concrete, recurring risk for Metro Manila commuters: falling asleep aboard a jeepney, UV Express, or city bus and missing the intended stop — often late at night, and frequently with personal-safety consequences. Existing alarm and navigation tools are time-based or require constant attention; neither suits a passenger who needs to rest during a long commute.
+Alarma addresses a concrete, recurring risk for Metro Manila commuters: falling asleep aboard a
+jeepney, UV Express, or city bus and missing the intended stop — often late at night, and frequently
+with personal-safety consequences. Existing alarm and navigation tools are time-based or demand
+constant attention; neither suits a passenger who needs to rest during a long commute.
 
-Alarma is, at its core, an **adaptive commuter-safety tool built around progressive alarm staging**. It tracks the commute by GPS, computes the distance to the chosen destination, and escalates an alarm through three progressively stronger stages — adapting the trigger distance to the vehicle's speed — as the passenger nears the stop. If the vehicle overshoots, Alarma raises a wake-up alert and offers a one-tap reroute. A press-and-hold **emergency SOS** sends the passenger's live coordinates to designated contacts over cellular SMS, functioning even without an internet connection.
+At its core, Alarma is an **adaptive commuter-safety tool built around progressive alarm staging**.
+It tracks the commute by GPS, computes the distance to the chosen destination, and escalates an alarm
+through three progressively stronger stages — adapting the trigger distance to the vehicle's speed — as
+the passenger nears the stop. If the vehicle overshoots, Alarma raises a wake-up alert and offers a
+one-tap reroute. A press-and-hold **emergency SOS** sends the passenger's live, geocoded location to
+designated contacts over **true background cellular SMS**, functioning even without internet.
 
-The application is built **offline-first** and **privacy-first**: all personal data — trip history, saved routes, emergency contacts — is stored only on the device, encrypted at rest, in keeping with Republic Act No. 10173 (Data Privacy Act of 2012). No proprietary backend exists, and no personal data is transmitted to any first-party server.
+The application is built **offline-first** and **privacy-first**: all personal data — trip history,
+saved routes, emergency contacts — is stored only on the device, encrypted at rest, in keeping with
+Republic Act No. 10173 (Data Privacy Act of 2012). There is no proprietary backend, and no personal
+data is transmitted to any first-party server.
 
-**Status:** Stable. Secured and audited against the OWASP Mobile/Top-10 categories. Compiled to a signed, trimmed, ahead-of-time-compiled Release APK for physical field testing.
-
-### 1.1 Core Highlight Features
-
-Two capabilities define the Alarma experience and are the headline of the current release:
-
-- **Adaptive 3-Stage Alarm Escalation.** Rather than a single binary alarm, Alarma escalates in three distance-aware stages so a drowsy commuter is woken with the least force necessary and never sleeps through their stop:
-  1. **Stage 1 — Gentle Alert.** Fires at the calculated trigger distance (a speed-based adaptive lead radius). A soft vibration pattern and a low-volume chime; the screen is *not* taken over.
-  2. **Stage 2 — Louder Alert.** Fires as the vehicle continues and the rider crosses ~50% of the trigger radius. A stronger vibration pattern and increased alarm volume.
-  3. **Emergency Stage — Full-Screen Lockout.** Fires at the drop-off coordinate. Takes over the whole screen, forces maximum device volume, and runs **continuous** maximum-intensity vibration that cannot be silenced until the rider physically completes the **Slide to Stop** gesture. All escalation audio/vibration runs on a background `Task.Run` thread so the UI — and the slide gesture — never freezes.
-
-- **Overshoot Recovery with Google Maps Handoff.** If the vehicle passes the destination, Alarma detects it from **consecutive increasing-distance fixes** (not a single noisy reading) and walks the rider through a guided recovery:
-  1. **Confirmed alert** — a full-screen card showing the destination name and the exact distance overshot, with *Open Navigation via Google Maps* and *Close*.
-  2. **Area Safety Alert** — an overlay of locally-generated personal-safety guidance for being dropped somewhere unplanned (built entirely offline).
-  3. **In-app rerouting screen** — a mini-map plus offline, step-by-step return guidance (compass bearing + distance computed on-device), with a one-tap hand-off to Google Maps for live turn-by-turn directions. The hand-off is a pure local `google.navigation:q={lat},{lon}` Android Intent — **zero network requests** are made by Alarma.
-
----
-
-## 2. Defensive Security Architecture
-
-Security was treated as a primary design constraint rather than an afterthought. Because the application holds location data and emergency contacts, the threat model assumes an attacker with physical or filesystem access to a lost, stolen, or rooted device. The four pillars below are the controls most relevant to that model.
-
-### 2.1 Forensic Black Box Logger — AES-256-GCM, Android Keystore
-
-`Services/BlackBoxLogger.cs` records crashes and handled exceptions to a device-local, encrypted log so faults occurring in the field — where a debugger and ADB are unavailable — can still be recovered.
-
-- **Authenticated encryption.** Records are sealed with **AES-256-GCM**, which provides both confidentiality and integrity: any tampering with the ciphertext, nonce, or authentication tag causes decryption to fail before a single byte is returned.
-- **Hardware-backed key management.** The 256-bit key is generated by `RandomNumberGenerator` and stored in the **Android Keystore via `SecureStorage`** (key slot `alarma_blackbox_key_v2`). No key is hardcoded in the binary; an attacker who decompiles the APK gains nothing.
-- **Release-safe recovery.** On the next launch the prior crash is decrypted and written to a readable fault report at `FileSystem.CacheDirectory/app_fault_report.txt`, then the encrypted source is deleted (consumed once). This path is fully operational in a Release build, where diagnostic `Debug.WriteLine` output does not exist.
-- **Crash-safe by construction.** The key is preloaded into memory at startup so the terminating-process crash handler can encrypt synchronously without awaiting, and the writer never propagates an exception (no crash-on-crash loop).
-- **Global interception.** Two handlers are installed in `MauiProgram.cs` before any application code runs — `AppDomain.CurrentDomain.UnhandledException` and `TaskScheduler.UnobservedTaskException`. Handled exceptions across the controller and platform services are additionally routed to `BlackBoxLogger.RecordHandledException(...)`, so caught-and-recovered faults remain visible in production rather than being silently swallowed.
-
-### 2.2 Encrypted Backup Service — AES-256-GCM
-
-`Services/BackupService.cs` produces portable encrypted backups of user data.
-
-- **AES-256-GCM** authenticated encryption with a **fresh 96-bit nonce per export**. File layout: `[12-byte nonce][16-byte tag][ciphertext]`.
-- The 256-bit key is generated by `RandomNumberGenerator` and held in the Android Keystore via `SecureStorage` (`alarma_backup_key_v2`) — never hardcoded.
-- **User-owned storage.** Exporting opens the native OS "Save As" dialog (`FileSaver`) so the user picks the destination folder — typically **Downloads** — and importing opens the native file browser (`FilePicker`) to select the `.alarma` file back. The encryption envelope is identical either way; only the file's *location* moves from hidden app storage into a folder the user controls.
-- **Validate-before-clear restore.** Every record is validated before the existing database is touched. A tampered or empty backup therefore cannot silently wipe live user data. Restored fields are length-capped, phone numbers are re-validated against the Philippine number format, coordinates are bounded to the Philippine envelope, and quantity caps mirror the in-app limits.
-- **Integrity enforcement.** The GCM authentication tag is verified before any JSON is deserialized; corrupted or modified files are rejected with a `CryptographicException`.
-
-### 2.3 Encrypted Local Database — SQLCipher (AES-256)
-
-`Services/DatabaseService.cs` persists all structured data — trip history, saved routes, emergency contacts, geocode cache, behavioral profiles.
-
-- The SQLite database is encrypted at rest with **SQLCipher (AES-256)**.
-- The encryption key is generated by `RandomNumberGenerator.GetBytes(32)` and stored in the Android Keystore via `SecureStorage` (`alarma_db_key_v1`) — never written to `Preferences` and never hardcoded.
-- All data access uses `sqlite-net-pcl` **parameterized queries**; there is no raw SQL string construction, eliminating SQL-injection surface.
-- `android:allowBackup="false"` in the manifest prevents extraction of the encrypted database through ADB backup.
-- Connection initialization is guarded by a `SemaphoreSlim(1,1)` with double-checked locking so exactly one connection is created per process lifetime.
-
-### 2.4 Privacy-First, Offline Location Tracking
-
-- Continuous tracking runs in an Android foreground `Service` (`LocationTrackingService`) declared `Exported=false` with `ForegroundServiceType=TypeLocation` (required from API 34), so it cannot be started or bound by other applications.
-- Location data is held in-memory and passed to subscribers as immutable value objects; **coordinates are never logged or persisted to disk** by the tracking layer.
-- Tracking, alarms, saved routes, and SOS all function **without an internet connection**. The only network use is destination text search and map tiles, both over HTTPS to open services with no API keys and no personal identifiers.
-- A `PARTIAL_WAKE_LOCK` is held only while providers are registered and released on stop, preventing aggressive OEM power managers from throttling location delivery without leaking the lock.
-
-A consolidated mapping of these controls to OWASP categories is given in [Appendix A](#appendix-a--owasp-alignment).
+**Status — Production-ready.** Audited against the OWASP Mobile / Top-10 categories, covered by an
+automated **268-test** xUnit suite, and compiled to a signed, trimmed, ahead-of-time-compiled Release
+APK for physical field testing.
 
 ---
 
-## 3. Development Environment & Tech Stack
+## 2. Core Features
+
+### 2.1 Progressive 3-Stage Adaptive Alarm — with 5 high-intensity audio options
+
+Rather than a single binary alarm, Alarma escalates in three distance-aware stages so a drowsy
+commuter is woken with the least force necessary yet never sleeps through the stop. Trigger distances
+are a **speed-based adaptive lead radius** (a rolling-average-speed × reaction-window calculation,
+capped at 5 km), so the alarm arms earlier on a fast highway bus and later in crawling city traffic.
+
+| Stage | Trigger | Behaviour |
+|---|---|---|
+| **Stage 1 — Gentle Alert** | At the adaptive lead radius | A single soft vibration nudge. No screen takeover, no forced audio. |
+| **Stage 2 — Escalated Alert** | ~50% of the lead radius | Stronger vibration pattern **and** the chosen alarm sound at raised volume. |
+| **Emergency Stage — Full-Screen Lockout** | At the drop-off coordinate | Full-screen takeover, **maximum** alarm-channel volume, and **continuous** maximum-intensity vibration that only the physical **Slide to Stop** gesture can clear. |
+
+All escalation audio/vibration runs on a background `Task.Run` thread, so neither the UI nor the slide
+gesture ever freezes.
+
+**Five high-intensity, bundled alarm voices.** Every option is a real audio asset shipped in
+`res/raw` — not a device-dependent system tone — and is pinned to the native Android **alarm channel**
+(`AudioUsageKind.Alarm` / `STREAM_ALARM`), so it plays at maximum alarm volume identically on any
+handset:
+
+- **Digital Clock** — the classic loud, rhythmic beep-beep-beep wake-up alarm.
+- **Siren** — a high-pitched emergency sweep.
+- **Buzzer** — a heavy-duty industrial buzz.
+- **Bell** — a sharp mechanical school/fire-alarm ring.
+- **Air Horn** — a deep, piercing blast.
+
+**Overshoot recovery with Google Maps hand-off.** If the vehicle passes the destination, Alarma
+detects it from **consecutive increasing-distance fixes** (never a single noisy reading) and walks the
+rider through a guided recovery: a confirmed full-screen alert (destination + exact distance overshot)
+→ an offline *Area Safety* guidance overlay → an in-app rerouting screen with a mini-map and on-device,
+step-by-step return guidance, plus a one-tap hand-off to Google Maps via a pure local
+`google.navigation:q={lat},{lon}` Intent (**zero network requests**).
+
+### 2.2 Live Location Tracking
+
+- Continuous GPS tracking runs in an Android foreground `Service` (`LocationTrackingService`) declared
+  `Exported=false` with `ForegroundServiceType=TypeLocation` (required from API 34), so no other app can
+  start or bind it.
+- Trip distance is accumulated as a true **Haversine path integral** between fixes, with a per-segment
+  GPS-jitter gate (movement below the fix's own accuracy, floored at 8 m, is discarded) so a stationary
+  phone's GPS wander never inflates distance.
+- A live Leaflet map (CartoDB dark tiles under a strict Content-Security-Policy) shows a smoothly
+  interpolated location pin and the destination marker.
+- A `PARTIAL_WAKE_LOCK` is held only while providers are registered and released on stop, preventing
+  aggressive OEM power managers from throttling location delivery.
+
+### 2.3 Offline-Safe SOS — true background SMS with geocoded addresses
+
+- **True background dispatch.** A 2-second press-and-hold fires the SOS, which sends instantly in the
+  background via `Android.Telephony.SmsManager` (multipart-aware). The rider never has to open the
+  messaging app and tap *Send*. `SEND_SMS` is requested natively, in context, immediately before the
+  first send, and the delivery `PendingIntent` is `FLAG_IMMUTABLE` for Android 12+ compliance.
+- **Human-readable, URL-free body.** Carriers routinely block link-laden SMS, so the message carries no
+  URL. Online, Alarma reverse-geocodes the rider's **live** location into a real street address —
+  *"EMERGENCY! I need help near {address}."* Offline, it falls back to plain coordinates a contact can
+  paste into any map app.
+- **Resilient by design.** Each contact is messaged in its own `try/catch` (one bad number can't abort
+  the rest); a 30-second cooldown and a single-fire latch prevent accidental spam; and dispatch halts
+  with a prompt if device location is switched off. A discreet haptic buzz + brief beep confirms the
+  press without broadcasting it — important when the user may be vulnerable.
+- **Bulletproof 911 hand-off.** *Call 911* uses `Launcher.OpenAsync("tel:911")`, resolved through a
+  `<queries>` `DIAL`/`tel` manifest declaration so Android 11+ package-visibility can't hide the dialer;
+  if none resolves, a transient grey-pill notifies the user instead of failing silently.
+
+### 2.4 Native Android Bluetooth Syncing
+
+- A single native `BroadcastReceiver` listens for the adapter's `ACTION_STATE_CHANGED` **and** for
+  device `ACTION_ACL_CONNECTED` / `ACTION_ACL_DISCONNECTED`.
+- The in-app Settings Bluetooth control mirrors the **physical radio in real time**, and plugging
+  earbuds in or out flashes a transient *Earphones Connected* / *Earphones Disconnected* grey-pill.
+- Device details are never read (no `EXTRA_DEVICE`), so the feature needs no `BLUETOOTH_CONNECT`
+  runtime permission; the receiver re-queries the real audio-output state itself to filter out
+  non-audio devices.
+
+---
+
+## 3. Security & Data Protection
+
+Security was treated as a primary design constraint, not an afterthought. Because the app holds
+location data and emergency contacts, the threat model assumes an attacker with physical or filesystem
+access to a lost, stolen, or rooted device. A consolidated control-to-OWASP mapping is in
+[Appendix A](#appendix-a--owasp-alignment).
+
+### 3.1 AES-256-GCM Encrypted `.alarma` Backups — via native OS file pickers
+
+`Services/BackupService.cs` produces portable, authenticated-encrypted backups of user data.
+
+- **AES-256-GCM** authenticated encryption with a **fresh 96-bit nonce per export**.
+  File layout: `[12-byte nonce][16-byte GCM tag][ciphertext]`.
+- The 256-bit key is generated by `RandomNumberGenerator` and held in the **Android Keystore via
+  `SecureStorage`** (`alarma_backup_key_v2`) — never hardcoded.
+- **User-owned storage.** Exporting opens the native OS "Save As" dialog (`FileSaver`) so the user
+  picks the destination folder — typically **Downloads** — and importing opens the native file browser
+  (`FilePicker`) to select the `.alarma` file back. The encryption envelope is identical either way;
+  only the file's *location* moves out of hidden app storage into a folder the user controls.
+- **Validate-before-clear restore.** Every record is validated before the live database is touched, so a
+  tampered or empty backup can never silently wipe real data. Restored fields are length-capped, phone
+  numbers are re-validated against the Philippine format, coordinates are bounded to the Philippine
+  envelope, and quantity caps mirror the in-app limits.
+- **Integrity enforcement.** The GCM authentication tag is verified before any JSON is deserialized;
+  corrupted or modified files are rejected before a single plaintext byte is read.
+
+### 3.2 Encrypted Local Database — SQLCipher (AES-256)
+
+`Services/DatabaseService.cs` persists all structured data (trip history, saved routes, emergency
+contacts, geocode cache, behavioral profiles) in a SQLite database encrypted at rest with **SQLCipher
+(AES-256)**. The key is `RandomNumberGenerator`-generated and Keystore-resident (`alarma_db_key_v1`),
+never written to `Preferences`. All access uses `sqlite-net-pcl` **parameterized queries** (no raw SQL,
+no injection surface), and `android:allowBackup="false"` blocks extraction via ADB backup.
+
+### 3.3 Forensic Black-Box Logger — AES-256-GCM, Android Keystore
+
+`Services/BlackBoxLogger.cs` seals crashes and handled exceptions with **AES-256-GCM** into a
+device-local encrypted log (`alarma_blackbox_key_v2`) so field faults — where a debugger and ADB are
+unavailable — can still be recovered. Two global handlers are installed in `MauiProgram.cs` before any
+app code runs; the prior crash is decrypted into a readable report on next launch, fully operational in
+a Release build. The key is preloaded so the terminating-process handler can encrypt synchronously
+without a crash-on-crash loop.
+
+### 3.4 Privacy-First, Offline Operation
+
+Tracking, alarms, saved routes, and SOS all function **without internet**. Coordinates are held
+in-memory as immutable value objects and **never logged or persisted to disk** by the tracking layer.
+The only network use is destination text search and map tiles, over HTTPS to open services with no API
+keys and no personal identifiers.
+
+---
+
+## 4. Testing & Quality Assurance
+
+Alarma ships with a robust, fully automated **xUnit** test suite — **268 passing tests** — that gates
+every release.
+
+- **Hardware safely isolated with Moq.** Native MAUI/Android dependencies that a CI machine cannot
+  physically exercise — the reverse geocoder (`IGeocoding`), the Bluetooth broadcast listener, and the
+  earphone audio probe — are replaced with **Moq** mocks behind test-local interfaces. This lets the
+  full C# decision logic be tested rigorously, deterministically, and offline, with no real radio, SIM,
+  or GPS required.
+- **Comprehensive coverage of the v7 feature set:**
+  - **SOS formatter & geocoding** — a mocked geocoding source proves the online *"…near {address}."*
+    format and the offline coordinate-fallback path (URL-free, culture-invariant).
+  - **Progressive alarm state machine** — Stage None → 1 → 2 → 3 transitions fire strictly on the
+    distance thresholds, escalate monotonically, and latch (the Stage-3 lockout never downgrades on a
+    GPS wobble).
+  - **Adaptive alarm mathematics** — rolling-average speed, the adaptive reaction window, and the
+    speed-based stage boundaries, asserted against the technical specification's worked examples.
+  - **Backup/restore serialization** — the AES-256-GCM `.alarma` envelope round-trips a profile
+    exactly, rejects any tamper (`AuthenticationTagMismatchException`) or wrong key, and the
+    validate-before-restore filters strip junk records.
+  - **Bluetooth UI sync** — simulated hardware broadcasts drive the ViewModel's UI state
+    (toggle/label and the *Earphones Connected/Disconnected* pill), with `PropertyChanged` verified.
+  - Plus phone-number validation, coordinate bounding, alarm-sound whitelisting, lead-time clamping,
+    timezone formatting, and geocode-cache LRU behaviour.
+- **Clean separation.** The suite (`AlarmaApp.Tests`) targets plain `net9.0` with no Android/MAUI
+  dependency, so it runs anywhere `dotnet test` runs. Production code is never modified to accommodate a
+  test.
+
+```bash
+dotnet test AlarmaApp.Tests/AlarmaApp.Tests.csproj
+# Passed!  - Failed: 0, Passed: 268, Skipped: 0
+```
+
+---
+
+## 5. Architecture & Technology Stack
+
+Alarma follows a clean **Model–View–Controller (MVC)** separation: XAML `Views` bind to a
+`HomeController` view-model, which orchestrates injected, interface-backed services
+(`ILocationService`, `ISmsService`, `IBluetoothMonitor`, `IGeocoding`, …). Native behaviour lives in
+platform implementations under `Platforms/Android`, and dependency injection is configured in
+`MauiProgram.cs` — the seam that makes the logic unit-testable with Moq.
 
 | Layer | Technology |
 |---|---|
 | Framework | .NET MAUI (.NET 9) |
 | Language | C# |
-| Architecture | Model–View–Controller (MVC) |
+| Architecture | Model–View–Controller (MVC) with DI-injected services |
 | Target framework | `net9.0-android` |
 | Local database | `sqlite-net-pcl` over SQLCipher (AES-256) |
 | Key–value store | MAUI `Preferences` (non-sensitive settings only) |
 | Secrets | Android Keystore via MAUI `SecureStorage` |
-| Mapping | Leaflet.js with CartoDB dark tiles in a MAUI `WebView` under a strict Content-Security-Policy |
-| Geocoding | Three-tier forward search — Photon (primary) and Nominatim (street-level supplement) over OSM, then the device's native platform geocoder (Android `Geocoder`) as a last resort for OSM-unmapped residential subdivisions — plus a client-side Philippine alias dictionary and a coordinate-label fallback (`Near lat, lon (Unmapped Area)`) so coordinate-valid pins are never dropped |
+| Mapping | Leaflet.js with CartoDB dark tiles in a MAUI `WebView` under a strict CSP |
+| Geocoding | Three-tier forward search — Photon (primary) + Nominatim (street-level) over OSM, then the device's native `Geocoder` for OSM-unmapped subdivisions — plus a PH alias dictionary and a coordinate-label fallback |
 | Cryptography | `System.Security.Cryptography` — `AesGcm`, `RandomNumberGenerator` |
-| Iconography | Google Material Symbols font ligatures (`MaterialSymbolsOutlined.ttf`) registered under the `MaterialSymbols` alias — vector glyphs that scale crisply at any screen density |
-| Asset rendering | MAUI resizetizer with `BaseSize`-driven high-DPI buckets: an SVG splash and `BaseSize="1200,1200"` tutorial artwork stay sharp from `mdpi` to `xxxhdpi` |
-
-### Development and build environment
-
-The primary development and compilation environment was **Aurora DX (KDE Plasma)**, with **XAMPP** used for local service testing during development. Builds were produced with the .NET 9 SDK and the `maui-android` workload.
+| Testing | xUnit + **Moq** (hardware isolation), 268 tests on `net9.0` |
+| Iconography | Google Material Symbols font ligatures (`MaterialSymbolsOutlined.ttf`) |
 
 ### Target platform
 
@@ -107,37 +247,40 @@ The primary development and compilation environment was **Aurora DX (KDE Plasma)
 | Minimum OS | Android 8.0 (API 26) |
 | Target OS | Android 15 (API 35) |
 | Application ID | `com.alarma.app` |
-| Version | 1.0.0 |
+| Release | v7.0 (Final Panel Defense Build) |
 | Out of scope | iOS, web, desktop |
 
 ### Release hardening pipeline
 
-The Release configuration in `AlarmaApp.csproj` applies layered hardening that also reduces reverse-engineering surface:
+The Release configuration in `AlarmaApp.csproj` applies layered hardening that also reduces
+reverse-engineering surface:
 
 | Property | Value | Effect |
 |---|---|---|
-| `RunAOTCompilation` | `true` | Managed IL is ahead-of-time compiled to native code; no IL remains to decompile in the installed APK. |
-| `AndroidEnableProfiledAot` | `true` | Profile-guided AOT prioritizes hot paths (alarm trigger, GPS callback, geocoding) for faster cold start. |
-| `PublishTrimmed` / `TrimMode` | `true` / `full` | The IL trimmer removes unreferenced code across the full dependency closure, shrinking the binary and dead-code surface. |
+| `RunAOTCompilation` | `true` | Managed IL is AOT-compiled to native code; no IL remains to decompile. |
+| `AndroidEnableProfiledAot` | `true` | Profile-guided AOT prioritizes hot paths (alarm trigger, GPS callback) for faster cold start. |
+| `PublishTrimmed` / `TrimMode` | `true` / `full` | The IL trimmer removes unreferenced code across the full dependency closure. |
 | `AndroidLinkMode` | `SdkOnly` | The Android linker strips unused SDK/AndroidX code at the DEX level. |
-| `DebugSymbols` / `DebugType` | `false` / `none` | No symbols or sequence points are emitted; decompilers cannot map native code to source lines. |
+| `DebugSymbols` / `DebugType` | `false` / `none` | No symbols or sequence points; decompilers cannot map native code to source lines. |
 
-Because the trimmer cannot observe reflection, `TrimmerRoots.xml` roots the `AlarmaApp.Models` namespace and the SQLite ORM assemblies so reflection-instantiated types survive trimming.
+Because the trimmer cannot observe reflection, `TrimmerRoots.xml` roots the `AlarmaApp.Models`
+namespace and the SQLite ORM assemblies so reflection-instantiated types survive trimming.
 
 ---
 
-## 4. Installation & Sideloading
+## 6. Build, Installation & Sideloading
 
-These instructions assume an evaluator who has the source repository and wishes to install the compiled Release build on a physical Android device for field testing, without Google Play.
+These instructions assume an evaluator with the source repository who wishes to install the compiled
+Release build on a physical Android device for field testing, without Google Play.
 
-### 4.1 Prerequisites
+### 6.1 Prerequisites
 
 - .NET 9 SDK
 - MAUI Android workload: `dotnet workload install maui-android`
 - Android SDK Platform Tools (provides `adb`) on the `PATH`
 - A physical Android device running Android 8.0 (API 26) or later
 
-### 4.2 Produce the sideload-ready APK
+### 6.2 Produce the sideload-ready APK
 
 From the repository root:
 
@@ -145,148 +288,51 @@ From the repository root:
 dotnet publish AlarmaApp.csproj -f net9.0-android -c Release -p:AndroidPackageFormat=apk
 ```
 
-The `-p:AndroidPackageFormat=apk` flag overrides the default Android App Bundle (`.aab`) output and emits a self-contained, installable `.apk`.
-
-**Output directory:**
-
-```
-bin/Release/net9.0-android/publish/
-```
-
-The signed, sideload-ready artifact is:
+The `-p:AndroidPackageFormat=apk` flag overrides the default Android App Bundle (`.aab`) and emits a
+self-contained, installable `.apk`. The signed, sideload-ready artifact is:
 
 ```
 bin/Release/net9.0-android/publish/com.alarma.app-Signed.apk
 ```
 
-### 4.3 Enable sideloading on the device
-
-1. Open **Settings → About phone** and tap **Build number** seven times to enable Developer options (only required if using ADB over USB).
-2. In **Settings → System → Developer options**, enable **USB debugging**.
-3. For manual installation by file, enable **Install unknown apps** for the file manager or browser used to transfer the APK.
-
-### 4.4 Install
-
-**Over USB with ADB (recommended):**
+### 6.3 Install over USB with ADB (recommended)
 
 ```bash
 adb install -r "bin/Release/net9.0-android/publish/com.alarma.app-Signed.apk"
 ```
 
-The `-r` flag reinstalls over an existing copy while preserving data.
+The `-r` flag reinstalls over an existing copy while preserving data. **Manual install:** transfer the
+APK to the device, open it with a file manager (with *Install unknown apps* enabled), and confirm.
 
-**Manually:** transfer `com.alarma.app-Signed.apk` to the device, open it with a file manager, and confirm installation.
+### 6.4 First-run permissions
 
-### 4.5 First-run permissions
-
-On first launch the application guides the user through granting location (including background), notifications, and SMS permissions, and offers to request a battery-optimization exemption. All permissions are explained in context; location and SMS are central to the destination-alarm and emergency-SOS features respectively.
+On first launch the app guides the user through granting location (including background),
+notifications, and SMS permissions, and offers a battery-optimization exemption. All permissions are
+explained in context; location and SMS are central to the destination-alarm and emergency-SOS features.
 
 ---
 
-## 5. Test Automation & Telemetry
+## 7. Emulator Automation & Field Telemetry
 
-The commute and alarm pipeline is exercised on an Android emulator with a hands-free
-ADB script, `AutomationTools/simulate_commute.py`, so the multi-stage alarm can be
-verified end-to-end without physically moving.
-
-### 5.1 Localized Manila test loop
-
-The script models a real Metro Manila commute along the **University of Santo Tomas**
-corridor. It walks a straight south-to-north line, passing through UST near the
-midpoint (Arrival) and continuing past it (Overshoot), so all three alarm stages fire:
-
-| Property | Value |
-|---|---|
-| Route | UST corridor, longitude `120.9895` |
-| Start | `14.6047, 120.9895` (~0.55 km south of UST — Approach) |
-| Destination | University of Santo Tomas (~`14.6097, 120.9895` — Arrival) |
-| End | `14.6167, 120.9895` (~0.78 km north of UST — Overshoot) |
-| Waypoints | 28 interpolated fixes |
-| Pacing | one fix every 4 seconds |
-
-> Note: the original `14.5995 → 14.6085` line was an early debug route; the verified
-> loop above is the current one and replaces it.
-
-### 5.2 Running the loop
+The commute and alarm pipeline is exercised on an Android emulator with a hands-free ADB script,
+`AutomationTools/simulate_commute.py`, so the multi-stage alarm can be verified end-to-end without
+physically moving. The script models a real Metro Manila commute along the **University of Santo
+Tomas** corridor — a straight south-to-north line passing through UST (Arrival) and continuing past it
+(Overshoot) so all three alarm stages fire.
 
 ```bash
-# 1. Bypass the first-run permission dialogs (emulator only)
+# 1. Bypass first-run permission dialogs (emulator only)
 adb shell pm grant com.alarma.app android.permission.ACCESS_FINE_LOCATION
 adb shell pm grant com.alarma.app android.permission.ACCESS_COARSE_LOCATION
 adb shell pm grant com.alarma.app android.permission.POST_NOTIFICATIONS
 
-# 2. Drive the full hands-free run (launch → search → select → start → 28 fixes)
+# 2. Drive the full hands-free run (launch → search → select → start → 28 GPS fixes)
 python AutomationTools/simulate_commute.py
 ```
 
-The script launches the app, taps into Search, types the destination, selects the first
-result, taps **Start Trip**, then streams the 28-point loop via `adb emu geo fix`. GPS
-injection uses the emulator console bridge; a physical handset needs a mock-location
-provider app. Tap coordinates are calibrated for a 1080×2400 emulator and exposed as
-editable constants at the top of the script.
-
-### 5.3 Iconography & typography
-
-The interface uses **Google Material Symbols** font ligatures for icons instead of raw
-Unicode emojis, so glyphs render as crisp vectors and stay consistent across devices.
-
-- **Font asset:** `Resources/Fonts/MaterialSymbolsOutlined.ttf` (picked up by the
-  `<MauiFont Include="Resources\Fonts\*" />` wildcard in `AlarmaApp.csproj`).
-- **Registration** (`MauiProgram.cs`):
-  ```csharp
-  builder.UseMauiApp<App>()
-      .ConfigureFonts(fonts =>
-          fonts.AddFont("MaterialSymbolsOutlined.ttf", "MaterialSymbols"));
-  ```
-- **Usage:** an icon `Label` sets `FontFamily="MaterialSymbols"` and uses the ligature
-  name as its `Text` (e.g. `search`). The search affordance across `HomeView`,
-  `SearchView`, `HistoryView`, and `AddFavoriteView` uses the `search` ligature.
-- Available ligature names follow the Material Symbols catalog
-  (`location_on`, `notifications_active`, `warning`, `commute`, …).
-
-**High-DPI asset rendering.** Beyond the icon font, raster and vector art is run through
-the MAUI resizetizer so a single source asset is generated into every Android density
-bucket (`mdpi` → `xxxhdpi`) at build time. The splash screen ships as an SVG
-(`MauiSplashScreen`, `BaseSize="256,256"`), and the full-screen tutorial illustrations are
-declared with `BaseSize="1200,1200"` so they stay pin-sharp on high-resolution displays
-without shipping hand-cut per-density copies. In the onboarding flow these illustrations
-render with `Aspect="AspectFill"` on an input-transparent background layer, so the artwork
-fills the canvas edge-to-edge while the navigation controls above it keep clean touch targets.
-
----
-
-## 6. Reliability & UX Hardening — Capstone Audit Resolution
-
-A focused functional and UX audit ahead of the panel defense closed twelve defects identified during pre-defense testing. These changes harden the commute pipeline and the safety features **without altering the security posture in Section 2** — the SQLCipher database, the AES-256-GCM backup and black box, and the Keystore key handling are all untouched (the one retained database column, `TripHistory.SnoozeCount`, is kept only so older encrypted backups remain restorable).
-
-### 6.1 Infrastructure & permissions
-
-- **Mandatory GPS enforcement.** Starting a trip now pre-flights the device's *master location switch* (`ILocationService.IsLocationServiceEnabled()`), not just the app permission. If system location is off, the trip is blocked and the user is sent straight to the OS location settings — the way a navigation app refuses to guide without GPS. A granted permission on a phone with location switched off can no longer produce a silent "dead" trip.
-- **Two-way permission toggles.** The setup-screen switches are no longer one-way. Toggling Location or Notifications *off* now tears down local state (an active tracking service and its wake lock are stopped) and routes the user to App Settings, where Android actually allows a runtime permission to be revoked. On return, the switch re-syncs to the real OS status.
-
-### 6.2 Alarm, tracking & state
-
-- **Haversine distance refactor.** Trip distance is accumulated as a true Haversine path integral between fixes, with a per-segment **GPS-jitter gate**: a movement below the fix's own accuracy (minimum 8 m) is treated as noise and excluded, and the comparison anchor only advances on an accepted segment — so a stationary phone's GPS wander no longer inflates the distance, while genuine slow movement still accumulates.
-- **Full state reset on stop.** Ending a trip now performs a complete reset — destination and map marker cleared, search header restored, the in-memory active trip dropped, and the foreground service killed — so no "ghost" *View Active Trip* state lingers on the home screen.
-- **Monotonic, outlier-resistant escalation.** The three alarm stages are monotonic by construction (lead ≥ 300 m > arrival 200 m > overshoot), and arrival must now persist across consecutive fixes before it latches, so a single outlier GPS fix can no longer fake an arrival (and the false overshoot that would follow it).
-- **Removed Vehicle Type & Snooze.** The vehicle-type selector and its lead-distance branching were removed in favor of a single adaptive, speed-based lead distance. Residual snooze logic was stripped (the historical database column is retained only for backup compatibility).
-
-### 6.3 UX, feedback & SOS
-
-- **Friendlier location status.** The origin row shows *"Searching for GPS…"* instead of a blunt *"Location unavailable"* while a fix is being acquired.
-- **Notification deep-linking.** Tapping a trip/alarm notification now deep-links straight to the active-trip screen via an explicit `PendingIntent` routed through a `SingleTop` `MainActivity`, instead of merely bringing the app forward.
-- **SOS is SMS-first with a discreet cue.** The SOS action no longer hijacks the ringer, forces alarm volume, or toggles Do-Not-Disturb. It strictly dispatches the emergency SMS and gives a short **haptic buzz + brief confirmation beep** so the press registers — quietly, which matters when the user may be in a vulnerable situation. The cue respects the phone's current volume and DND, so a silenced phone stays silent.
-- **Contact-form feedback.** The emergency-contact form now surfaces inline feedback for both validation errors and successful saves, instead of failing silently.
-
-### 6.4 Post-audit UX & SOS refinements
-
-Two follow-up refinements after the audit, both shipped and field-tested on the emulator:
-
-- **Frictionless search UX.** Once a destination is selected, its text is no longer a dead read-only label. It now renders as a **light-lavender pill with an `edit` (pencil) icon** — styled to match the search bars — and the whole pill is tappable: one tap drops straight back into the focused search screen, so the rider can retype a destination without first hunting for the back arrow. To keep the look cohesive, the initial "Where are you headed?" bar and the active "Where to?" entry were unified to the same `#EDE7F6` lavender as the pill. This reuses the existing search screen rather than an inline editor, so it never clears the destination and the hardened stop-trip state resets are untouched.
-- **True background, offline-safe SOS dispatch.** The emergency SMS is sent instantly in the background through `Android.Telephony.SmsManager` (multipart-aware, `SEND_SMS` requested natively in context) — the rider never has to finish the send in the messaging app. The body carries **no URL** (carriers routinely block link-laden SMS): online it reverse-geocodes the rider's *live* location into a real street address — *"EMERGENCY! I need help near {address}."* — and falls back, when offline, to plain coordinates a contact can paste into any map app. At the moment SOS is pressed it grabs the freshest fix through a fallback chain — the active trip's in-memory Haversine fix first, then the platform's last-known/fresh location — and both reads are passive, so pulling the coordinate never perturbs the active tracking loop.
-- **Intuitive, user-owned Backup/Restore UX.** Backups are no longer trapped in hidden app storage. *Export backup* opens the native Android "Save As" dialog (via Community Toolkit `FileSaver`) so the rider drops the encrypted `.alarma` file straight into their **Downloads** folder (or Drive, or anywhere they choose), and *Restore backup* opens the native file browser (`FilePicker`) to pick that file back from wherever they saved it — cancelling either dialog aborts safely. This hands commuters genuine ownership and portability of their own data while the AES-256-GCM envelope and validate-before-clear restore stay exactly as in Section 2.2.
-- **Non-intrusive "grey pill" feedback.** Backup/restore results and similar confirmations now appear as a transient, auto-hiding grey pill (a toast/snackbar-style capsule) near the bottom of the screen rather than a blocking `DisplayAlert` modal — so feedback never interrupts the rider mid-commute.
-- **Bluetooth hardware sync & bulletproof 911 dialer.** A single `BroadcastReceiver` listens for the adapter's `ACTION_STATE_CHANGED` *and* for device `ACTION_ACL_CONNECTED` / `ACTION_ACL_DISCONNECTED`, so the Settings Bluetooth control mirrors the physical radio in real time and plugging earbuds in or out flashes an *Earphones Connected* / *Earphones Disconnected* grey-pill. The *Call 911* action uses `Launcher.OpenAsync("tel:911")`, resolved via a `<queries>` `DIAL`/`tel` manifest declaration so Android 11+ package-visibility can't hide the dialer; if none can be resolved it surfaces a transient *"Dialer not found on this device"* grey-pill instead of failing silently.
+GPS injection uses the emulator console bridge (`adb emu geo fix`); a physical handset needs a
+mock-location provider. Tap coordinates are calibrated for a 1080×2400 emulator and exposed as editable
+constants at the top of the script.
 
 ---
 
@@ -298,21 +344,32 @@ Two follow-up refinements after the audit, both shipped and field-tested on the 
 | A02 Cryptographic Failures | AES-256-GCM (backup, black box) and SQLCipher AES-256 (database); all keys random and Keystore-resident; no hardcoded keys. |
 | A03 Injection | Parameterized SQL throughout; map labels passed through `JsonSerializer.Serialize`; search input URL-encoded; phone numbers regex-validated at controller and transport layers. |
 | A04 Insecure Design | Validate-before-clear backup restore; SOS 2-second hold with timer cleared on page exit; 30-second SOS cooldown. |
-| A05 Security Misconfiguration | `usesCleartextTraffic="false"`; `allowBackup="false"`; captive-portal detection; foreground service hardening. |
+| A05 Security Misconfiguration | `usesCleartextTraffic="false"`; `allowBackup="false"`; captive-portal detection; foreground-service hardening. |
 | A08 Software & Data Integrity Failures | AES-GCM authentication tags verified before deserialization for both backup and black-box records. |
 | A09 Security Logging Failures | Encrypted, Keystore-backed forensic logging that remains readable in Release; handled exceptions routed to the logger rather than discarded. |
 | A10 Server-Side Request Forgery | Geocoding base addresses hardcoded; map reroute uses an explicit Android Intent, not an HTTP request. |
 
 ## Appendix B — Privacy & Legal
 
-No personal data leaves the device except destination text queries and map tile requests (to CartoDB/OpenStreetMap), all over HTTPS and free of personal identifiers. Destination text queries are sent to Photon and Nominatim; when both return no match for an address — typically an OSM-unmapped residential subdivision — the query string is passed as a last resort to the device's native platform geocoder (on Android, Google's `Geocoder`), which may transmit it to the platform provider. Only the query text is sent: no coordinates, contacts, or identifiers accompany it. Emergency SOS messages are sent directly through Android `SmsManager` over the cellular network and do not pass through any Alarma server. GPS coordinates, emergency contacts, trip history, and behavioral data are stored only on the device in an encrypted SQLite database, in compliance with Republic Act No. 10173 (Data Privacy Act of 2012). The in-app **Settings → Legal** section provides the full Terms & Conditions and Privacy Policy.
+No personal data leaves the device except destination text queries and map-tile requests (to
+CartoDB/OpenStreetMap), all over HTTPS and free of personal identifiers. Destination text queries are
+sent to Photon and Nominatim; when both return no match — typically an OSM-unmapped residential
+subdivision — the query string is passed as a last resort to the device's native platform geocoder
+(on Android, Google's `Geocoder`). Only the query text is sent: no coordinates, contacts, or
+identifiers accompany it. Emergency SOS messages are sent directly through Android `SmsManager` over the
+cellular network and do not pass through any Alarma server. GPS coordinates, emergency contacts, trip
+history, and behavioral data are stored only on the device in an encrypted SQLite database, in
+compliance with Republic Act No. 10173 (Data Privacy Act of 2012). The in-app **Settings → Legal**
+section provides the full Terms & Conditions and Privacy Policy.
 
-## Appendix C — Testing
+## Appendix C — Reliability & UX Audit Resolution
 
-A standalone xUnit suite (`AlarmaApp.Tests`, targeting plain `net9.0` with no Android/MAUI dependency) covers the security-critical and adaptive-alarm logic: Philippine phone-number validation, coordinate bounding, alarm-sound whitelisting, lead-time clamping, backup restore caps, AES-GCM length checks, and the speed-based multi-stage alarm computation.
+A focused functional and UX audit ahead of the panel defense closed defects identified during
+pre-defense testing while leaving the security posture in [Section 3](#3-security--data-protection)
+untouched. Highlights: mandatory master-GPS enforcement before a trip starts; two-way permission
+toggles that route to App Settings; the Haversine distance refactor with a jitter gate; full state
+reset on stop (no "ghost" active-trip state); monotonic, outlier-resistant stage escalation; notification
+deep-linking into the active-trip screen via an explicit `PendingIntent`; and non-intrusive "grey pill"
+toast feedback in place of blocking modals.
 
-```bash
-dotnet test AlarmaApp.Tests/AlarmaApp.Tests.csproj
-```
-
-> Release notes live in [CHANGELOG.md](CHANGELOG.md).
+> Full version-by-version release notes live in [CHANGELOG.md](CHANGELOG.md).
