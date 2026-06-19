@@ -7,6 +7,8 @@ namespace AlarmaApp.Views;
 public class OnboardingSlide
 {
     public string ImageSource { get; set; } = "";
+    public string Title { get; set; } = "";
+    public string Subtitle { get; set; } = "";
     public bool IsLastSlide { get; set; }
 }
 
@@ -27,10 +29,31 @@ public partial class OnboardingView : ContentPage
 
     public ObservableCollection<OnboardingSlide> Slides { get; } = new()
     {
-        new OnboardingSlide { ImageSource = "tutorial1.png" },
-        new OnboardingSlide { ImageSource = "tutorial2.png" },
-        new OnboardingSlide { ImageSource = "tutorial3.png" },
-        new OnboardingSlide { ImageSource = "tutorial4.png", IsLastSlide = true },
+        new OnboardingSlide
+        {
+            ImageSource = "onboarding_1.jpg",
+            Title = "Welcome to Alarma.",
+            Subtitle = "Never miss your stop again.",
+        },
+        new OnboardingSlide
+        {
+            ImageSource = "onboarding_2.jpg",
+            Title = "Set Your Destination",
+            Subtitle = "Pick a spot on the map and track your destination in real-time.",
+        },
+        new OnboardingSlide
+        {
+            ImageSource = "onboarding_3.jpg",
+            Title = "Rest Easy",
+            Subtitle = "Close your eyes and let us handle the rest. Wake up to personalized sounds and vibrations.",
+        },
+        new OnboardingSlide
+        {
+            ImageSource = "onboarding_4.jpg",
+            Title = "Smart Travel Safety",
+            Subtitle = "Get adaptive ETA alarms, travel stop alerts, overshoot detection, and SOS features.",
+            IsLastSlide = true,
+        },
     };
 
     public bool IsAgreed
@@ -81,9 +104,11 @@ public partial class OnboardingView : ContentPage
     {
         if (_finishing) return;
         _finishing = true;
+        // Commit the agreement, then redirect to the main Home/Map interface.
+        // HomeView's own gate forwards to permissions setup if that step is still pending.
         _preferencesService.HasSeenTutorial = true;
         _preferencesService.HasAgreedToTerms = true;
         await Content.FadeTo(0, 300, Easing.CubicIn);
-        await Shell.Current.GoToAsync("permissions-setup", animate: false);
+        await Shell.Current.GoToAsync("//home", animate: false);
     }
 }
