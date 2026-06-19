@@ -153,19 +153,39 @@ public partial class EmergencyView : ContentPage
         SosSentOverlay.IsVisible = false;
         try
         {
-            // Hand the emergency number straight to the system dialer (pre-filled, the user still taps
-            // call). This is the strict path the spec asks for.
-            PhoneDialer.Default.Open("911");
+            // Hand the emergency number straight to the system dialer, pre-filled (the user still taps
+            // call). Launcher.OpenAsync("tel:911") resolves via the DIAL/tel <queries> entry we declare
+            // in the manifest, so Android 11+ package-visibility can't hide the dialer from us. It
+            // returns false when nothing can handle the URI (no dialer at all).
+            var opened = await Launcher.Default.OpenAsync("tel:911");
+            if (!opened)
+                await ShowToastAsync("Dialer not found on this device");
         }
         catch (Exception ex)
         {
-            // No dialer app on this device/emulator (tablets, some emulators). Tell the user instead of
-            // failing silently so they know to call another way.
+            // Some tablets / emulators have no dialer activity at all and throw. Surface a transient
+            // grey-pill instead of failing silently so the rider knows to call another way.
             BlackBoxLogger.RecordHandledException(ex, "[EmergencyView.OnCall911Clicked]");
-            await DisplayAlert(
-                "Can't Place Call",
-                "This device doesn't have a phone dialer available. Please call 911 from another phone.",
-                "OK");
+            await ShowToastAsync("Dialer not found on this device");
         }
+    }
+
+    // Pops the grey pill up with a message, holds it for 3 seconds, then fades it away. The sequence
+    // guard means a second trigger mid-display restarts the timer instead of hiding the newer message
+    // early.
+    private int _toastSeq;
+    private async Task ShowToastAsync(string message)
+    {
+        var seq = ++_toastSeq;
+        ToastLabel.Text = message;
+        ToastPill.Opacity = 1;
+        ToastPill.IsVisible = true;
+
+        await Task.Delay(3000);
+        if (seq != _toastSeq) return; // a newer toast took over — let it own the lifecycle
+
+        await ToastPill.FadeTo(0, 250, Easing.CubicIn);
+        if (seq != _toastSeq) return;
+        ToastPill.IsVisible = false;
     }
 }

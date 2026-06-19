@@ -291,6 +291,11 @@ public class AndroidAlarmAudioService : IAlarmAudioService
             var uri = GetRingtoneUri(soundKey);
             _ringtone = RingtoneManager.GetRingtone(AndroidApplication.Context, uri);
 
+            // Pin it to the alarm channel so Stage 3's maxed alarm volume actually applies (a ringtone
+            // would otherwise ride the ringer stream).
+            if (_ringtone is not null)
+                RouteThroughAlarmChannel(_ringtone);
+
             // Emergency keeps sounding until the rider slides to stop, so loop the ringtone instead of
             // letting it play through once. Looping is API 28+; on older devices it simply plays once.
             if (_ringtone is not null && isEmergency && Build.VERSION.SdkInt >= BuildVersionCodes.P)
@@ -322,9 +327,11 @@ public class AndroidAlarmAudioService : IAlarmAudioService
         await DisableCriticalAudioAsync();
     }
 
-    // The five Settings options, in display order. Each maps by index to a distinct entry in the
-    // device's sound catalogue (see GetDistinctSoundUris) so all five are audibly different and loud.
-    private static readonly string[] SoundOrder = { "Default", "Alarm", "Chime", "Bell", "Siren" };
+    // The five Settings options, in display order. "Siren" and "Buzzer" are bundled, intentionally loud
+    // and aggressive alarm assets shipped in res/raw (see GetBundledAlarmUri); the rest map by index to a
+    // distinct entry in the device's sound catalogue (see GetDistinctSoundUris) so all five are audibly
+    // different and loud. ("Chime" was retired — too gentle to wake a sleeping commuter.)
+    private static readonly string[] SoundOrder = { "Default", "Alarm", "Buzzer", "Bell", "Siren" };
     private static IReadOnlyList<global::Android.Net.Uri>? _distinctSoundUris;
     private static readonly object _soundUriLock = new();
 
@@ -375,6 +382,11 @@ public class AndroidAlarmAudioService : IAlarmAudioService
 
     private static global::Android.Net.Uri? GetRingtoneUri(string soundKey)
     {
+        // Bundled assets win first — they're real files we ship, so they sound identical on every device
+        // and are guaranteed loud/aggressive regardless of what the device's ringtone catalogue holds.
+        var bundled = GetBundledAlarmUri(soundKey);
+        if (bundled is not null) return bundled;
+
         var uris = GetDistinctSoundUris();
         if (uris.Count == 0)
             return RingtoneManager.GetDefaultUri(RingtoneType.Alarm);
@@ -382,5 +394,45 @@ public class AndroidAlarmAudioService : IAlarmAudioService
         var idx = Array.IndexOf(SoundOrder, soundKey);
         if (idx < 0) idx = 0;
         return uris[Math.Min(idx, uris.Count - 1)];
+    }
+
+    // Resolves "Siren" / "Buzzer" to the bundled res/raw audio files via an android.resource:// URI.
+    // Returns null for every other key so the caller falls back to the device sound catalogue. Wrapped in
+    // try/catch so a missing resource can never take the alarm down — it just degrades to a system sound.
+    private static global::Android.Net.Uri? GetBundledAlarmUri(string soundKey)
+    {
+        try
+        {
+            int resId;
+            if (soundKey == "Siren") resId = global::AlarmaApp.Resource.Raw.siren;
+            else if (soundKey == "Buzzer") resId = global::AlarmaApp.Resource.Raw.buzzer;
+            else return null;
+
+            var pkg = AndroidApplication.Context.PackageName;
+            return global::Android.Net.Uri.Parse($"android.resource://{pkg}/{resId}");
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    // Forces a ringtone onto the ALARM usage/stream so it plays through the alarm channel we've maxed out
+    // (GetStageVolume → Stage 3 = max alarm volume), rather than the ringer stream a ringtone would
+    // default to. API 21+, so always available at our min SDK 26.
+    private static void RouteThroughAlarmChannel(Ringtone ringtone)
+    {
+        try
+        {
+            ringtone.AudioAttributes = new AudioAttributes.Builder()
+                .SetUsage(AudioUsageKind.Alarm)!
+                .SetContentType(AudioContentType.Sonification)!
+                .Build();
+        }
+        catch
+        {
+            // Some OEM ringtone implementations reject a late AudioAttributes set — harmless, the sound
+            // still plays, just on its default stream.
+        }
     }
 }

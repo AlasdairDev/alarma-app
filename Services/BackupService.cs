@@ -47,9 +47,10 @@ public class BackupService
     private const double PhLonMin = 116.9;
     private const double PhLonMax = 126.6;
 
-    // Allowed alarm sound values — mirrors HomeController._alarmSoundOptions
+    // Allowed alarm sound values — mirrors HomeController._alarmSoundOptions exactly, so a restore never
+    // silently downgrades a saved choice to "Default".
     private static readonly HashSet<string> ValidAlarmSounds =
-        new(StringComparer.OrdinalIgnoreCase) { "Default", "Alarm", "Chime", "Notification", "Ringtone" };
+        new(StringComparer.OrdinalIgnoreCase) { "Default", "Alarm", "Buzzer", "Bell", "Siren" };
 
     private readonly DatabaseService _databaseService;
     private readonly PreferencesService _preferencesService;

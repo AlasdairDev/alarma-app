@@ -342,6 +342,27 @@
         </Border>
     </Grid>
 
+    <!-- Transient "grey pill" toast — a rounded dark capsule near the bottom that pops up when the 911
+         hand-off can't find a dialer, then auto-dismisses after 3 seconds (see EmergencyView.xaml.cs).
+         InputTransparent so it never blocks taps underneath. -->
+    <Border x:Name="ToastPill"
+            IsVisible="False"
+            InputTransparent="True"
+            BackgroundColor="#333333"
+            StrokeShape="RoundRectangle 25"
+            Stroke="Transparent"
+            Padding="22,12"
+            HorizontalOptions="Center"
+            VerticalOptions="End"
+            Margin="24,0,24,40">
+        <Label x:Name="ToastLabel"
+               Text=""
+               TextColor="White"
+               FontSize="14"
+               HorizontalTextAlignment="Center"
+               LineBreakMode="WordWrap" />
+    </Border>
+
     </Grid>
 
 </ContentPage>

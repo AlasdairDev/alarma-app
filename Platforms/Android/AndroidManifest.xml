@@ -22,6 +22,17 @@
   <uses-feature android:name="android.hardware.location.gps" android:required="false" />
   <uses-feature android:name="android.hardware.telephony" android:required="false" />
 
+  <!-- Android 11+ (package visibility) hides apps we don't explicitly declare. Without this, the system
+       dialer is invisible to us and Launcher.OpenAsync("tel:911") / CanOpenAsync would report "no app"
+       even on phones that clearly have one. Declaring the DIAL + tel intent makes the dialer resolvable
+       so the emergency call path is bulletproof. -->
+  <queries>
+    <intent>
+      <action android:name="android.intent.action.DIAL" />
+      <data android:scheme="tel" />
+    </intent>
+  </queries>
+
   <application
       android:allowBackup="false"
       android:icon="@mipmap/appicon"

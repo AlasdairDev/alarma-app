@@ -249,14 +249,14 @@ public class HomeController : INotifyPropertyChanged
     private string _currentLocationText = "Fetching location...";
     private readonly SemaphoreSlim _initializeSemaphore = new(1, 1);
     private readonly SemaphoreSlim _databaseInitSemaphore = new(1, 1);
-    // Exactly five clearly-distinct alarm voices. The audio service maps each name to a different, loud
-    // system sound URI (enumerated from the device's ringtone catalogue) so the live preview in Settings
-    // sounds obviously different between every option.
+    // Exactly five clearly-distinct alarm voices. "Buzzer" and "Siren" are loud, aggressive audio files
+    // we bundle in res/raw; the rest map to distinct, loud system sound URIs from the device's ringtone
+    // catalogue — so the live preview in Settings sounds obviously different between every option.
     private readonly ObservableCollection<string> _alarmSoundOptions = new()
     {
         "Default",
         "Alarm",
-        "Chime",
+        "Buzzer",
         "Bell",
         "Siren"
     };
@@ -497,6 +497,19 @@ public class HomeController : INotifyPropertyChanged
         private set => SetProperty(ref _isEarphonePillVisible, value);
     }
 
+    // Text shown inside the transient earphone grey-pill. Flips between "Earphones Connected" and
+    // "Earphones Disconnected" so the same pill reports both real hardware transitions.
+    private string _earphonePillText = "Earphones Connected";
+    public string EarphonePillText
+    {
+        get => _earphonePillText;
+        private set => SetProperty(ref _earphonePillText, value);
+    }
+
+    // Last known audio-output state, so an ACL broadcast only flashes the pill on a genuine transition
+    // (and a non-audio device connecting — a keyboard, say — is ignored because the state doesn't change).
+    private bool? _lastEarphoneConnected;
+
     public string BackupStatusText
     {
         get => _backupStatusText;
@@ -723,6 +736,7 @@ public class HomeController : INotifyPropertyChanged
         _earphoneService = earphoneService;
         _bluetoothMonitor = bluetoothMonitor;
         _bluetoothMonitor.StateChanged += OnBluetoothStateChanged;
+        _bluetoothMonitor.DeviceConnectionChanged += OnBluetoothDeviceConnectionChanged;
 
         var normalizedSound = NormalizeSoundKey(_preferencesService.AlarmSound);
         _alarmSound = normalizedSound;
@@ -752,7 +766,7 @@ public class HomeController : INotifyPropertyChanged
         RemoveSavedRouteCommand = new Command<SavedRoute>(async route => await RemoveSavedRouteAsync(route));
         CompleteOnboardingCommand = new Command(CompleteOnboarding);
         RefreshAvailabilityCommand = new Command(async () => await RefreshAvailabilityAsync());
-        RefreshEarphoneStatusCommand = new Command(UpdateEarphoneStatus);
+        RefreshEarphoneStatusCommand = new Command(() => UpdateEarphoneStatus(announceTransitions: true));
         RequestBatteryOptimizationCommand = new Command(async () => await RequestBatteryOptimizationAsync());
         DismissAlarmCommand = new Command(async () =>
         {
@@ -951,19 +965,41 @@ public class HomeController : INotifyPropertyChanged
         }
     }
 
-    private void UpdateEarphoneStatus()
+    private void UpdateEarphoneStatus(bool announceTransitions = false)
     {
         var (isConnected, details) = _earphoneService.GetConnectionStatus();
         EarphoneStatusText = isConnected
             ? $"Earphones connected: {details}"
             : $"Earphones disconnected: {details}";
 
-        // The pill only appears on a fresh connection, then auto-hides after 3 seconds. A disconnect
-        // hides it immediately.
-        if (isConnected)
+        var changed = _lastEarphoneConnected != isConnected;
+        _lastEarphoneConnected = isConnected;
+
+        // A real hardware transition reported by the ACL broadcast flashes the grey-pill either way —
+        // "Earphones Connected" when they go in, "Earphones Disconnected" when they come out — and
+        // auto-hides after 3 seconds.
+        if (announceTransitions && changed)
+        {
+            EarphonePillText = isConnected ? "Earphones Connected" : "Earphones Disconnected";
             ShowEarphonePillTemporarily();
-        else
+            return;
+        }
+
+        // A plain (non-announcing) refresh — init or a manual re-check — never leaves a stale pill up.
+        if (!isConnected)
             IsEarphonePillVisible = false;
+    }
+
+    // ACL connect/disconnect fired on the hardware. A2DP audio routing settles a beat after the raw ACL
+    // link, so wait briefly, then re-evaluate the true earphone state on the UI thread and flash the pill
+    // on a genuine transition. Keeps the Settings toggle/state text mirrored to the real hardware too.
+    private void OnBluetoothDeviceConnectionChanged(object? sender, EventArgs e)
+    {
+        _ = Task.Run(async () =>
+        {
+            try { await Task.Delay(1200); } catch { }
+            MainThread.BeginInvokeOnMainThread(() => UpdateEarphoneStatus(announceTransitions: true));
+        });
     }
 
     // Pops the "earphones connected" pill, holds it for exactly 3 seconds, then hides it. A newer call
@@ -1733,6 +1769,18 @@ public class HomeController : INotifyPropertyChanged
                 return;
             }
 
+            // TRUE background SMS hands the text straight to the radio via SmsManager, which needs the
+            // restricted SEND_SMS runtime permission. Request it natively right before we fire so the OS
+            // prompt appears in context; a denial surfaces the "enable SMS" overlay instead of silently
+            // failing.
+            var smsGranted = await _permissionsService.EnsureSmsPermissionAsync();
+            if (!smsGranted)
+            {
+                LastActionText = "SMS permission is required to send an SOS in the background.";
+                SmsDenied?.Invoke(this, EventArgs.Empty);
+                return;
+            }
+
             // Grab the freshest fix we can at the instant SOS is pressed. If a trip is running, the
             // in-memory _lastTrackedLocation is the exact accepted coordinate the hardened tracking loop
             // just produced — so we use that first. Otherwise (or if it's somehow still null right at the
@@ -1740,20 +1788,7 @@ public class HomeController : INotifyPropertyChanged
             // reads: nothing here writes back into or disturbs the Haversine tracking loop.
             var location = (IsTracking ? _lastTrackedLocation : null)
                            ?? await _locationService.GetBestLocationAsync(TimeSpan.FromSeconds(5));
-            string message;
-            if (location is null)
-            {
-                // Last resort — location briefly unavailable. The SOS itself still goes out so contacts
-                // are alerted even without a pin.
-                message = "I need help! Current commuter location is currently unavailable.";
-            }
-            else
-            {
-                // Clickable Google Maps link so a contact can tap straight through to the rider's spot.
-                var lat = location.Latitude.ToString("F6", System.Globalization.CultureInfo.InvariantCulture);
-                var lon = location.Longitude.ToString("F6", System.Globalization.CultureInfo.InvariantCulture);
-                message = $"I need help! Current commuter location: https://maps.google.com/?q={lat},{lon}";
-            }
+            var message = await BuildSosMessageAsync(location);
 
             // SOS is strictly an SMS dispatch. It must NOT hijack the ringer, force volume, or touch
             // Do-Not-Disturb the way the trip alarm does — a discreet confirmation cue is all we want
@@ -1774,6 +1809,34 @@ public class HomeController : INotifyPropertyChanged
             // ALWAYS release the latch — this is the core of the multi-fire fix.
             _isSendingSos = false;
         }
+    }
+
+    // Builds the SOS body. Per the offline-first spec it carries NO URLs — carriers routinely strip or
+    // block link-laden SMS, so the message must be plain, human-readable text.
+    //   • Online: reverse-geocode the rider's LIVE location into a real street address (IGeocoding) →
+    //       "EMERGENCY! I need help near {StreetAddress}."
+    //   • Offline / geocode failure: fall back to raw coordinates a contact can paste into any map app →
+    //       "EMERGENCY! I need help. My coordinates are Latitude: {lat}, Longitude: {lon}. Please search
+    //        these in a map app."
+    private async Task<string> BuildSosMessageAsync(LocationSnapshot? location)
+    {
+        if (location is null)
+        {
+            // Location briefly unavailable — the SOS still goes out so contacts are alerted.
+            return "EMERGENCY! I need help. My live location is currently unavailable — please call me.";
+        }
+
+        var lat = location.Latitude.ToString("F6", System.Globalization.CultureInfo.InvariantCulture);
+        var lon = location.Longitude.ToString("F6", System.Globalization.CultureInfo.InvariantCulture);
+
+        var address = await _geocodingService.ReverseGeocodeAddressAsync(location.Latitude, location.Longitude);
+        if (!string.IsNullOrWhiteSpace(address))
+        {
+            return $"EMERGENCY! I need help near {address}.";
+        }
+
+        return $"EMERGENCY! I need help. My coordinates are Latitude: {lat}, Longitude: {lon}. " +
+               "Please search these in a map app.";
     }
 
     private async Task StartTrackingAsync()

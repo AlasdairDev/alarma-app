@@ -135,7 +135,7 @@ public class AlarmSoundValidationTests
 {
     private static readonly HashSet<string> ValidAlarmSounds =
         new(StringComparer.OrdinalIgnoreCase)
-        { "Default", "Alarm", "Chime", "Notification", "Ringtone" };
+        { "Default", "Alarm", "Buzzer", "Bell", "Siren" };
 
     private static string NormalizeSound(string? value)
     {
@@ -147,9 +147,9 @@ public class AlarmSoundValidationTests
     [Theory]
     [InlineData("Default")]
     [InlineData("Alarm")]
-    [InlineData("Chime")]
-    [InlineData("Notification")]
-    [InlineData("Ringtone")]
+    [InlineData("Buzzer")]
+    [InlineData("Bell")]
+    [InlineData("Siren")]
     [InlineData("default")]    // case-insensitive accept
     [InlineData("ALARM")]
     public void ValidSoundKeys_AreNormalised(string input)

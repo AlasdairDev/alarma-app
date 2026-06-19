@@ -239,7 +239,8 @@
                 </Border.GestureRecognizers>
             </Border>
 
-            <!-- Earphones connected banner — auto-hides 3s after appearing (see HomeController). -->
+            <!-- Earphones connect/disconnect banner — text flips with the real hardware state and the pill
+                 auto-hides 3s after appearing (see HomeController + AndroidBluetoothMonitor ACL events). -->
             <Border IsVisible="{Binding IsEarphonePillVisible}"
                     BackgroundColor="#5C4E75"
                     Stroke="Transparent"
@@ -251,7 +252,7 @@
                            FontFamily="MaterialSymbols"
                            FontSize="16"
                            VerticalOptions="Center" />
-                    <Label Text="Earphones connected"
+                    <Label Text="{Binding EarphonePillText}"
                            TextColor="#D1C4E9"
                            FontSize="13"
                            VerticalOptions="Center" />
