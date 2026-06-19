@@ -27,9 +27,10 @@
             <CarouselView.ItemTemplate>
                 <DataTemplate>
                     <Grid WidthRequest="{Binding Source={x:Reference carousel}, Path=Width}">
+                        <!-- The image absorbs taps outside the button zones (it has no gesture,
+                             so no click sound) instead of passing them to the carousel surface. -->
                         <Image Source="{Binding ImageSource}"
                                Aspect="AspectFill"
-                               InputTransparent="True"
                                HorizontalOptions="Fill"
                                VerticalOptions="Fill" />
 
