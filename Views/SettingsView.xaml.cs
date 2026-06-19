@@ -116,6 +116,12 @@ public partial class SettingsView : ContentPage
             Services.BlackBoxLogger.RecordHandledException(ex, "[SettingsView.OnExportBackupTapped]");
             await ShowToastAsync("Backup export failed. Please try again.");
         }
+        finally
+        {
+            // Emergency exit: whatever the OS file UI did — saved, cancelled, dismissed, or hung — make sure
+            // the rider lands back on Settings and is never stranded in the system picker.
+            await EnsureOnSettingsPageAsync();
+        }
     }
 
     // Import = file browse. Open the native picker so the rider can navigate to their saved .alarma file —
@@ -143,6 +149,30 @@ public partial class SettingsView : ContentPage
         {
             Services.BlackBoxLogger.RecordHandledException(ex, "[SettingsView.OnRestoreBackupTapped]");
             await ShowToastAsync("Backup restore failed. Please try again.");
+        }
+        finally
+        {
+            // Emergency exit: whatever the OS file UI did — picked, cancelled, dismissed, or hung — make sure
+            // the rider lands back on Settings and is never stranded in the system picker.
+            await EnsureOnSettingsPageAsync();
+        }
+    }
+
+    // Safety net for the two file-browser handlers above. In the normal path the picker just returns and we
+    // were on Settings the whole time, so this is a no-op. But if the system file UI ever leaves us displaced
+    // — dismissed oddly, backed out of, or hung — we force-route back to the Settings page so the rider always
+    // has a way out. Guarded so the normal case never triggers a needless re-navigation (which would recreate
+    // the page and drop the toast we just showed).
+    private async Task EnsureOnSettingsPageAsync()
+    {
+        try
+        {
+            if (Shell.Current is not null && Shell.Current.CurrentPage is not SettingsView)
+                await Shell.Current.GoToAsync("//settings", animate: false);
+        }
+        catch (Exception ex)
+        {
+            Services.BlackBoxLogger.RecordHandledException(ex, "[SettingsView.EnsureOnSettingsPageAsync]");
         }
     }
 

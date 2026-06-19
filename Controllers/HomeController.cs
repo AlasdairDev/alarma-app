@@ -2790,10 +2790,11 @@ public class HomeController : INotifyPropertyChanged
                    daytime tint is dependable and even. The twist: a plain opaque wash was greying out the dark
                    CARTO text (the word "MANILA" was washing into the violet), so we let the div blend with
                    mix-blend-mode:multiply. Multiply keeps dark pixels dark — the street/place labels stay crisp
-                   and black — while only the lighter pixels (roads, water) pick up the violet. The trick with
-                   multiply is that a brighter, more saturated input keeps the white areas luminous, which is
-                   what actually buys the contrast for the dark text underneath — so we feed it a vivid
-                   rgba(170,90,255,0.40) rather than a muddy low one. pointer-events:none lets every
+                   and black — while only the lighter pixels (roads, water) pick up the violet. For the defence
+                   build we pulled the wash right back to a whisper-thin rgba(75,0,130,0.15) indigo film: just
+                   enough on-brand colour to read as "day theme" without laying any real darkness over the map,
+                   so legibility wins outright. The brightness lift on the tiles below (see the filter rule)
+                   does the rest, keeping the white roads luminous under the film. pointer-events:none lets every
                    tap/drag fall through to the live map; and the z-index keeps it above the tiles while the
                    markers (the blue dot and the destination pin) still read clearly through it. #map's own
                    background is an on-brand light violet so the load-in flash already matches the theme before
@@ -2801,12 +2802,12 @@ public class HomeController : INotifyPropertyChanged
                 #map{background:#D9CEEA}
                 /* One more nudge for legibility: a pure contrast/brightness filter on the TILE PANE only.
                    This is not the colour filter we threw out earlier — there's no hue shift here, so the
-                   labels don't drift off-colour. It just pushes the dark CARTO text toward jet-black and
-                   sharpens it (contrast 1.4) while pulling the whole tile back a touch (brightness 0.95) so
-                   the violet sheet on top still reads vivid. Scoped to .leaflet-tile-pane so the markers
-                   (blue dot, destination pin) and the tint div stay untouched. */
-                .leaflet-tile-pane{filter:contrast(1.4) brightness(0.95)}
-                #violet-tint{position:absolute;inset:0;background:rgba(170,90,255,0.40);mix-blend-mode:multiply;pointer-events:none;z-index:300}
+                   labels don't drift off-colour. contrast(1.2) firms the dark CARTO text up so it stays crisp,
+                   and brightness(1.1) lifts the white roads so they read bright and clean under the thin indigo
+                   film above. Scoped to .leaflet-tile-pane so the markers (blue dot, destination pin) and the
+                   tint div stay untouched. */
+                .leaflet-tile-pane{filter:contrast(1.2) brightness(1.1)}
+                #violet-tint{position:absolute;inset:0;background:rgba(75,0,130,0.15);mix-blend-mode:multiply;pointer-events:none;z-index:300}
                 .leaflet-zoom-animated{transition:transform 0.4s cubic-bezier(0,0,0.25,1)!important}
                 .leaflet-interactive{will-change:transform;transition:none!important}
                 /* The dot is now driven frame-by-frame from JS (see _animateUserMarker), so we kill the
