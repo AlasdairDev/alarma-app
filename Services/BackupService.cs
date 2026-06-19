@@ -1,20 +1,19 @@
-// Our encrypted backup. AES-256-GCM with a fresh 96-bit nonce per export — but the big change here is the
-// KEY. We used to pull a random 256-bit key out of the Keystore (SecureStorage), which had a nasty
-// gotcha: the Keystore is wiped when the app is uninstalled and is unique to each install, so a backup
-// could only ever be restored on the exact same install that made it. Reinstall the app or move to a new
-// phone and every .alarma file read as "damaged" — the key it needed was gone for good.
-// Now the key is DERIVED FROM A PASSWORD the commuter types at export time (PBKDF2-HMAC-SHA256), and the
-// random salt + iteration count travel INSIDE the file. Nothing device-specific is needed to read it back,
-// so a backup made on Phone A restores on a fresh install of Phone B as long as the same password is
-// entered. There is no stored key to lose anymore.
-// GCM still buys us integrity for free: any tampering (cipher/nonce/tag) — or the WRONG password — throws
-// on Decrypt before we read a single byte, so we never end up deserializing garbage.
+// Our encrypted backup. AES-256-GCM with a fresh 96-bit nonce per export. The key story has changed twice:
+// we started with a random 256-bit key in the Keystore (SecureStorage), but that key was wiped on uninstall
+// and unique per install, so a backup only ever restored on the exact install that made it — move phones and
+// every .alarma file read as "damaged". We then switched to a PASSWORD-DERIVED key (PBKDF2) so files were
+// portable across devices. For the live demo we want backups to be completely seamless — no dialog, no typing,
+// just tap-and-go — so the key is now a single STATIC AES-256 key baked into the app. Every install shares the
+// same key, so any .alarma file opens on any device and survives uninstalls, with zero user friction.
+// Trade-off we're accepting on purpose: because the key ships inside the app, the file is portable but NOT
+// secret from anyone who has the app — fine for a demo, not for real secrets. GCM still buys us integrity:
+// any tampering (cipher/nonce/tag) throws on Decrypt before we read a single byte, so we never deserialize
+// garbage.
 // On restore we validate EVERY record before clearing anything, so a junk or empty backup can't wipe a
 // commuter's real data — restored strings are length-capped and phone numbers re-checked.
 // Note: we build the backup as raw bytes rather than writing it ourselves, then hand them to the OS file
 // picker, so commuters genuinely own and can move their own backups.
 
-using System.Buffers.Binary;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -27,26 +26,22 @@ public class BackupService
     private const string BackupFilePrefix = "alarma-backup-";
     private const string BackupFileExtension = ".alarma";
 
-    // Portable envelope format. The leading version byte lets a future reader tell password-derived files
-    // (v3) apart from anything else and reject formats it doesn't understand instead of producing garbage.
-    private const byte PortableFormatVersion = 3; // v3 = PBKDF2 password-derived key (portable)
-    private const int SaltSize = 16;
-
-    // PBKDF2-HMAC-SHA256. The iteration count is written into each file (see envelope) so we can raise this
-    // default later WITHOUT breaking older backups — restore re-derives with whatever count the file carries.
-    private const int Pbkdf2Iterations = 210_000;
-    private static readonly HashAlgorithmName Pbkdf2Hash = HashAlgorithmName.SHA256;
-    // Sanity bounds for the iteration count read back from a file, so a corrupted/hostile header can't make
-    // us spin on an absurd PBKDF2 cost or weaken the derivation to near-zero.
-    private const int MinPbkdf2Iterations = 10_000;
-    private const int MaxPbkdf2Iterations = 10_000_000;
-    // Floor on password strength at export — derivation is only as strong as the secret behind it.
-    private const int MinPasswordLength = 6;
+    // Envelope format. The leading version byte lets a reader tell static-key files (v4) apart from the older
+    // password-derived ones (v3) and reject anything it doesn't understand instead of producing garbage.
+    private const byte StaticFormatVersion = 4; // v4 = static app key (seamless, no password)
 
     // AES-256-GCM parameters
     private const int GcmNonceSize = 12;
     private const int GcmTagSize = 16;
     private const int KeySize = 32; // 256-bit
+
+    // The single static AES-256 key the whole app shares. It's the SHA-256 of a fixed constant string, which
+    // gives us exactly 32 deterministic bytes — same on every device, so any backup opens anywhere with no
+    // password. Hashing the constant (rather than slicing a 32-char literal) just guarantees the right length
+    // and spreads the bytes out. This is deliberately NOT a secret — it ships in the app so backups are
+    // friction-free for the demo; integrity (not confidentiality) is what GCM still gives us here.
+    private static readonly byte[] StaticKey =
+        SHA256.HashData(Encoding.UTF8.GetBytes("AlarmaApp::seamless-backup::v4::static-key"));
 
     // Restore caps — match the in-app add-time limits to prevent unbounded inserts from older backups
     private const int MaxRestoreContacts = 3;
@@ -87,12 +82,8 @@ public class BackupService
     // suggested file name. We did it this way so the export UI can pass the bytes straight to the native
     // OS FileSaver dialog — letting commuters drop their backup into Downloads, Drive, wherever they
     // actually own it — instead of us burying it in private AppData they could never reach.
-    public async Task<(string FileName, byte[] Data)> BuildBackupAsync(string password)
+    public async Task<(string FileName, byte[] Data)> BuildBackupAsync()
     {
-        if (string.IsNullOrEmpty(password) || password.Length < MinPasswordLength)
-            throw new ArgumentException(
-                $"Backup password must be at least {MinPasswordLength} characters.", nameof(password));
-
         var payload = new BackupPayload(
             DateTimeOffset.UtcNow,
             new BackupPreferences(
@@ -106,7 +97,7 @@ public class BackupService
 
         var json = JsonSerializer.Serialize(payload, _serializerOptions);
         var jsonBytes = Encoding.UTF8.GetBytes(json);
-        var encrypted = Encrypt(jsonBytes, password);
+        var encrypted = Encrypt(jsonBytes);
 
         var fileName = $"{BackupFilePrefix}{payload.ExportedAtUtc:yyyyMMdd-HHmmss}{BackupFileExtension}";
         _preferencesService.LastBackupUtc = payload.ExportedAtUtc;
@@ -114,19 +105,19 @@ public class BackupService
     }
 
     // Restore straight from the raw bytes of whatever backup file the commuter picked through the OS file
-    // browser, using the password they set when they exported it. Decrypt-then-validate-everything-before-we
-    // -touch-the-db: even a tampered file, an empty one, or a wrong password can never wipe real data — the
-    // wrong password simply fails the GCM tag and we bail out before clearing anything.
-    public async Task RestoreFromBytesAsync(byte[] encrypted, string password)
+    // browser. The static app key decrypts it silently — no password needed. Decrypt-then-validate-everything
+    // -before-we-touch-the-db: even a tampered or empty file can never wipe real data — a damaged file fails
+    // the GCM tag and we bail out before clearing anything.
+    public async Task RestoreFromBytesAsync(byte[] encrypted)
     {
         byte[] jsonBytes;
         try
         {
-            jsonBytes = Decrypt(encrypted, password);
+            jsonBytes = Decrypt(encrypted);
         }
         catch (CryptographicException)
         {
-            throw new InvalidOperationException("Backup file could not be decrypted. The password may be wrong or the file is corrupted.");
+            throw new InvalidOperationException("Backup file could not be decrypted. The file may be corrupted.");
         }
 
         var json = Encoding.UTF8.GetString(jsonBytes);
@@ -211,64 +202,47 @@ public class BackupService
         _preferencesService.LastBackupUtc = payload.ExportedAtUtc;
     }
 
-    // Derive the AES-256 key from the user's password + the file's salt via PBKDF2-HMAC-SHA256. This is the
-    // whole point of the portable design: the key is reproducible anywhere from (password + salt), so it
-    // never has to be stored — and therefore can never be lost to an uninstall or stranded on the old phone.
-    private static byte[] DeriveKey(string password, byte[] salt, int iterations) =>
-        Rfc2898DeriveBytes.Pbkdf2(
-            Encoding.UTF8.GetBytes(password), salt, iterations, Pbkdf2Hash, KeySize);
+    // Static-key format: [1 version][12 nonce][16 GCM tag][ciphertext]
+    // No salt and no iteration count anymore — the key is the fixed app key (StaticKey), so there's nothing
+    // per-file to derive. We still use a fresh random nonce per export so two identical backups never encrypt
+    // to the same bytes, and AES-GCM still provides integrity: any bit-flip in the body makes Decrypt throw
+    // before a single plaintext byte is returned.
+    private const int HeaderSize = 1 + GcmNonceSize + GcmTagSize;
 
-    // Portable format: [1 version][16 salt][4 iterations, big-endian][12 nonce][16 GCM tag][ciphertext]
-    // The salt + iteration count ride along in the clear (they're not secret — they only make the password
-    // expensive to brute-force and unique per file). AES-GCM still provides confidentiality AND integrity:
-    // any bit-flip in the body, or a key derived from the wrong password, makes Decrypt throw before any
-    // plaintext is returned.
-    private const int HeaderSize = 1 + SaltSize + 4 + GcmNonceSize + GcmTagSize;
-
-    private static byte[] Encrypt(byte[] plaintext, string password)
+    private static byte[] Encrypt(byte[] plaintext)
     {
-        var salt = RandomNumberGenerator.GetBytes(SaltSize);
         var nonce = RandomNumberGenerator.GetBytes(GcmNonceSize);
-        var key = DeriveKey(password, salt, Pbkdf2Iterations);
 
         var ciphertext = new byte[plaintext.Length];
         var tag = new byte[GcmTagSize];
-        using var aesGcm = new AesGcm(key, GcmTagSize);
+        using var aesGcm = new AesGcm(StaticKey, GcmTagSize);
         aesGcm.Encrypt(nonce, plaintext, ciphertext, tag);
 
         var output = new byte[HeaderSize + ciphertext.Length];
         var offset = 0;
-        output[offset++] = PortableFormatVersion;
-        salt.CopyTo(output, offset); offset += SaltSize;
-        BinaryPrimitives.WriteInt32BigEndian(output.AsSpan(offset), Pbkdf2Iterations); offset += 4;
+        output[offset++] = StaticFormatVersion;
         nonce.CopyTo(output, offset); offset += GcmNonceSize;
         tag.CopyTo(output, offset); offset += GcmTagSize;
         ciphertext.CopyTo(output, offset);
         return output;
     }
 
-    private static byte[] Decrypt(byte[] data, string password)
+    private static byte[] Decrypt(byte[] data)
     {
         if (data.Length < HeaderSize + 1)
             throw new CryptographicException("Backup data is too short to be valid.");
 
         var offset = 0;
         var version = data[offset++];
-        if (version != PortableFormatVersion)
+        if (version != StaticFormatVersion)
             throw new CryptographicException($"Unsupported backup format version: {version}.");
-
-        var salt = data[offset..(offset + SaltSize)]; offset += SaltSize;
-        var iterations = BinaryPrimitives.ReadInt32BigEndian(data.AsSpan(offset)); offset += 4;
-        if (iterations is < MinPbkdf2Iterations or > MaxPbkdf2Iterations)
-            throw new CryptographicException("Backup iteration count is out of the supported range.");
 
         var nonce = data[offset..(offset + GcmNonceSize)]; offset += GcmNonceSize;
         var tag = data[offset..(offset + GcmTagSize)]; offset += GcmTagSize;
         var ciphertext = data[offset..];
 
-        var key = DeriveKey(password, salt, iterations);
         var plaintext = new byte[ciphertext.Length];
-        using var aesGcm = new AesGcm(key, GcmTagSize);
+        using var aesGcm = new AesGcm(StaticKey, GcmTagSize);
         aesGcm.Decrypt(nonce, ciphertext, tag, plaintext);
         return plaintext;
     }
