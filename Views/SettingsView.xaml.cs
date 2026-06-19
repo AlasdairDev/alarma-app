@@ -82,14 +82,39 @@ public partial class SettingsView : ContentPage
 #endif
     }
 
-    // Export = "Save As". Build the encrypted blob, then let the OS file browser put it wherever the
-    // rider wants (Downloads, Drive, etc.). The grey pill only fires AFTER a successful save — a cancel
-    // or failure shows its own message instead.
+    // Minimum password length — must match BackupService.MinPasswordLength. The key is only as strong as the
+    // secret it's derived from, so we don't let the rider protect a backup with a 1-character password.
+    private const int MinBackupPasswordLength = 6;
+
+    // Export = "Save As". We FIRST ask the rider to set a password (and confirm it) — that password is what
+    // the encryption key is derived from, which is what makes the file portable across reinstalls and
+    // devices. Then we build the blob and let the OS file browser put it wherever they want (Downloads,
+    // Drive, etc.). The grey pill only fires AFTER a successful save — a cancel or failure shows its own
+    // message instead.
     private async void OnExportBackupTapped(object? sender, TappedEventArgs e)
     {
         try
         {
-            var (fileName, data) = await _controller.BuildBackupForSaveAsync();
+            var password = await PromptAsync(
+                "Set a backup password",
+                $"You'll need this exact password to restore the backup on any device. Keep it safe — there's no way to recover the data without it (at least {MinBackupPasswordLength} characters).");
+            if (password is null) return; // cancelled
+
+            if (password.Length < MinBackupPasswordLength)
+            {
+                await ShowToastAsync($"Password must be at least {MinBackupPasswordLength} characters.");
+                return;
+            }
+
+            var confirm = await PromptAsync("Confirm backup password", "Re-enter the same password.");
+            if (confirm is null) return; // cancelled
+            if (!string.Equals(password, confirm, StringComparison.Ordinal))
+            {
+                await ShowToastAsync("Passwords didn't match. Export cancelled.");
+                return;
+            }
+
+            var (fileName, data) = await _controller.BuildBackupForSaveAsync(password);
             using var stream = new MemoryStream(data);
             var result = await FileSaver.Default.SaveAsync(fileName, stream, CancellationToken.None);
             if (result.IsSuccessful)
@@ -104,9 +129,10 @@ public partial class SettingsView : ContentPage
         }
     }
 
-    // Import = file browse. Open the native picker so the rider can navigate to their saved .alarma file.
-    // Cancelling returns null — we just bail out quietly. Otherwise read the bytes and hand them to the
-    // controller to decrypt + restore, then report the outcome in the grey pill.
+    // Import = file browse. Open the native picker so the rider can navigate to their saved .alarma file,
+    // then ask for the password it was exported with. Cancelling either step returns null and we bail out
+    // quietly. Otherwise read the bytes and hand them + the password to the controller to decrypt + restore,
+    // then report the outcome in the grey pill.
     private async void OnRestoreBackupTapped(object? sender, TappedEventArgs e)
     {
         try
@@ -117,11 +143,16 @@ public partial class SettingsView : ContentPage
             });
             if (picked is null) return; // user cancelled — abort safely, no crash
 
+            var password = await PromptAsync(
+                "Enter backup password",
+                "Type the password this backup was exported with.");
+            if (password is null) return; // cancelled
+
             using var source = await picked.OpenReadAsync();
             using var ms = new MemoryStream();
             await source.CopyToAsync(ms);
 
-            await _controller.RestoreFromBytesAsync(ms.ToArray());
+            await _controller.RestoreFromBytesAsync(ms.ToArray(), password);
             await ShowToastAsync(_controller.BackupStatusText);
         }
         catch (Exception ex)
@@ -129,6 +160,17 @@ public partial class SettingsView : ContentPage
             Services.BlackBoxLogger.RecordHandledException(ex, "[SettingsView.OnRestoreBackupTapped]");
             await ShowToastAsync("Backup restore failed. Please try again.");
         }
+    }
+
+    // Thin wrapper over the native text prompt. Returns null if the rider cancels (so callers can bail out),
+    // or the trimmed text they entered. (DisplayPromptAsync has no masked-input option, so the password is
+    // visible as typed — an accepted trade-off for a single self-owned backup secret on the rider's own
+    // device; the value never leaves the device except, encrypted, inside the file.)
+    private async Task<string?> PromptAsync(string title, string message)
+    {
+        var entry = await DisplayPromptAsync(
+            title, message, accept: "OK", cancel: "Cancel", keyboard: Keyboard.Text);
+        return entry is null ? null : entry.Trim();
     }
 
     // Pops the grey pill up with a message, holds it for exactly 3 seconds, then fades it away. The
