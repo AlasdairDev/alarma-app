@@ -10,13 +10,32 @@
     <ScrollView HorizontalOptions="Fill" VerticalOptions="Fill">
         <VerticalStackLayout Spacing="0">
 
-            <!-- Header -->
-            <Label Text="Settings"
-                   FontSize="28"
-                   FontAttributes="Bold"
-                   TextColor="White"
-                   Padding="24,52,24,20"
-                   BackgroundColor="#2D1B4E" />
+            <!-- Header: back chevron + title. Export/Import (and everything else) live on THIS page, and riders
+                 were getting stranded here with no obvious way out, so this chevron pops straight back to Home.
+                 It's a 48x48 target — at/above the accessibility minimum — so it's an easy one-handed tap. -->
+            <Grid ColumnDefinitions="Auto,*"
+                  Padding="12,48,24,20"
+                  BackgroundColor="#2D1B4E">
+                <Button Grid.Column="0"
+                        Text="&#8249;"
+                        FontSize="36"
+                        BackgroundColor="Transparent"
+                        TextColor="White"
+                        Padding="0"
+                        WidthRequest="48"
+                        HeightRequest="48"
+                        VerticalOptions="Center"
+                        SemanticProperties.Description="Back"
+                        SemanticProperties.Hint="Double tap to return to the home screen"
+                        Clicked="OnBackClicked" />
+                <Label Grid.Column="1"
+                       Text="Settings"
+                       FontSize="28"
+                       FontAttributes="Bold"
+                       TextColor="White"
+                       VerticalOptions="Center"
+                       Margin="4,0,0,0" />
+            </Grid>
 
             <!-- LOCATION -->
             <Label Text="LOCATION"

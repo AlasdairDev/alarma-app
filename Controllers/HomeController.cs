@@ -1807,6 +1807,13 @@ public class HomeController : INotifyPropertyChanged
         }
     }
 
+    // Hardware panic entry point — wired to the triple Volume-Up gesture in MainActivity so a rider can
+    // fire an SOS without even looking at the screen. It funnels into the exact same guarded send path as
+    // the on-screen button, so the 30s cooldown and the single-fire guard still apply: a frantic burst of
+    // volume taps can't spam contacts with a dozen texts. Fire-and-forget on purpose — the caller is a
+    // hardware key handler that mustn't block.
+    public void TriggerSosFromHardware() => _ = SendSosAsync();
+
     private async Task SendSosAsync()
     {
         // Single-fire guard: ignore a press while a previous dispatch is still running. The finally at
@@ -2190,14 +2197,16 @@ public class HomeController : INotifyPropertyChanged
 
         // The three rings are thirds of the full lead distance, straight out of the revised adaptive spec
         // (NavAlert_Revised_Alarm_Computation.pdf §4.2): Stage 1 at the full boundary, Stage 2 at 2/3,
-        // Stage 3 at 1/3. This is the fix for "Stage 3 fires dangerously late" — pulling the WAKE UP lockout
-        // out to ~1/3 of the lead (typically 500–800 m at city speeds) instead of the old ~200 m arrival
-        // ring gives the rider real time to wake and gather their things before the vehicle stops. Stage 3
-        // is floored at the arrival ring so, even at a crawl, it can never end up firing INSIDE the drop-off
-        // radius (which would invert the 2 → 3 → arrival order).
+        // Stage 3 at 1/3. All three are now computed the exact same way — a clean fraction of the adaptive
+        // lead distance (which already scales with the rider's speed and is clamped to [Min,Max]) plus the
+        // GPS accuracy buffer. Stage 3 used to be special-cased with a hardcoded floor at the arrival ring,
+        // which pinned it to a fixed distance on shorter/slower trips instead of scaling like the others; we
+        // dropped that floor so Stage 3 mirrors Stages 1 and 2 dynamically (this is exactly the boundary the
+        // AdaptiveAlarmSpec tests assert). If the rider is so slow that 1/3 of the lead lands inside the
+        // arrival ring, the separate arrival check below still escalates straight to Stage 3 at the drop-off,
+        // so the WAKE UP can never be skipped and the 2 → 3 → arrival order still holds.
         var stage2Threshold = adaptiveLeadDistance * (2.0 / 3.0) + accuracyBuffer;
-        var stage3Threshold = Math.Max(adaptiveLeadDistance * (1.0 / 3.0), ArrivalThresholdMeters)
-                              + accuracyBuffer;
+        var stage3Threshold = adaptiveLeadDistance * (1.0 / 3.0) + accuracyBuffer;
 
         // Stage 1 — gentle alert at the initial trigger radius. No screen lockout (see AppShell).
         if (_currentAlarmStage == AlarmStage.None && distanceToDestination <= adaptiveLeadThreshold)
@@ -2728,16 +2737,18 @@ public class HomeController : INotifyPropertyChanged
                    pseudo-element got silently dropped by the MAUI Android WebView, and a CSS filter() straight
                    on the tile IMAGES did colour the map but dragged the dark CARTO street/place labels
                    off-colour and hurt legibility. So now we leave the CARTO "light" tiles completely untouched
-                   — their crisp dark text stays perfectly readable — and float one soft violet sheet on top
+                   — their crisp dark text stays perfectly readable — and float one violet sheet on top
                    instead. It's a real <div> (not a pseudo-element, no blend mode), which the WebView always
-                   paints, so the daytime tint is dependable and even. The opacity is deliberately low so the
-                   labels underneath read straight through it; pointer-events:none lets every tap/drag fall
-                   through to the live map; and the z-index keeps it above the tiles while the markers (the blue
-                   dot and the destination pin) still read clearly through such a light wash. #map's own
+                   paints, so the daytime tint is dependable and even. We landed on a richer medium violet:
+                   the old wash was so faint the map barely read as themed, and the dark-mode tiles were the
+                   other extreme. This sits in the middle — enough colour to feel on-brand, but the opacity is
+                   still capped so the CARTO labels read straight through it. pointer-events:none lets every
+                   tap/drag fall through to the live map; and the z-index keeps it above the tiles while the
+                   markers (the blue dot and the destination pin) still read clearly through it. #map's own
                    background is an on-brand light violet so the load-in flash already matches the theme before
                    the first tiles paint. */
                 #map{background:#D9CEEA}
-                #violet-tint{position:absolute;inset:0;background:rgba(147,112,219,0.18);pointer-events:none;z-index:300}
+                #violet-tint{position:absolute;inset:0;background:rgba(90,40,140,0.40);pointer-events:none;z-index:300}
                 .leaflet-zoom-animated{transition:transform 0.4s cubic-bezier(0,0,0.25,1)!important}
                 .leaflet-interactive{will-change:transform;transition:none!important}
                 /* The dot is now driven frame-by-frame from JS (see _animateUserMarker), so we kill the
@@ -2748,8 +2759,8 @@ public class HomeController : INotifyPropertyChanged
             </head>
             <body>
               <div id="map"></div>
-              <!-- Soft light-violet daytime tint. Floats over the map, ignores pointer events so taps and
-                   drags pass through, and stays low-opacity so the CARTO labels read straight through it. -->
+              <!-- Medium-violet daytime tint. Floats over the map, ignores pointer events so taps and
+                   drags pass through, and its opacity is capped so the CARTO labels still read through it. -->
               <div id="violet-tint"></div>
               <script>
                 var map = L.map('map',{zoomControl:false}).setView([14.5995,120.9842],12);

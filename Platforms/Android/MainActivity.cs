@@ -2,6 +2,9 @@ using Android.App;
 using Android.Content;
 using Android.Content.PM;
 using Android.OS;
+using Android.Views;
+using AlarmaApp.Controllers;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Maui.ApplicationModel;
 using Microsoft.Maui.Controls;
 
@@ -25,6 +28,15 @@ public class MainActivity : MauiAppCompatActivity
 {
     // Intent extra carrying the Shell route a notification wants to open (e.g. "alarmstage").
     public const string NavigateExtra = "alarma_navigate_to";
+
+    // Hardware SOS panic gesture: three quick Volume-Up presses fire the SOS. Three is enough to be
+    // deliberate (you won't hit it just nudging the volume) but still doable one-handed in a panic.
+    private const int SosVolumePressCount = 3;
+    // …all within this rolling window. 1.5s is snappy enough that ordinary volume adjustments spread out
+    // over a song won't ever stack up to a false trigger.
+    private static readonly long SosVolumeWindowMs = 1500;
+    // Timestamps (monotonic, via SystemClock) of recent Volume-Up presses still inside the window.
+    private readonly List<long> _volumeUpPresses = new();
 
     protected override void OnCreate(Bundle? savedInstanceState)
     {
@@ -81,6 +93,47 @@ public class MainActivity : MauiAppCompatActivity
             try { await Shell.Current.GoToAsync(route, animate: false); }
             catch { }
         });
+    }
+
+    // Intercept the physical Volume-Up button to drive the panic SOS. We deliberately DON'T consume the
+    // event (we still call base), so the press also does its normal job of changing the media/ring volume —
+    // the gesture is invisible until the third rapid press actually fires the SOS.
+    public override bool OnKeyDown(Keycode keyCode, KeyEvent? e)
+    {
+        if (keyCode == Keycode.VolumeUp)
+        {
+            RegisterVolumeUpPress();
+        }
+
+        return base.OnKeyDown(keyCode, e);
+    }
+
+    // Record this press, forget any that have aged out of the window, and if enough land in quick
+    // succession, fire the SOS and reset the counter so the next burst starts clean.
+    private void RegisterVolumeUpPress()
+    {
+        var now = SystemClock.ElapsedRealtime();
+        _volumeUpPresses.Add(now);
+        _volumeUpPresses.RemoveAll(t => now - t > SosVolumeWindowMs);
+
+        if (_volumeUpPresses.Count >= SosVolumePressCount)
+        {
+            _volumeUpPresses.Clear();
+            FireHardwareSos();
+        }
+    }
+
+    // Resolve the shared controller from the DI container and trigger the SOS on the UI thread. If the
+    // app isn't fully spun up yet (no service provider), we simply do nothing rather than risk a crash.
+    private static void FireHardwareSos()
+    {
+        var controller = IPlatformApplication.Current?.Services?.GetService<HomeController>();
+        if (controller is null)
+        {
+            return;
+        }
+
+        MainThread.BeginInvokeOnMainThread(controller.TriggerSosFromHardware);
     }
 
     sealed class SplashExitListener : Java.Lang.Object,
