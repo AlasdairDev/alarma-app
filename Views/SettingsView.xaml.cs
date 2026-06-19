@@ -162,6 +162,13 @@ public partial class SettingsView : ContentPage
         ToastPill.IsVisible = false;
     }
 
+    // Settings hosts Export/Import (and the rest of the app's options) but had no back affordance, so riders
+    // could feel stranded here once they drilled in. The header chevron routes straight back to Home.
+    private async void OnBackClicked(object? sender, EventArgs e)
+    {
+        await Shell.Current.GoToAsync("//home", animate: false);
+    }
+
     private async void OnTermsClicked(object? sender, EventArgs e)
     {
         await Navigation.PushModalAsync(new TermsAndPrivacyView(0), animated: false);
