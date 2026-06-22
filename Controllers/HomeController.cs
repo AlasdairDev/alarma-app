@@ -27,8 +27,15 @@ public class HomeController : INotifyPropertyChanged
     // Keeps the Stage-2 ring a safe margin outside the arrival/Emergency ring so the escalation order
     // (Stage 1 → Stage 2 → Emergency) can never invert when the trigger radius is small or floored.
     private const double Stage2BufferMeters = 100;
-    private const double OvershootBufferMeters = 250;
-    private const double OvershootThresholdMeters = ArrivalThresholdMeters + OvershootBufferMeters;
+    // Overshoot trigger distance is now user-configurable (Feature 3): the buffer past the drop-off
+    // before a confirmed overshoot can latch. The default keeps today's behaviour (200 + 250 = 450 m),
+    // and the value is clamped to a sane band on both input and backup-restore.
+    private const int DefaultOvershootDistanceMeters = 250;
+    private const int MinOvershootDistanceMeters = 50;
+    private const int MaxOvershootDistanceMeters = 500;
+    // Crowded-place GPS robustness (Feature 4): a fix worse than this reported accuracy can't LATCH
+    // arrival / overshoot / the Stage-3 wake-up — we wait for a confident fix rather than fire wrongly.
+    private const double LowConfidenceAccuracyMeters = CrowdedGpsFilter.DefaultConfidenceThresholdMeters;
     // Route-deviation detection (multi-leg-commute aware). A flat buffer is too tight for city
     // transfers, so the buffer is max(base, fraction × closest approach). Deviation is only armed
     // once reasonably close, requires sustained movement away, and re-baselines on a transfer dwell.
@@ -202,6 +209,21 @@ public class HomeController : INotifyPropertyChanged
     private string _newContactNumber = string.Empty;
     private string _newRouteName = string.Empty;
     private string _alarmSound;
+    // Per-stage sound choices (Feature 2). Stored as a sound key, or "" meaning "inherit the single
+    // AlarmSound". Only Stages 2/3 are configurable — Stage 1 is vibration-only by design and has no
+    // picker or stored sound.
+    private string _stage2Sound;
+    private string _stage3Sound;
+    // Overshoot trigger distance in metres (Feature 3), clamped to [Min,Max] on set.
+    private int _overshootDistanceMeters;
+    // Raw text the rider is typing into the overshoot Entry. Captured per keystroke but only parsed/
+    // validated on commit (Completed / focus-loss); the canonical value stays _overshootDistanceMeters.
+    private string _overshootDistanceInput = string.Empty;
+    // Accuracy-weighted smoothed position used for the arrival/overshoot/stage decisions (Feature 4).
+    // Kept separate from the raw fix that drives the trip-distance jitter gate so the two don't interfere.
+    private double _smoothedLat;
+    private double _smoothedLon;
+    private double _smoothedAccuracy;
     private bool _vibrationOnly;
     private bool _isOnboardingComplete;
     private bool _isDatabaseInitialized;
@@ -220,6 +242,10 @@ public class HomeController : INotifyPropertyChanged
         "Bell",
         "Air Horn"
     };
+    // The per-stage picker list (Feature 2): "Default" (inherit), "None" (vibration-led), the five
+    // bundled voices, and "Custom" appended only while an imported file is actually available. Rebuilt
+    // by RefreshSoundOptions whenever the custom sound is imported/removed.
+    private readonly ObservableCollection<string> _stageSoundOptions = new();
     private bool _wasOnline;
     private bool _availabilityChecked;
     private string _primaryContactNumber = string.Empty;
@@ -538,7 +564,106 @@ public class HomeController : INotifyPropertyChanged
         }
     }
 
+    // ── Custom alarm sound (Feature 1) ───────────────────────────────────────
+    // True while an imported clip is configured AND still present on disk. A deleted file flips this
+    // to false so the whitelist falls back to a bundled voice everywhere it's consulted.
+    public bool HasCustomSound =>
+        !string.IsNullOrWhiteSpace(_preferencesService.CustomSoundPath)
+        && File.Exists(_preferencesService.CustomSoundPath);
+
+    public string CustomSoundName =>
+        HasCustomSound && !string.IsNullOrWhiteSpace(_preferencesService.CustomSoundName)
+            ? _preferencesService.CustomSoundName
+            : string.Empty;
+
+    // Settings label for the custom-sound row: shows the imported file's name, or a prompt when none.
+    public string CustomSoundStatusText =>
+        HasCustomSound ? $"Custom: {CustomSoundName}" : "Import an audio file";
+
+    // ── Per-stage sound choices (Feature 2) ──────────────────────────────────
+    // Each exposes a display value for the picker: "" stored → "Default". Setting persists the raw key.
+    // Stage 1 has no picker — it's vibration-only by design — so only Stages 2/3 are exposed here.
+    public string Stage2SoundDisplay
+    {
+        get => StageDisplayFromStored(_stage2Sound);
+        set
+        {
+            var stored = StageStoredFromDisplay(value);
+            if (SetProperty(ref _stage2Sound, stored))
+                _preferencesService.Stage2Sound = stored;
+        }
+    }
+
+    public string Stage3SoundDisplay
+    {
+        get => StageDisplayFromStored(_stage3Sound);
+        set
+        {
+            var stored = StageStoredFromDisplay(value);
+            if (SetProperty(ref _stage3Sound, stored))
+                _preferencesService.Stage3Sound = stored;
+        }
+    }
+
+    // ── Overshoot trigger distance (Feature 3) ───────────────────────────────
+    // Clamped to [Min,Max] on set so a slider/stepper or a restore can never push it out of band.
+    public int OvershootDistanceMeters
+    {
+        get => _overshootDistanceMeters;
+        set
+        {
+            var clamped = Math.Clamp(value, MinOvershootDistanceMeters, MaxOvershootDistanceMeters);
+            if (SetProperty(ref _overshootDistanceMeters, clamped))
+            {
+                _preferencesService.OvershootDistanceMeters = clamped;
+                OnPropertyChanged(nameof(OvershootDistanceLabel));
+            }
+        }
+    }
+
+    public string OvershootDistanceLabel => $"{_overshootDistanceMeters} m past the stop";
+
+    // Text-entry mirror of the overshoot distance (distinct from OvershootDistanceText, which is the
+    // recovery-alert readout). The getter always shows the canonical stored value; the setter just
+    // captures whatever the rider is typing (not validated per-keystroke). Validation and persistence
+    // happen in CommitOvershootDistance, called on Completed / focus-loss.
+    public string OvershootDistanceInput
+    {
+        get => _overshootDistanceMeters.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        set => _overshootDistanceInput = value ?? string.Empty;
+    }
+
+    // Validate + commit the typed overshoot distance. Whole number only; an in-range value is kept, an
+    // out-of-range one is clamped to [Min,Max], and an empty / non-numeric entry reverts to the last valid
+    // value — it can never persist or crash. Returns inline-feedback text for the grey pill ("" = none).
+    // After committing, the Entry is normalised back to the stored number so a repeated commit (Completed
+    // then Unfocused) is a harmless no-op.
+    public string CommitOvershootDistance()
+    {
+        var raw = (_overshootDistanceInput ?? string.Empty).Trim();
+        string message;
+        if (!int.TryParse(raw, System.Globalization.NumberStyles.Integer,
+                System.Globalization.CultureInfo.InvariantCulture, out var parsed))
+        {
+            message = $"Enter a whole number from {MinOvershootDistanceMeters} to {MaxOvershootDistanceMeters} m. " +
+                      $"Kept {_overshootDistanceMeters} m.";
+        }
+        else
+        {
+            var clamped = Math.Clamp(parsed, MinOvershootDistanceMeters, MaxOvershootDistanceMeters);
+            OvershootDistanceMeters = clamped; // persists + refreshes OvershootDistanceLabel
+            message = clamped != parsed
+                ? $"Adjusted to {clamped} m (allowed range {MinOvershootDistanceMeters}–{MaxOvershootDistanceMeters} m)."
+                : string.Empty;
+        }
+
+        _overshootDistanceInput = _overshootDistanceMeters.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        OnPropertyChanged(nameof(OvershootDistanceInput));
+        return message;
+    }
+
     public ObservableCollection<string> AlarmSoundOptions => _alarmSoundOptions;
+    public ObservableCollection<string> StageSoundOptions => _stageSoundOptions;
     public ObservableCollection<GeocodingResult> SearchResults => _searchResults;
     public ObservableCollection<GeocodingResult> RecentSearches => _recentSearches;
 
@@ -720,12 +845,31 @@ public class HomeController : INotifyPropertyChanged
         _bluetoothMonitor.StateChanged += OnBluetoothStateChanged;
         _bluetoothMonitor.DeviceConnectionChanged += OnBluetoothDeviceConnectionChanged;
 
+        // Seed the picker lists first so NormalizeSoundKey can see whether a custom voice is available.
+        RefreshSoundOptions();
+
         var normalizedSound = NormalizeSoundKey(_preferencesService.AlarmSound);
         _alarmSound = normalizedSound;
         if (!string.Equals(_preferencesService.AlarmSound, normalizedSound, StringComparison.Ordinal))
         {
             _preferencesService.AlarmSound = normalizedSound;
         }
+
+        // Per-stage choices (Feature 2): stored raw ("" = inherit), normalised lazily at resolve time.
+        // Stage 1 is vibration-only by design — no stored sound to load.
+        _stage2Sound = _preferencesService.Stage2Sound ?? string.Empty;
+        _stage3Sound = _preferencesService.Stage3Sound ?? string.Empty;
+
+        // Overshoot distance (Feature 3): clamp whatever was stored back into band.
+        _overshootDistanceMeters = Math.Clamp(
+            _preferencesService.OvershootDistanceMeters,
+            MinOvershootDistanceMeters,
+            MaxOvershootDistanceMeters);
+        if (_overshootDistanceMeters != _preferencesService.OvershootDistanceMeters)
+            _preferencesService.OvershootDistanceMeters = _overshootDistanceMeters;
+        // Seed the Entry's raw buffer with the stored value so a focus-loss with no edit doesn't read as
+        // an empty (garbage) commit.
+        _overshootDistanceInput = _overshootDistanceMeters.ToString(System.Globalization.CultureInfo.InvariantCulture);
 
         _vibrationOnly = _preferencesService.VibrationOnly;
         _isOnboardingComplete = _preferencesService.IsOnboardingComplete;
@@ -1941,10 +2085,12 @@ public class HomeController : INotifyPropertyChanged
             // Do-Not-Disturb the way the trip alarm does — a discreet confirmation cue is all we want
             // so the user knows the press registered without broadcasting it.
             await _alarmAudioService.PlaySosFeedbackAsync();
-            await _smsService.SendEmergencySmsAsync(message, recipients);
+            var deliveryResult = await _smsService.SendEmergencySmsAsync(message, recipients);
             _lastSosSentAt = DateTimeOffset.UtcNow;
             SosDispatched?.Invoke(this, EventArgs.Empty);
-            LastActionText = $"SOS sent to {recipients.Count} contact(s).";
+            // Report the radio's real per-contact outcome, not just that the queue-to-radio call returned.
+            // A partial or failed dispatch opens Messages pre-filled for the missed numbers as the retry.
+            LastActionText = deliveryResult.RiderSummary;
         }
         catch (Exception ex)
         {
@@ -2028,6 +2174,7 @@ public class HomeController : INotifyPropertyChanged
         _deviationAwayStreak = 0;
         _arrivalStreak = 0;
         _stage3Streak = 0;
+        _smoothedAccuracy = 0; // start the accuracy-weighted smoother fresh for this trip
         CurrentAlarmStage = AlarmStage.None;
         _lastSpeedMetersPerSecond = 0;
         _minDistanceToDestination = double.MaxValue;
@@ -2145,6 +2292,18 @@ public class HomeController : INotifyPropertyChanged
             return;
         }
 
+        // Crowded / briefly-absent GPS guard: a degraded provider can hand us a NaN/Infinity or an
+        // out-of-globe fix. Letting one through would poison the running estimate and the trip distance
+        // (a NaN spreads to every later reading) and freeze the map dot on a broken coordinate. So we drop
+        // the bad fix, keep the last known position on screen, and fall back to the existing
+        // "Searching for GPS…" state — recovering automatically the moment a usable fix returns. The trip
+        // keeps running; nothing here throws.
+        if (!CrowdedGpsFilter.IsUsableFix(snapshot.Latitude, snapshot.Longitude))
+        {
+            CurrentLocationText = "Searching for GPS…";
+            return;
+        }
+
         if (_lastTrackedLocation is null)
         {
             _lastTrackedLocation = snapshot;
@@ -2203,14 +2362,31 @@ public class HomeController : INotifyPropertyChanged
             return;
         }
 
+        // ── Crowded-place GPS robustness (Feature 4) ─────────────────────────────
+        // Blend this fix into an accuracy-weighted running estimate before any distance/stage decision,
+        // so a cluster of noisy fixes in an urban canyon is pulled toward its weighted mean instead of
+        // yanking the position (and the arrival/overshoot logic) around. The trip-distance jitter gate in
+        // HandleLocationUpdateAsync keeps using the raw fix, so this can't interfere with that total.
+        (_smoothedLat, _smoothedLon, _smoothedAccuracy) = CrowdedGpsFilter.Smooth(
+            _smoothedLat, _smoothedLon, _smoothedAccuracy,
+            snapshot.Latitude, snapshot.Longitude, snapshot.AccuracyMeters);
+        // A fix worse than the confidence threshold may update the on-screen distance but must NOT latch
+        // arrival, overshoot, or the Stage-3 wake-up — biasing toward "wait for a confident fix".
+        var isConfidentFix = CrowdedGpsFilter.IsConfident(snapshot.AccuracyMeters, LowConfidenceAccuracyMeters);
+
+        var smoothedSnapshot = new LocationSnapshot(
+            _smoothedLat, _smoothedLon, (float)_smoothedAccuracy, snapshot.Timestamp);
+
         var destinationSnapshot = new LocationSnapshot(
             _lastDestinationResult.Latitude,
             _lastDestinationResult.Longitude,
             snapshot.AccuracyMeters,
             snapshot.Timestamp);
-        var distanceToDestination = CalculateDistanceMeters(snapshot, destinationSnapshot);
+        var distanceToDestination = CalculateDistanceMeters(smoothedSnapshot, destinationSnapshot);
         var accuracyBuffer = Math.Max(snapshot.AccuracyMeters, 0);
-        var overshootThreshold = OvershootThresholdMeters + accuracyBuffer;
+        // Feature 3 — overshoot trigger distance is the user-configurable buffer past the drop-off
+        // (clamped on input), plus the per-fix accuracy buffer. Default 250 m preserves prior behaviour.
+        var overshootThreshold = ArrivalThresholdMeters + _overshootDistanceMeters + accuracyBuffer;
         var adaptiveLeadDistance = Math.Clamp(
             _lastSpeedMetersPerSecond * DefaultAlarmLeadMinutes * 60,
             MinAlarmDistanceMeters,
@@ -2288,7 +2464,10 @@ public class HomeController : INotifyPropertyChanged
         // (stage3Threshold), not at the last 200 m. Gated on Stage 2 having already fired on an EARLIER fix
         // (the stageBeforeUpdate snapshot) and held across a couple of fixes, so the 1 → 2 → 3 order can't
         // collapse onto one GPS update and a lone outlier can't trip the lockout early.
-        if (stageBeforeUpdate == AlarmStage.Stage2
+        // Confidence-gated (Feature 4): a low-confidence fix neither advances nor resets the streak, so a
+        // burst of urban-canyon noise can't trip the lockout early — we wait for confident fixes instead.
+        if (isConfidentFix
+            && stageBeforeUpdate == AlarmStage.Stage2
             && _currentAlarmStage == AlarmStage.Stage2
             && !_hasArrivedAtDestination
             && distanceToDestination <= stage3Threshold)
@@ -2304,7 +2483,7 @@ public class HomeController : INotifyPropertyChanged
                     allowRepeat: false);
             }
         }
-        else if (_currentAlarmStage != AlarmStage.Stage3)
+        else if (isConfidentFix && _currentAlarmStage != AlarmStage.Stage3)
         {
             // Drifted back outside the Stage-3 ring before it latched — reset the streak.
             _stage3Streak = 0;
@@ -2314,7 +2493,9 @@ public class HomeController : INotifyPropertyChanged
         // out (see above), so this block's real job is to LATCH arrival and arm overshoot monitoring. It
         // still escalates to Stage 3 as an idempotent backstop (allowRepeat:false) for the rare case the
         // rider was already inside the inner ring on the very first fix.
-        if (!_hasArrivedAtDestination && distanceToDestination <= ArrivalThresholdMeters)
+        // Confidence-gated (Feature 4): only a confident fix may advance the arrival streak, so a scattered
+        // cluster of low-confidence fixes near the stop can't fake an arrival (and a later false overshoot).
+        if (isConfidentFix && !_hasArrivedAtDestination && distanceToDestination <= ArrivalThresholdMeters)
         {
             // Require the arrival to hold across a couple of fixes — one outlier dropping inside the
             // threshold then bouncing back must not latch arrival (which would later read as overshoot).
@@ -2331,12 +2512,14 @@ public class HomeController : INotifyPropertyChanged
                 return;
             }
         }
-        else if (!_hasArrivedAtDestination)
+        else if (isConfidentFix && !_hasArrivedAtDestination)
         {
             _arrivalStreak = 0;
         }
 
-        if (_hasArrivedAtDestination && !_overshootAlerted)
+        // Confidence-gated (Feature 4): overshoot only ever latches on confident fixes, so degraded GPS
+        // past the stop can't manufacture the consecutive-increasing-distance pattern that confirms it.
+        if (isConfidentFix && _hasArrivedAtDestination && !_overshootAlerted)
         {
             // Overshoot = past the stop AND consistently moving farther. Count consecutive increasing
             // fixes; moving back toward the destination resets the streak so a brief drift can't fire it.
@@ -2437,7 +2620,7 @@ public class HomeController : INotifyPropertyChanged
                     AlarmStageActivated?.Invoke(this, stage);
                 }
 
-                await _alarmAudioService.TriggerAlarmAsync(stage, AlarmSound, VibrationOnly);
+                await _alarmAudioService.TriggerAlarmAsync(stage, ResolveSoundForStage(stage), VibrationOnly);
             }
 
             await _notificationService.ShowTripAlertAsync(title, message);
@@ -2482,6 +2665,7 @@ public class HomeController : INotifyPropertyChanged
         _deviationAwayStreak = 0;
         _arrivalStreak = 0;
         _stage3Streak = 0;
+        _smoothedAccuracy = 0;
         CurrentAlarmStage = AlarmStage.None;
         _lastSpeedMetersPerSecond = 0;
         OnPropertyChanged(nameof(HasDestination));
@@ -2524,6 +2708,7 @@ public class HomeController : INotifyPropertyChanged
         _deviationAwayStreak = 0;
         _arrivalStreak = 0;
         _stage3Streak = 0;
+        _smoothedAccuracy = 0;
         CurrentAlarmStage = AlarmStage.None;
         _lastSpeedMetersPerSecond = 0;
         OnPropertyChanged(nameof(HasDestination));
@@ -2669,21 +2854,188 @@ public class HomeController : INotifyPropertyChanged
         }
     }
 
+    // The single global alarm-sound whitelist. Defers to AlarmSoundCatalog so it can never point at a
+    // sound that no longer exists: blank/retired/unknown → "Digital Clock", and "Custom" survives only
+    // while an imported file is actually present (HasCustomSound). "None" isn't a global option here.
     private string NormalizeSoundKey(string? value)
+        => AlarmSoundCatalog.Normalize(value, HasCustomSound, allowNone: false);
+
+    // Rebuild both picker lists, appending "Custom" only when an imported file is available right now.
+    // ObservableCollection mutations flow straight to the bound Settings pickers.
+    private void RefreshSoundOptions()
     {
-        // "Digital Clock" is the default voice — any blank, retired ("Default"/"Alarm"/"Chime"), or
-        // otherwise-unknown key normalizes to it so a saved preference can never point at a sound that no
-        // longer exists.
-        const string fallback = "Digital Clock";
-        if (string.IsNullOrWhiteSpace(value))
+        var custom = HasCustomSound;
+
+        // Global picker: 5 bundled voices, plus Custom when available.
+        var globalDesired = new List<string>(AlarmSoundCatalog.BundledSounds);
+        if (custom) globalDesired.Add(AlarmSoundCatalog.CustomKey);
+        SyncOptions(_alarmSoundOptions, globalDesired);
+
+        // Per-stage picker: Default + None + 5 bundled, plus Custom when available.
+        var stageDesired = new List<string> { "Default", AlarmSoundCatalog.NoneKey };
+        stageDesired.AddRange(AlarmSoundCatalog.BundledSounds);
+        if (custom) stageDesired.Add(AlarmSoundCatalog.CustomKey);
+        SyncOptions(_stageSoundOptions, stageDesired);
+
+        OnPropertyChanged(nameof(HasCustomSound));
+        OnPropertyChanged(nameof(CustomSoundName));
+        OnPropertyChanged(nameof(CustomSoundStatusText));
+
+        // The Clear()+refill above resets each bound Picker's SelectedItem to -1. Re-announce every
+        // sound-display property so the pickers re-resolve their selection against the rebuilt list.
+        // Without this, changing the list (importing/removing a custom sound) leaves the pickers showing
+        // a blank label even though the stored choice never changed — the stored value didn't move, so
+        // its setter raises nothing, and the Picker has no cue to re-pick the matching row.
+        OnPropertyChanged(nameof(AlarmSound));
+        OnPropertyChanged(nameof(Stage2SoundDisplay));
+        OnPropertyChanged(nameof(Stage3SoundDisplay));
+    }
+
+    private static void SyncOptions(ObservableCollection<string> target, IReadOnlyList<string> desired)
+    {
+        if (target.SequenceEqual(desired, StringComparer.Ordinal)) return;
+        target.Clear();
+        foreach (var item in desired) target.Add(item);
+    }
+
+    // "" stored ⇄ "Default" display for the per-stage pickers; otherwise the key is shown verbatim.
+    private static string StageDisplayFromStored(string? stored)
+        => string.IsNullOrWhiteSpace(stored) ? "Default" : stored;
+
+    private string StageStoredFromDisplay(string? display)
+    {
+        if (string.IsNullOrWhiteSpace(display)
+            || display.Equals("Default", StringComparison.OrdinalIgnoreCase))
+            return string.Empty;
+        // Normalise the picked key (allowing "None" for a vibration-led stage); an unavailable custom
+        // selection falls back to the default voice rather than sticking an unplayable key.
+        return AlarmSoundCatalog.Normalize(display, HasCustomSound, allowNone: true);
+    }
+
+    // Resolve which sound a stage should actually play (Feature 2). Stage 1 is vibration-only by design,
+    // so it always resolves to "None" and never routes audio to the alarm channel. Stages 2/3 use their
+    // explicit choice, or "" = inherit the single AlarmSound — so existing users see the current behaviour.
+    private string ResolveSoundForStage(AlarmStage stage)
+    {
+        if (stage == AlarmStage.Stage1)
+            return AlarmSoundCatalog.NoneKey;
+
+        var raw = stage switch
         {
-            return fallback;
+            AlarmStage.Stage2 => _stage2Sound,
+            AlarmStage.Stage3 => _stage3Sound,
+            _ => string.Empty
+        };
+
+        if (string.IsNullOrWhiteSpace(raw))
+            return _alarmSound;
+
+        return AlarmSoundCatalog.Normalize(raw, HasCustomSound, allowNone: true);
+    }
+
+    // Import a rider-supplied audio file as the custom alarm sound (Feature 1). Validates type+size up
+    // front, copies into app-private storage, then probes the playable duration and rejects anything the
+    // alarm loop can't use — deleting the partial copy so a bad import never lingers. Returns inline
+    // feedback in the existing grey-pill style. The file routes through the alarm channel exactly like a
+    // bundled voice (see AndroidAlarmAudioService.GetCustomAlarmUri).
+    public async Task<(bool Ok, string Message)> ImportCustomSoundAsync(string fileName, Stream content, long sizeBytes)
+    {
+        try
+        {
+            // Type check up front; size is re-checked against the real file after the copy in case the
+            // picker couldn't report a length before we read it.
+            if (!AlarmSoundCatalog.IsExtensionAllowed(fileName))
+                return (false, "Unsupported file type. Use MP3, OGG, WAV, M4A, or AAC.");
+            if (sizeBytes > 0 && !AlarmSoundCatalog.IsSizeAllowed(sizeBytes))
+                return (false, $"File is too large. Keep it under {AlarmSoundCatalog.MaxImportBytes / (1024 * 1024)} MB.");
+
+            var folder = Path.Combine(FileSystem.AppDataDirectory, "alarm_sounds");
+            Directory.CreateDirectory(folder);
+            var ext = Path.GetExtension(fileName);
+            var destination = Path.Combine(folder, $"custom{ext}");
+
+            // Copy to a temp file first so a failed/partial write can't replace a working custom sound.
+            var temp = destination + ".tmp";
+            await using (var fs = File.Create(temp))
+            {
+                await content.CopyToAsync(fs);
+            }
+
+            var actualSize = new FileInfo(temp).Length;
+            if (!AlarmSoundCatalog.IsSizeAllowed(actualSize))
+            {
+                try { File.Delete(temp); } catch { }
+                return (false, $"File is too large. Keep it under {AlarmSoundCatalog.MaxImportBytes / (1024 * 1024)} MB.");
+            }
+
+            var duration = await _alarmAudioService.GetAudioDurationSecondsAsync(temp);
+            if (!AlarmSoundCatalog.IsDurationAllowed(duration))
+            {
+                try { File.Delete(temp); } catch { }
+                return (false, "That clip can't be used as an alarm (too short, too long, or not audio).");
+            }
+
+            // Commit: replace any previous custom file and point the preference at it.
+            try { if (File.Exists(destination)) File.Delete(destination); } catch { }
+            File.Move(temp, destination);
+
+            var displayName = Path.GetFileName(fileName);
+            _preferencesService.CustomSoundPath = destination;
+            _preferencesService.CustomSoundName = displayName;
+
+            RefreshSoundOptions();
+            // Adopt the freshly imported voice as the active global sound so the rider hears it next trip.
+            AlarmSound = AlarmSoundCatalog.CustomKey;
+            return (true, $"Custom alarm sound added: {displayName}");
+        }
+        catch (Exception ex)
+        {
+            BlackBoxLogger.RecordHandledException(ex, "[HomeController.ImportCustomSoundAsync]");
+            return (false, "Could not import that file. Please try another.");
+        }
+    }
+
+    // Forget the custom sound: drop the file + preference and fall any selection that pointed at it back
+    // to a bundled voice via the normalisers.
+    public void RemoveCustomSound()
+    {
+        try
+        {
+            var path = _preferencesService.CustomSoundPath;
+            if (!string.IsNullOrWhiteSpace(path) && File.Exists(path))
+            {
+                try { File.Delete(path); } catch { }
+            }
+        }
+        catch (Exception ex)
+        {
+            BlackBoxLogger.RecordHandledException(ex, "[HomeController.RemoveCustomSound]");
         }
 
-        var trimmed = value.Trim();
-        return _alarmSoundOptions.Contains(trimmed, StringComparer.OrdinalIgnoreCase)
-            ? _alarmSoundOptions.First(option => option.Equals(trimmed, StringComparison.OrdinalIgnoreCase))
-            : fallback;
+        _preferencesService.CustomSoundPath = string.Empty;
+        _preferencesService.CustomSoundName = string.Empty;
+        RefreshSoundOptions();
+
+        // Re-normalise any choice that referenced the now-gone custom file.
+        AlarmSound = NormalizeSoundKey(_alarmSound);
+        Stage2SoundDisplay = Stage2SoundDisplay;
+        Stage3SoundDisplay = Stage3SoundDisplay;
+    }
+
+    // Live preview of a stage's resolved sound for the per-stage selectors (mirrors PreviewSelectedSound).
+    public void PreviewStageSound(AlarmStage stage)
+    {
+        try
+        {
+            var sound = ResolveSoundForStage(stage);
+            if (string.Equals(sound, AlarmSoundCatalog.NoneKey, StringComparison.OrdinalIgnoreCase))
+                return; // nothing to preview for a vibration-led / silent stage
+            _ = _alarmAudioService.PreviewSoundAsync(sound);
+        }
+        catch (Exception ex)
+        {
+            BlackBoxLogger.RecordHandledException(ex, "[HomeController.PreviewStageSound]");
+        }
     }
 
     private static bool IsSameDestination(SavedRoute route, GeocodingResult destination)
@@ -2832,32 +3184,66 @@ public class HomeController : INotifyPropertyChanged
                 var _userMarker=null;
                 var _userAnimFrame=null;
                 var _destMarker=null;
+                // --- Live-dot motion tuning (retune here) -------------------------------------------
+                // MARKER_TWEEN_MS: how long the blue dot takes to glide from one GPS fix to the next.
+                //   Lower = snappier / more responsive catch-up; higher = lazier. 450 ms reads as smooth
+                //   without the dot feeling like it lags behind the rider.
+                // MARKER_FOLLOW: keep the map centered on the gliding dot while a trip is running.
+                var MARKER_TWEEN_MS=450;
+                var MARKER_FOLLOW=true;
+                // Zoom state. Leaflet owns the camera transform during a zoom, and our per-frame
+                // setLatLng/panTo fights it — that tug-of-war is exactly why the dot used to drift slowly
+                // into place during/after a pinch-zoom. We track the zoom window and pin the dot to its
+                // true coordinate while it's open, then resume smooth gliding once it settles.
+                // _targetLat/_targetLon is the real coordinate of the latest fix, so a mid-glide zoom can
+                // snap the dot straight onto it instead of leaving it stranded part-way through a tween.
+                var _zooming=false;
+                var _targetLat=null, _targetLon=null;
                 // Remember where the destination is even after the marker object is gone. The blue dot and
                 // the destination pin are two separate layers, but a stray redraw used to drop the pin and
                 // leave the rider staring at a map with no target. Caching the coords here lets
                 // ensureDestination() put the pin back without us having to re-run the whole setDestination
                 // (which would yank the camera around). null label means "nothing set yet".
                 var _destLat=null, _destLon=null, _destLabel=null;
+                // Suspend the dot's own tween for the duration of a zoom so it can't fight Leaflet's zoom
+                // animation. We snap it onto its real coordinate at zoomstart (so it rides the zoom
+                // transform pinned in place) and let normal gliding resume after zoomend.
+                map.on('zoomstart',function(){
+                  _zooming=true;
+                  if(_userAnimFrame){cancelAnimationFrame(_userAnimFrame);_userAnimFrame=null;}
+                  if(_userMarker && _targetLat!==null){_userMarker.setLatLng([_targetLat,_targetLon]);}
+                });
+                map.on('zoomend',function(){_zooming=false;});
                 // Glide the live dot from where it is to the new fix instead of teleporting it. We tween
                 // lat/lon over a few hundred ms with an ease-out curve so it decelerates into place, and
                 // pan the map along with it so the dot stays put on screen while the world slides under it.
                 function animateUserMarker(toLat,toLon){
                   if(!_userMarker){return;}
+                  // Defensive: a non-finite coordinate must never reach setLatLng or it leaves a broken,
+                  // un-rendered marker — keep the dot where it is instead.
+                  if(!isFinite(toLat)||!isFinite(toLon)){return;}
+                  _targetLat=toLat; _targetLon=toLon; // remember the real coordinate for a mid-glide zoom
                   var from=_userMarker.getLatLng();
                   var fromLat=from.lat, fromLon=from.lng;
                   var dLat=toLat-fromLat, dLon=toLon-fromLon;
                   // Effectively no movement (GPS jitter) — just settle it and skip the loop.
-                  if(Math.abs(dLat)<1e-7 && Math.abs(dLon)<1e-7){_userMarker.setLatLng([toLat,toLon]);map.panTo([toLat,toLon],{animate:false});return;}
+                  if(Math.abs(dLat)<1e-7 && Math.abs(dLon)<1e-7){_userMarker.setLatLng([toLat,toLon]);if(MARKER_FOLLOW&&!_zooming){map.panTo([toLat,toLon],{animate:false});}return;}
+                  // Mid-zoom: don't tween (it would fight Leaflet's zoom). Snap to the true coordinate so
+                  // the dot stays pinned; the next fix after zoomend glides normally again.
+                  if(_zooming){_userMarker.setLatLng([toLat,toLon]);return;}
                   // A new fix landed mid-glide — drop the old animation and start fresh from here.
                   if(_userAnimFrame){cancelAnimationFrame(_userAnimFrame);_userAnimFrame=null;}
-                  var duration=600, start=null;
+                  var start=null;
                   function step(ts){
+                    // A zoom began while we were gliding: stop fighting it, snap to the target, and bail —
+                    // zoomstart already pinned us, so just make sure we land exactly on the real coordinate.
+                    if(_zooming){_userMarker.setLatLng([toLat,toLon]);_userAnimFrame=null;return;}
                     if(start===null){start=ts;}
-                    var t=Math.min(1,(ts-start)/duration);
-                    var e=1-Math.pow(1-t,3); // cubic ease-out
+                    var t=Math.min(1,(ts-start)/MARKER_TWEEN_MS);
+                    var e=1-Math.pow(1-t,3); // cubic ease-out — natural deceleration into the new fix
                     var lat=fromLat+dLat*e, lon=fromLon+dLon*e;
                     _userMarker.setLatLng([lat,lon]);
-                    map.panTo([lat,lon],{animate:false});
+                    if(MARKER_FOLLOW&&!_zooming){map.panTo([lat,lon],{animate:false});}
                     if(t<1){_userAnimFrame=requestAnimationFrame(step);}else{_userAnimFrame=null;}
                   }
                   _userAnimFrame=requestAnimationFrame(step);
@@ -2866,12 +3252,15 @@ public class HomeController : INotifyPropertyChanged
                 var _pinUri='data:image/svg+xml;utf8,'+encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="40" height="40"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z" fill="#8B5CF6" stroke="#1E1E2E" stroke-width="1.5"/></svg>');
                 var _pinIcon=L.icon({iconUrl:_pinUri,iconSize:[40,40],iconAnchor:[20,40],popupAnchor:[0,-40]});
                 function updateUserLocation(lat,lon){
+                  // Defensive: ignore a non-finite fix outright so it can never create a broken marker.
+                  if(!isFinite(lat)||!isFinite(lon)){return;}
                   var ll=[lat,lon];
                   if(_userMarker){animateUserMarker(lat,lon);}
                   else{
                     // First fix of the trip — drop the dot straight down, nothing to glide from yet.
                     // NOTE: we deliberately only touch the user dot here. No blanket clear, so the
                     // destination pin survives the very first GPS fix instead of being wiped.
+                    _targetLat=lat; _targetLon=lon;
                     _userMarker=L.circleMarker(ll,{radius:8,color:'#fff',weight:2,fillColor:'#4A90D9',fillOpacity:0.9,className:'user-location-dot'}).addTo(map).bindTooltip('You',{permanent:false,direction:'top'});
                     map.panTo(ll,{animate:false});
                   }
@@ -2879,9 +3268,11 @@ public class HomeController : INotifyPropertyChanged
                   ensureDestination();
                 }
                 function centerOnUser(lat,lon){
+                  if(!isFinite(lat)||!isFinite(lon)){return;}
                   var ll=[lat,lon];
                   // User asked to recenter — cancel any glide in progress so it doesn't fight the flyTo.
                   if(_userAnimFrame){cancelAnimationFrame(_userAnimFrame);_userAnimFrame=null;}
+                  _targetLat=lat; _targetLon=lon;
                   if(_userMarker){_userMarker.setLatLng(ll);}
                   else{_userMarker=L.circleMarker(ll,{radius:8,color:'#fff',weight:2,fillColor:'#4A90D9',fillOpacity:0.9,className:'user-location-dot'}).addTo(map).bindTooltip('You',{permanent:false,direction:'top'});}
                   map.flyTo(ll,16,{animate:true,duration:0.4,easeLinearity:0.25});
@@ -2911,6 +3302,7 @@ public class HomeController : INotifyPropertyChanged
                 // default region/zoom so the map looks exactly like the clean home state again.
                 function resetMap(){
                   if(_userAnimFrame){cancelAnimationFrame(_userAnimFrame);_userAnimFrame=null;}
+                  _targetLat=null; _targetLon=null;
                   clearDestination();
                   if(_userMarker){map.removeLayer(_userMarker);_userMarker=null;}
                   map.setView([14.5995,120.9842],12);
