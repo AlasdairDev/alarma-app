@@ -99,6 +99,14 @@ public class DatabaseService
         return item.Id == 0 ? await db.InsertAsync(item) : await db.UpdateAsync(item);
     }
 
+    // Re-fetch a single trip row by Id so a recovered trip can keep writing to its existing record
+    // instead of starting a duplicate. Returns null if the row is gone.
+    public async Task<TripHistory?> GetTripHistoryByIdAsync(int id) =>
+        await (await GetConnectionAsync())
+            .Table<TripHistory>()
+            .Where(t => t.Id == id)
+            .FirstOrDefaultAsync();
+
     public async Task<int> ClearTripHistoryAsync() =>
         await (await GetConnectionAsync()).DeleteAllAsync<TripHistory>();
 
