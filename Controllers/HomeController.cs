@@ -289,6 +289,9 @@ public class HomeController : INotifyPropertyChanged
     // Raised when a trip start is blocked because the device's master location switch is off.
     // The view turns this into a "go to Settings" prompt (the controller has no Page of its own).
     public event EventHandler? LocationServicesDisabled;
+    // Raised at trip start when Do-Not-Disturb could mute the Emergency alarm and we lack the access to
+    // override it. The view can turn this into a prompt to grant notification-policy access.
+    public event EventHandler? DndMayMuteAlarm;
 
     public string StatusText
     {
@@ -2344,6 +2347,15 @@ public class HomeController : INotifyPropertyChanged
             LastActionText = "Trip tracking started.";
             // Stamp the initial trip blob now that the row has an Id, so even a kill seconds in can recover.
             PersistActiveTripState();
+
+            // If DND is on and we can't punch the alarm through it, the rider could sleep through the
+            // Emergency wake-up. Warn now (and let the view offer to grant notification-policy access)
+            // rather than discovering it the hard way at the destination. Non-blocking — the trip runs.
+            if (_alarmAudioService.IsDndRestrictingAlarm())
+            {
+                LastActionText = "Heads up: Do Not Disturb may mute the alarm. Allow Alarma through DND to be safe.";
+                DndMayMuteAlarm?.Invoke(this, EventArgs.Empty);
+            }
         }
         catch (Exception ex)
         {
