@@ -10,6 +10,7 @@
 // Nothing sensitive here: no user data, no credentials, no network.
 
 using AlarmaApp.Models;
+using AlarmaApp.Services;
 using AlarmaApp.Services.Interfaces;
 using Android.App;
 using Android.Content;
@@ -27,6 +28,9 @@ public class AndroidAlarmAudioService : IAlarmAudioService
     // and the OS locks the sound to one stream from the start — see StartAlarmPlaybackLocked for why that's
     // the whole fix for the speaker-plus-earbuds dual playback.
     private MediaPlayer? _mediaPlayer;
+    // The Emergency-only second player: when the primary alarm routes to earbuds, this one pushes the same
+    // wake-up out the phone speaker so a pocketed earbud can't swallow it. Null whenever it's not needed.
+    private MediaPlayer? _emergencySpeakerPlayer;
     // Fallback only: if MediaPlayer ever refuses an OEM resource URI, we drop back to a plain Ringtone so
     // the rider is never left with a silent alarm.
     private Ringtone? _ringtone;
@@ -37,9 +41,14 @@ public class AndroidAlarmAudioService : IAlarmAudioService
     // headset are plugged in, so the alarm can pick the right output stream at trigger time.
     private readonly IEarphoneService _earphoneService;
 
-    public AndroidAlarmAudioService(IEarphoneService earphoneService)
+    // Lets us resolve the "Custom" sound key to the rider's imported file path at play time, and fall
+    // back safely to a bundled voice if that file has since been deleted (Feature 1 whitelist safety).
+    private readonly PreferencesService _preferencesService;
+
+    public AndroidAlarmAudioService(IEarphoneService earphoneService, PreferencesService preferencesService)
     {
         _earphoneService = earphoneService;
+        _preferencesService = preferencesService;
     }
 
     // Preview playback (Settings) is kept completely separate from the trip alarm above so previewing a
@@ -113,9 +122,10 @@ public class AndroidAlarmAudioService : IAlarmAudioService
                 return;
             }
 
-            // Stage 1 is, by spec, a gentle nudge only: a single vibration and NOTHING else. It never
-            // plays a sound, never raises the alarm volume, and never touches the ringer / DND — so even
-            // with sound enabled, Alarm 1 stays silent. Buzz and bail out before any audio path runs.
+            // Stage 1 is the gentle nudge — vibration-only by design. It buzzes and bails out before any
+            // audio path runs, never raising the alarm volume or touching the ringer/DND. It must never
+            // route audio to the alarm channel regardless of the resolved sound key (which is always
+            // "None" for Stage 1), so we hard-stop here.
             if (stage == AlarmStage.Stage1)
             {
                 TriggerVibration(stage, vibrationIntensity);
@@ -127,16 +137,28 @@ public class AndroidAlarmAudioService : IAlarmAudioService
                 lock (_ringtoneLock) { _savedRingerMode ??= audioManager.RingerMode; }
                 audioManager.RingerMode = RingerMode.Vibrate;
             }
+
+            // A stage whose chosen sound is "None" (Feature 2 — e.g. a vibration-led Stage 1) buzzes but
+            // plays no audio, so we skip the ringer/volume override and the playback entirely. The vibrate
+            // path below still runs, keeping the rider covered.
+            var isNoneSound = string.Equals(soundKey, AlarmSoundCatalog.NoneKey, StringComparison.OrdinalIgnoreCase);
+            var playAudio = !vibrationOnly && !isNoneSound;
+
             // STREAM_ALARM always blasts the phone's own speaker by Android's design — even with earbuds
             // in — so the alarm used to double up, playing out loud AND in the rider's ears. To stop that
             // dual playback we check for earphones at the moment the alarm fires: if they're connected we
             // send the audio down the MUSIC stream (which honours the earbuds and stays out of the
             // speaker); if not, we use the ALARM stream so it punches through the phone speaker as normal.
             var routeToEarphones = false;
+            var alsoDriveSpeaker = false;
 
-            if (!vibrationOnly)
+            if (playAudio)
             {
                 routeToEarphones = ShouldRouteToEarphones();
+                // Emergency-only safeguard: if the alarm is routing to earbuds, ALSO drive the phone
+                // speaker so a paired-but-pocketed earbud can't quietly swallow the wake-up. Stage 2 keeps
+                // routing to the earbuds alone (the prior dual-playback annoyance fix stands).
+                alsoDriveSpeaker = EmergencyAudioPolicy.ShouldAlsoDriveSpeaker(stage, routeToEarphones);
                 var targetStream = routeToEarphones ? AndroidStream.Music : AndroidStream.Alarm;
 
                 lock (_ringtoneLock) { _savedRingerMode ??= audioManager.RingerMode; }
@@ -145,14 +167,22 @@ public class AndroidAlarmAudioService : IAlarmAudioService
                 var targetVolume = GetStageVolume(stage, maxVolume);
                 audioManager.SetStreamVolume(targetStream, targetVolume, VolumeNotificationFlags.ShowUi);
 
+                // When we're also driving the speaker for the Emergency stage, max the alarm stream too so
+                // the speaker copy is at full wake-up volume, not whatever it happened to be at.
+                if (alsoDriveSpeaker)
+                {
+                    var alarmMax = audioManager.GetStreamMaxVolume(AndroidStream.Alarm);
+                    audioManager.SetStreamVolume(AndroidStream.Alarm, alarmMax, VolumeNotificationFlags.ShowUi);
+                }
+
                 if (notificationManager?.IsNotificationPolicyAccessGranted == true)
                     notificationManager.SetInterruptionFilter(InterruptionFilter.All);
             }
 
             TriggerVibration(stage, vibrationIntensity);
-            if (!vibrationOnly)
+            if (playAudio)
             {
-                await PlayRingtoneAsync(soundKey, stage, routeToEarphones);
+                await PlayRingtoneAsync(soundKey, stage, routeToEarphones, alsoDriveSpeaker);
             }
         });
     }
@@ -355,7 +385,7 @@ public class AndroidAlarmAudioService : IAlarmAudioService
         return false;
     }
 
-    private async Task PlayRingtoneAsync(string soundKey, AlarmStage stage, bool routeToEarphones)
+    private async Task PlayRingtoneAsync(string soundKey, AlarmStage stage, bool routeToEarphones, bool alsoDriveSpeaker)
     {
         // Stage 2 AND the Emergency stage now LOOP until they're superseded or dismissed. Stage 2 used to ring
         // exactly once, which a sleeping commuter could easily miss in the gap before the next escalation —
@@ -380,7 +410,7 @@ public class AndroidAlarmAudioService : IAlarmAudioService
 
             var uri = GetRingtoneUri(soundKey);
             if (uri is not null)
-                StartAlarmPlaybackLocked(uri, routeToEarphones, shouldLoop);
+                StartAlarmPlaybackLocked(uri, routeToEarphones, shouldLoop, alsoDriveSpeaker);
         }
 
         // Looping stages (Stage 2 + Emergency): leave them sounding. DisableCriticalAudioAsync (fired by
@@ -461,9 +491,19 @@ public class AndroidAlarmAudioService : IAlarmAudioService
         }
     }
 
-    private static global::Android.Net.Uri? GetRingtoneUri(string soundKey)
+    private global::Android.Net.Uri? GetRingtoneUri(string soundKey)
     {
-        // Bundled assets win first — they're real files we ship, so they sound identical on every device
+        // Custom (Feature 1): play the rider's imported file from app-private storage. If it's been
+        // deleted out from under us, fall through to the bundled default below rather than going silent —
+        // this is the whitelist safety net the spec requires.
+        if (string.Equals(soundKey, AlarmSoundCatalog.CustomKey, StringComparison.OrdinalIgnoreCase))
+        {
+            var custom = GetCustomAlarmUri();
+            if (custom is not null) return custom;
+            soundKey = AlarmSoundCatalog.Default;
+        }
+
+        // Bundled assets win next — they're real files we ship, so they sound identical on every device
         // and are guaranteed loud/aggressive regardless of what the device's ringtone catalogue holds.
         var bundled = GetBundledAlarmUri(soundKey);
         if (bundled is not null) return bundled;
@@ -505,6 +545,55 @@ public class AndroidAlarmAudioService : IAlarmAudioService
         }
     }
 
+    // Resolves the "Custom" key to a file:// URI for the rider's imported clip. Returns null if no custom
+    // sound is configured OR the file is missing, so the caller falls back to a bundled voice — a deleted
+    // custom file degrades gracefully instead of crashing or playing nothing. AudioAttributes are still
+    // applied by StartAlarmPlaybackLocked, so a custom file rides the alarm channel exactly like a bundled one.
+    private global::Android.Net.Uri? GetCustomAlarmUri()
+    {
+        try
+        {
+            var path = _preferencesService.CustomSoundPath;
+            if (string.IsNullOrWhiteSpace(path) || !System.IO.File.Exists(path))
+                return null;
+            return global::Android.Net.Uri.FromFile(new Java.IO.File(path));
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    // Probe a candidate custom-sound file's playable duration (seconds) so the controller can reject a
+    // file the alarm loop can't use. Returns 0 on any failure (unreadable / not really audio).
+    public Task<double> GetAudioDurationSecondsAsync(string filePath)
+    {
+        return Task.Run(() =>
+        {
+            if (string.IsNullOrWhiteSpace(filePath) || !System.IO.File.Exists(filePath))
+                return 0d;
+
+            MediaMetadataRetriever? retriever = null;
+            try
+            {
+                retriever = new MediaMetadataRetriever();
+                retriever.SetDataSource(filePath);
+                var raw = retriever.ExtractMetadata(MetadataKey.Duration);
+                if (long.TryParse(raw, out var millis) && millis > 0)
+                    return millis / 1000.0;
+                return 0d;
+            }
+            catch
+            {
+                return 0d;
+            }
+            finally
+            {
+                try { retriever?.Release(); } catch { }
+            }
+        });
+    }
+
     // Builds and starts the alarm with its routing baked in from the very first instant. We use a
     // MediaPlayer (not a Ringtone) on purpose: MediaPlayer lets us set the AudioAttributes BEFORE prepare,
     // so the OS binds the sound to exactly one stream up front. The old path set attributes on a Ringtone
@@ -513,27 +602,17 @@ public class AndroidAlarmAudioService : IAlarmAudioService
     //   - Earbuds in  → UsageMedia / STREAM_MUSIC → routes EXCLUSIVELY to the earbuds, like a music app.
     //   - Earbuds out → UsageAlarm / STREAM_ALARM → routes EXCLUSIVELY to the device speaker.
     // The caller already holds _ringtoneLock.
-    private void StartAlarmPlaybackLocked(global::Android.Net.Uri uri, bool routeToEarphones, bool shouldLoop)
+    private void StartAlarmPlaybackLocked(global::Android.Net.Uri uri, bool routeToEarphones, bool shouldLoop, bool alsoDriveSpeaker)
     {
         var usage = routeToEarphones ? AudioUsageKind.Media : AudioUsageKind.Alarm;
         var contentType = routeToEarphones ? AudioContentType.Music : AudioContentType.Sonification;
 
-        try
+        var primary = TryBuildAlarmPlayer(uri, usage, contentType, shouldLoop);
+        if (primary is not null)
         {
-            var player = new MediaPlayer();
-            player.SetAudioAttributes(new AudioAttributes.Builder()
-                .SetUsage(usage)!
-                .SetContentType(contentType)!
-                .Build());
-            player.SetDataSource(AndroidApplication.Context, uri);
-            // Stage 2 + Emergency keep sounding until superseded/dismissed — MediaPlayer loops natively on
-            // every API level we support, so we don't have the old API-28 looping limitation here.
-            player.Looping = shouldLoop;
-            player.Prepare();
-            player.Start();
-            _mediaPlayer = player;
+            _mediaPlayer = primary;
         }
-        catch
+        else
         {
             // MediaPlayer can occasionally reject an OEM resource URI. Rather than leave the rider with a
             // silent alarm, fall back to a plain Ringtone — it still gets the attributes applied, just via
@@ -554,6 +633,62 @@ public class AndroidAlarmAudioService : IAlarmAudioService
                 // Even the fallback failed — the vibration path still covers the rider.
             }
         }
+
+        // Emergency stage with earbuds connected: spin up a SECOND player pinned to the alarm channel
+        // (speaker) alongside the earbud copy above. Fully independent — if the speaker player fails to
+        // build, the primary is untouched. This is the pocketed-earbud safeguard, Emergency-only.
+        if (alsoDriveSpeaker)
+        {
+            _emergencySpeakerPlayer = TryBuildAlarmPlayer(
+                uri, AudioUsageKind.Alarm, AudioContentType.Sonification, shouldLoop);
+        }
+    }
+
+    // Builds a MediaPlayer with the given audio attributes pinned BEFORE prepare (so the OS locks it to one
+    // output stream from the start) and starts it. Returns null if the player can't be built.
+    private static MediaPlayer? TryBuildAlarmPlayer(
+        global::Android.Net.Uri uri, AudioUsageKind usage, AudioContentType contentType, bool shouldLoop)
+    {
+        try
+        {
+            var player = new MediaPlayer();
+            player.SetAudioAttributes(new AudioAttributes.Builder()
+                .SetUsage(usage)!
+                .SetContentType(contentType)!
+                .Build());
+            player.SetDataSource(AndroidApplication.Context, uri);
+            // Stage 2 + Emergency keep sounding until superseded/dismissed — MediaPlayer loops natively on
+            // every API level we support, so we don't have the old API-28 looping limitation here.
+            player.Looping = shouldLoop;
+            player.Prepare();
+            player.Start();
+            return player;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    // True when DND is on and we can't override it, so the Emergency lockout risks being muted.
+    public bool IsDndRestrictingAlarm()
+    {
+        try
+        {
+            var nm = AndroidApplication.Context.GetSystemService(Context.NotificationService) as NotificationManager;
+            if (nm is null)
+                return false;
+
+            // "None" (total silence) and "Priority only" DND can both gag the alarm channel; "Alarms only"
+            // explicitly lets alarms through, and "All" means DND is off — neither of those is a risk.
+            var dndActive = nm.CurrentInterruptionFilter == InterruptionFilter.None
+                            || nm.CurrentInterruptionFilter == InterruptionFilter.Priority;
+            return EmergencyAudioPolicy.ShouldWarnDndMayMuteAlarm(dndActive, nm.IsNotificationPolicyAccessGranted);
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     // Stop and FULLY release both possible alarm players: the primary MediaPlayer and the fallback
@@ -567,6 +702,14 @@ public class AndroidAlarmAudioService : IAlarmAudioService
             try { _mediaPlayer.Reset(); } catch { }
             try { _mediaPlayer.Release(); } catch { }
             _mediaPlayer = null;
+        }
+
+        if (_emergencySpeakerPlayer is not null)
+        {
+            try { if (_emergencySpeakerPlayer.IsPlaying) _emergencySpeakerPlayer.Stop(); } catch { }
+            try { _emergencySpeakerPlayer.Reset(); } catch { }
+            try { _emergencySpeakerPlayer.Release(); } catch { }
+            _emergencySpeakerPlayer = null;
         }
 
         if (_ringtone is not null)
