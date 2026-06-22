@@ -9,6 +9,7 @@
 // just goes out through the static LocationUpdated event for AndroidLocationService to pick up.
 
 using AlarmaApp.Models;
+using AlarmaApp.Services;
 using Android.App;
 using Android.Content;
 using Android.Locations;
@@ -30,10 +31,20 @@ public class LocationTrackingService : Service, ILocationListener
     internal const int TrackingNotificationId = 1001;
     internal const string TrackingChannelId = "alarma_location_tracking";
     // GPS is our precise source, so we poll it a bit more aggressively than the coarse network
-    // provider — a fresher fix every couple of seconds keeps the live dot accurate and gives the
-    // map's interpolation something recent to glide toward.
-    private const long GpsUpdateIntervalMillis = 2000;
+    // provider. This is just the STARTING cadence — once the controller knows the distance to the stop it
+    // adjusts the GPS minTime through ApplyCadence (slow far away, back to this 2 s baseline on approach).
+    private const long DefaultGpsUpdateIntervalMillis = 2000;
     private const long NetworkUpdateIntervalMillis = 5000;
+
+    // The cadence the controller has asked for, and the wake-lock decision that rides with it. Static so
+    // the .NET-side AndroidLocationService can push a new value into whichever service instance is running.
+    private static volatile int s_requestedGpsIntervalMillis = (int)DefaultGpsUpdateIntervalMillis;
+    private static volatile bool s_holdWakeLockRequested = true;
+    private static LocationTrackingService? s_instance;
+
+    // The cadence currently registered with LocationManager — we only re-register when the band actually
+    // changes, not on every fix.
+    private long _currentGpsIntervalMillis = DefaultGpsUpdateIntervalMillis;
     private const float MinDistanceMetersGps = 5f;
     private const float MinDistanceMetersNetwork = 10f;
     // We enforce a strict accuracy gate here because indoor cell-tower triangulation is far too sloppy
@@ -83,13 +94,65 @@ public class LocationTrackingService : Service, ILocationListener
     public override void OnDestroy()
     {
         StopLocationUpdates();
+        if (ReferenceEquals(s_instance, this))
+            s_instance = null;
         base.OnDestroy();
+    }
+
+    // Called from AndroidLocationService when the controller recomputes the cadence for a fix. We stash the
+    // request statically (so it survives a service restart) and, if we're the live instance, apply it now.
+    public static void ApplyCadence(long intervalMillis, bool holdWakeLock)
+    {
+        // Clamp to a sane band: never tighter than 1 s (pointless battery burn) or looser than a minute
+        // (we'd risk sailing past the stop between fixes on a fast vehicle).
+        s_requestedGpsIntervalMillis = (int)Math.Clamp(intervalMillis, 1000, 60000);
+        s_holdWakeLockRequested = holdWakeLock;
+        s_instance?.ApplyCadenceInternal();
+    }
+
+    private void ApplyCadenceInternal()
+    {
+        // Wake-lock scoping is cheap and safe to re-evaluate every call.
+        UpdateWakeLock(s_holdWakeLockRequested);
+
+        if (!_isStarted || _locationManager is null)
+            return;
+
+        var requested = s_requestedGpsIntervalMillis;
+        if (requested == _currentGpsIntervalMillis)
+            return;
+
+        // Changing the GPS minTime means re-registering. RemoveUpdates drops the listener from both
+        // providers, so we re-request both at the new GPS cadence (network keeps its coarse fallback rate).
+        _currentGpsIntervalMillis = requested;
+        try
+        {
+            _locationManager.RemoveUpdates(this);
+            RequestProviders();
+        }
+        catch (SecurityException)
+        {
+            StopSelf();
+        }
     }
 
     public void OnLocationChanged(global::Android.Locations.Location location)
     {
         var timestamp = DateTimeOffset.FromUnixTimeMilliseconds(location.Time);
         var accuracy = location.HasAccuracy ? location.Accuracy : 0f;
+        if (!float.IsFinite(accuracy))
+        {
+            accuracy = 0f;
+        }
+
+        // Drop a malformed fix (NaN/Infinity or off-the-globe coordinates) at the source. A degraded
+        // provider in a crowded urban canyon can emit one, and a single bad value downstream would poison
+        // the running position estimate and the trip distance for the rest of the trip — so it never
+        // leaves this service.
+        if (!CrowdedGpsFilter.IsUsableFix(location.Latitude, location.Longitude))
+        {
+            return;
+        }
 
         // Toss out the shaky fixes before they ever leave this service — a bad cell-tower reading sneaking
         // through here is what used to make the position and distance jump around. (accuracy == 0 just
@@ -129,34 +192,52 @@ public class LocationTrackingService : Service, ILocationListener
 
         try
         {
-            var hasProvider = false;
-            // Prefer the GPS provider — it's the fine/precise hardware source. The network provider is
-            // only a coarse fallback for when GPS hasn't locked yet (indoors, tunnels, cold start).
-            if (_locationManager.IsProviderEnabled(LocationManager.GpsProvider))
-            {
-                _locationManager.RequestLocationUpdates(LocationManager.GpsProvider, GpsUpdateIntervalMillis, MinDistanceMetersGps, this);
-                hasProvider = true;
-            }
-
-            if (_locationManager.IsProviderEnabled(LocationManager.NetworkProvider))
-            {
-                _locationManager.RequestLocationUpdates(LocationManager.NetworkProvider, NetworkUpdateIntervalMillis, MinDistanceMetersNetwork, this);
-                hasProvider = true;
-            }
-
-            if (!hasProvider)
+            // Pick up whatever cadence the controller last asked for (it persists across a service
+            // restart), so a sticky restart resumes at the right polling rate rather than the default.
+            _currentGpsIntervalMillis = s_requestedGpsIntervalMillis;
+            if (!RequestProviders())
             {
                 StopSelf();
                 return;
             }
 
             _isStarted = true;
-            AcquireWakeLock();
+            s_instance = this;
+            // Honour the current wake-lock request rather than blindly grabbing the lock for the whole
+            // trip — far from the stop the controller asks us to let the CPU sleep between fixes.
+            UpdateWakeLock(s_holdWakeLockRequested);
         }
         catch (SecurityException)
         {
             StopSelf();
         }
+    }
+
+    // Registers both providers at the current cadence. Returns false if neither provider is available,
+    // which the caller treats as "nothing to track" and stops the service.
+    private bool RequestProviders()
+    {
+        if (_locationManager is null)
+            return false;
+
+        var hasProvider = false;
+        // Prefer the GPS provider — it's the fine/precise hardware source. The network provider is
+        // only a coarse fallback for when GPS hasn't locked yet (indoors, tunnels, cold start).
+        if (_locationManager.IsProviderEnabled(LocationManager.GpsProvider))
+        {
+            _locationManager.RequestLocationUpdates(
+                LocationManager.GpsProvider, _currentGpsIntervalMillis, MinDistanceMetersGps, this);
+            hasProvider = true;
+        }
+
+        if (_locationManager.IsProviderEnabled(LocationManager.NetworkProvider))
+        {
+            _locationManager.RequestLocationUpdates(
+                LocationManager.NetworkProvider, NetworkUpdateIntervalMillis, MinDistanceMetersNetwork, this);
+            hasProvider = true;
+        }
+
+        return hasProvider;
     }
 
     private void StopLocationUpdates()
@@ -201,6 +282,18 @@ public class LocationTrackingService : Service, ILocationListener
             .SetSmallIcon(AndroidResource.Drawable.IcDialogMap)  // Fixed: explicit alias
             .SetOngoing(true)
             .Build();
+    }
+
+    // Scope the partial wake lock to when it actually earns its battery cost. Holding it for an entire
+    // 1–2 hour commute needlessly drains a budget phone; the foreground service keeps receiving fixes
+    // regardless, and the controller only asks us to hold the lock once the rider is near the stop, where
+    // we can't afford the CPU to nap between a fix and processing it. Far away, we let it sleep.
+    private void UpdateWakeLock(bool shouldHold)
+    {
+        if (shouldHold)
+            AcquireWakeLock();
+        else
+            ReleaseWakeLock();
     }
 
     private void AcquireWakeLock()
