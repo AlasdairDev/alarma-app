@@ -266,6 +266,10 @@ public class HomeController : INotifyPropertyChanged
     // Push the live dot to the map roughly as often as a fresh GPS fix arrives. The WebView animates
     // each hop, so a 2s cadence keeps the dot feeling alive without hammering EvaluateJavaScript.
     private static readonly TimeSpan MapLocationUpdateInterval = TimeSpan.FromSeconds(2);
+    // Distance creeps up on every fix, so we don't want to rewrite the persisted trip blob that often.
+    // Stage/latch transitions persist immediately; between those we only flush distance every few seconds.
+    private DateTime _lastTripStatePersist = DateTime.MinValue;
+    private static readonly TimeSpan TripStatePersistInterval = TimeSpan.FromSeconds(5);
     private CancellationTokenSource? _searchCts;
 
     public event PropertyChangedEventHandler? PropertyChanged;
@@ -899,6 +903,8 @@ public class HomeController : INotifyPropertyChanged
             CurrentAlarmStage = AlarmStage.None;
             ResetOvershootUiState();
             await _alarmAudioService.DisableCriticalAudioAsync();
+            // Record the dismissal so a kill right after Slide-to-Stop doesn't replay the wake-up.
+            PersistActiveTripState();
             LastActionText = "Alarm dismissed.";
         });
         CenterOnUserCommand = new Command(async () => await CenterOnUserAsync());
@@ -916,6 +922,7 @@ public class HomeController : INotifyPropertyChanged
             _overshootAlerted = false;
             CurrentAlarmStage = AlarmStage.None;
             await _alarmAudioService.DisableCriticalAudioAsync();
+            PersistActiveTripState();
         });
         // Pure local hand-off to Google Maps (google.navigation: intent, zero network). The overshoot alert's
         // "Open in Google Maps" button fires this and then ends the trip from the view, so the recovery flow
@@ -991,7 +998,11 @@ public class HomeController : INotifyPropertyChanged
             UpdateBackupStatus();
             await UpdatePermissionLabelsAsync();
             await InitializeDatabaseAsync();
-            TrackingStatusText = "Tracking inactive.";
+            // If the OS killed us mid-trip, the sticky service is already feeding fixes into a controller
+            // that's forgotten the destination — replay the persisted trip so the alarm can still fire.
+            await TryRecoverActiveTripAsync();
+            if (!IsTracking)
+                TrackingStatusText = "Tracking inactive.";
         }
         catch (Exception ex)
         {
@@ -2132,6 +2143,138 @@ public class HomeController : INotifyPropertyChanged
                "Please search these in a map app.";
     }
 
+    // Snapshot the live trip to Preferences. Only meaningful with a destination — that's the trip whose
+    // alarm we can't afford to lose to a task-kill. No destination means there's no wake-up to restore, so
+    // we skip rather than persist a half-trip that would resume into nothing.
+    private void PersistActiveTripState()
+    {
+        if (!IsTracking || _activeTrip is null || _lastDestinationResult is null)
+            return;
+
+        try
+        {
+            var state = new ActiveTripState
+            {
+                TripHistoryId = _activeTrip.Id,
+                StartedAtUtc = _activeTrip.StartedAt,
+                DestinationLatitude = _lastDestinationResult.Latitude,
+                DestinationLongitude = _lastDestinationResult.Longitude,
+                DestinationName = _lastDestinationResult.DisplayName,
+                TotalDistanceMeters = _totalDistanceMeters,
+                CurrentAlarmStage = (int)_currentAlarmStage,
+                MaxAlarmStageReached = _activeTrip.MaxAlarmStageReached,
+                HasArrived = _hasArrivedAtDestination,
+                OvershootAlerted = _overshootAlerted,
+                OvershootConfirmed = _isOvershootConfirmed
+            };
+            _preferencesService.ActiveTripJson = ActiveTripStateCodec.Serialize(state);
+            _lastTripStatePersist = DateTime.UtcNow;
+        }
+        catch (Exception ex)
+        {
+            BlackBoxLogger.RecordHandledException(ex, "[HomeController.PersistActiveTripState]");
+        }
+    }
+
+    // Distance-only flush, rate-limited so a 2s GPS cadence doesn't rewrite the blob every fix.
+    private void PersistActiveTripStateThrottled()
+    {
+        if (DateTime.UtcNow - _lastTripStatePersist >= TripStatePersistInterval)
+            PersistActiveTripState();
+    }
+
+    private void ClearActiveTripState()
+    {
+        try { _preferencesService.ActiveTripJson = string.Empty; }
+        catch (Exception ex) { BlackBoxLogger.RecordHandledException(ex, "[HomeController.ClearActiveTripState]"); }
+    }
+
+    // On launch, bring back a trip the OS killed out from under us. The sticky tracking service has likely
+    // already restarted and is emitting fixes into a controller that knows nothing about the destination —
+    // so we replay the persisted state and re-arm tracking. Critically, we set the alarm stage and latches
+    // by assigning fields directly: we never route through TriggerAlarmStageAsync, so an arrival or
+    // Emergency lockout the rider already dismissed does NOT blare again on relaunch.
+    private async Task TryRecoverActiveTripAsync()
+    {
+        if (IsTracking)
+            return;
+
+        var state = ActiveTripStateCodec.TryDeserialize(_preferencesService.ActiveTripJson);
+        if (state is null)
+            return;
+
+        // Re-link the existing history row so the resumed trip closes out the same record. If it's gone
+        // (e.g. history was cleared), rebuild a minimal stand-in so Stop can still write a clean summary.
+        TripHistory? trip = null;
+        try { trip = await _databaseService.GetTripHistoryByIdAsync(state.TripHistoryId); }
+        catch (Exception ex) { BlackBoxLogger.RecordHandledException(ex, "[HomeController.TryRecoverActiveTrip.Fetch]"); }
+
+        trip ??= new TripHistory
+        {
+            Id = state.TripHistoryId,
+            StartedAt = state.StartedAtUtc,
+            DestinationName = state.DestinationName,
+            DestinationLatitude = state.DestinationLatitude,
+            DestinationLongitude = state.DestinationLongitude,
+            Summary = "Trip resumed after restart."
+        };
+        trip.MaxAlarmStageReached = Math.Max(trip.MaxAlarmStageReached, state.MaxAlarmStageReached);
+        _activeTrip = trip;
+
+        // Restore the destination first (this is what the lost trip was missing), then lay the latches and
+        // distance back on top — order matters because SetDestination-style resets would wipe them.
+        _lastDestinationResult = new GeocodingResult(
+            string.IsNullOrWhiteSpace(state.DestinationName) ? "Saved destination" : state.DestinationName!,
+            state.DestinationLatitude,
+            state.DestinationLongitude);
+
+        _totalDistanceMeters = state.TotalDistanceMeters;
+        _hasArrivedAtDestination = state.HasArrived;
+        _overshootAlerted = state.OvershootAlerted;
+        _isOvershootConfirmed = state.OvershootConfirmed;
+        IsOvershootConfirmed = state.OvershootConfirmed;
+        // Direct field/property assignment — NOT TriggerAlarmStageAsync — so nothing re-fires.
+        CurrentAlarmStage = (AlarmStage)state.CurrentAlarmStage;
+
+        // Transient smoothing/streak state can't be trusted across a restart, so start it fresh. The latches
+        // above are what actually prevent a re-fire; the streaks only ever gate the FIRST trigger.
+        _lastTrackedLocation = null;
+        _smoothedAccuracy = 0;
+        _arrivalStreak = 0;
+        _stage3Streak = 0;
+        _overshootIncreaseStreak = 0;
+        _lastOvershootDistance = double.MaxValue;
+        _deviationAwayStreak = 0;
+        _routeDeviationAlerted = false;
+        _minDistanceToDestination = double.MaxValue;
+        _lastSpeedMetersPerSecond = 0;
+
+        IsTracking = true;
+        TrackingStatusText = "Resumed tracking after restart.";
+        LastActionText = "Resumed your active trip.";
+        OnPropertyChanged(nameof(HasDestination));
+        OnPropertyChanged(nameof(ShowStartTripCard));
+        OnPropertyChanged(nameof(ShowGreetingHeader));
+
+        // Put the destination pin back and re-arm the sticky foreground service (StartTracking is safe to
+        // call when it's already running — it just guarantees the fix stream is wired to this controller).
+        try
+        {
+            var latStr = state.DestinationLatitude.ToString("F6", System.Globalization.CultureInfo.InvariantCulture);
+            var lonStr = state.DestinationLongitude.ToString("F6", System.Globalization.CultureInfo.InvariantCulture);
+            var safeLabel = System.Text.Json.JsonSerializer.Serialize(_lastDestinationResult.DisplayName);
+            MapJsRequested?.Invoke(this, $"setDestination({latStr},{lonStr},{safeLabel})");
+            await _locationService.StartTrackingAsync(CancellationToken.None);
+        }
+        catch (Exception ex)
+        {
+            BlackBoxLogger.RecordHandledException(ex, "[HomeController.TryRecoverActiveTrip.Resume]");
+        }
+
+        // Re-stamp the blob so the recovered (and possibly merged) state is what a second kill would read.
+        PersistActiveTripState();
+    }
+
     private async Task StartTrackingAsync()
     {
         if (IsTracking)
@@ -2199,6 +2342,8 @@ public class HomeController : INotifyPropertyChanged
             await _databaseService.SaveTripHistoryAsync(_activeTrip);
             await _locationService.StartTrackingAsync(CancellationToken.None);
             LastActionText = "Trip tracking started.";
+            // Stamp the initial trip blob now that the row has an Id, so even a kill seconds in can recover.
+            PersistActiveTripState();
         }
         catch (Exception ex)
         {
@@ -2233,6 +2378,8 @@ public class HomeController : INotifyPropertyChanged
         catch { }
 
         IsTracking = false;
+        // Clean stop: wipe the persisted trip so the next launch doesn't resurrect a finished commute.
+        ClearActiveTripState();
         var distanceKm = _totalDistanceMeters / MetersPerKilometer;
         TrackingStatusText = $"Tracking stopped. Distance {distanceKm:F2} km.";
         CurrentAlarmStage = AlarmStage.None;
@@ -2599,6 +2746,10 @@ public class HomeController : INotifyPropertyChanged
                 _deviationAwayStreak = 0;
             }
         }
+
+        // Distance and the live readout moved on this fix; flush it (rate-limited) so a recovered trip
+        // resumes with an accurate accumulated distance, not the value from the last stage transition.
+        PersistActiveTripStateThrottled();
     }
 
     private async Task TriggerAlarmStageAsync(
@@ -2632,6 +2783,10 @@ public class HomeController : INotifyPropertyChanged
                     _lastDestinationResult.Latitude,
                     _lastDestinationResult.Longitude);
             }
+
+            // A stage advance or an arrival/overshoot latch just happened — persist immediately so a kill
+            // right after the alarm fires doesn't replay it (or, worse, lose that it already fired).
+            PersistActiveTripState();
         }
         catch (Exception ex)
         {
