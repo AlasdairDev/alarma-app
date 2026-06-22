@@ -125,6 +125,11 @@ public class HomeController : INotifyPropertyChanged
     private int _arrivalStreak;
     // Consecutive fixes inside the Stage-3 ring; gates the WAKE UP lockout so one stray fix can't trip it.
     private int _stage3Streak;
+    // Last-resort arrival latch for a dense terminal where every fix stays low-confidence and the normal
+    // arrival latch would otherwise never fire. Bounded + reset the moment the estimate leaves the ring.
+    private readonly LowConfidenceArrivalGate _lowConfidenceArrivalGate = new(ArrivalThresholdMeters);
+    // Set when arrival was reached via the low-confidence fallback, so the alert/history reads "approximate".
+    private bool _arrivalWasApproximate;
     private bool _isOvershootPending;
     private bool _isOvershootConfirmed;
     private string _overshootDistanceText = string.Empty;
@@ -2245,6 +2250,8 @@ public class HomeController : INotifyPropertyChanged
         _smoothedAccuracy = 0;
         _arrivalStreak = 0;
         _stage3Streak = 0;
+        _lowConfidenceArrivalGate.Reset();
+        _arrivalWasApproximate = false;
         _overshootIncreaseStreak = 0;
         _lastOvershootDistance = double.MaxValue;
         _deviationAwayStreak = 0;
@@ -2320,6 +2327,8 @@ public class HomeController : INotifyPropertyChanged
         _deviationAwayStreak = 0;
         _arrivalStreak = 0;
         _stage3Streak = 0;
+        _lowConfidenceArrivalGate.Reset();
+        _arrivalWasApproximate = false;
         _smoothedAccuracy = 0; // start the accuracy-weighted smoother fresh for this trip
         CurrentAlarmStage = AlarmStage.None;
         _lastSpeedMetersPerSecond = 0;
@@ -2401,7 +2410,7 @@ public class HomeController : INotifyPropertyChanged
             _activeTrip.EndedAt = DateTime.UtcNow;
             _activeTrip.DistanceMeters = _totalDistanceMeters;
             _activeTrip.OvershootDetected = _overshootAlerted;
-            _activeTrip.Summary = BuildTripSummary(_activeTrip, distanceKm);
+            _activeTrip.Summary = BuildTripSummary(_activeTrip, distanceKm, _arrivalWasApproximate);
             try
             {
                 await _databaseService.SaveTripHistoryAsync(_activeTrip);
@@ -2682,6 +2691,27 @@ public class HomeController : INotifyPropertyChanged
             _arrivalStreak = 0;
         }
 
+        // Low-confidence-GPS arrival fallback (highest-risk path, gated hard). In a dense terminal every
+        // final-approach fix can stay low-confidence, so the confident latch above would never fire and the
+        // Emergency alarm could be skipped entirely. As a bounded last resort, latch arrival ANYWAY once the
+        // smoothed best estimate has sat inside the arrival ring continuously — across several fixes and a
+        // dwell window — while only low-confidence fixes arrive. The gate resets the instant the estimate
+        // leaves the ring, so this can never fire away from the stop. The alert is flagged "approximate".
+        if (!_hasArrivedAtDestination
+            && _lowConfidenceArrivalGate.ShouldLatchApproximate(
+                distanceToDestination, isConfidentFix, snapshot.Timestamp.UtcDateTime))
+        {
+            _hasArrivedAtDestination = true;
+            _arrivalWasApproximate = true;
+            await TriggerAlarmStageAsync(
+                AlarmStage.Stage3,
+                "WAKE UP",
+                "You appear to have reached your destination (approximate location — GPS is weak here).",
+                reroute: false,
+                allowRepeat: false);
+            return;
+        }
+
         // Confidence-gated (Feature 4): overshoot only ever latches on confident fixes, so degraded GPS
         // past the stop can't manufacture the consecutive-increasing-distance pattern that confirms it.
         if (isConfidentFix && _hasArrivedAtDestination && !_overshootAlerted)
@@ -2838,6 +2868,8 @@ public class HomeController : INotifyPropertyChanged
         _deviationAwayStreak = 0;
         _arrivalStreak = 0;
         _stage3Streak = 0;
+        _lowConfidenceArrivalGate.Reset();
+        _arrivalWasApproximate = false;
         _smoothedAccuracy = 0;
         CurrentAlarmStage = AlarmStage.None;
         _lastSpeedMetersPerSecond = 0;
@@ -2881,6 +2913,8 @@ public class HomeController : INotifyPropertyChanged
         _deviationAwayStreak = 0;
         _arrivalStreak = 0;
         _stage3Streak = 0;
+        _lowConfidenceArrivalGate.Reset();
+        _arrivalWasApproximate = false;
         _smoothedAccuracy = 0;
         CurrentAlarmStage = AlarmStage.None;
         _lastSpeedMetersPerSecond = 0;
@@ -3218,7 +3252,7 @@ public class HomeController : INotifyPropertyChanged
             && Math.Abs(route.Longitude - destination.Longitude) <= tolerance;
     }
 
-    private static string BuildTripSummary(TripHistory trip, double distanceKm)
+    private static string BuildTripSummary(TripHistory trip, double distanceKm, bool approximateArrival = false)
     {
         var duration = trip.EndedAt.HasValue
             ? trip.EndedAt.Value - trip.StartedAt
@@ -3227,7 +3261,10 @@ public class HomeController : INotifyPropertyChanged
             ? "In progress"
             : $"{duration.TotalMinutes:F0} min";
         var overshootText = trip.OvershootDetected ? "Overshoot detected" : "No overshoot";
-        return $"{durationText} · {distanceKm:F2} km · {overshootText}";
+        // Note when the arrival was the low-confidence fallback, so the history is honest that the stop was
+        // reached on an approximate (weak-GPS) fix rather than a confident one.
+        var approxText = approximateArrival ? " · Approx. arrival" : string.Empty;
+        return $"{durationText} · {distanceKm:F2} km · {overshootText}{approxText}";
     }
 
     // Clears all four recovery-flow screens in one shot (used on dismiss, trip stop, and new trips).
