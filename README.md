@@ -4,8 +4,8 @@
 > Capstone & Application-Development Project — Bachelor of Science in Information Technology,
 > Polytechnic University of the Philippines.
 >
-> **Release:** v10.0.0 · **Platform:** Android 8.0+ (API 26–35) ·
-> **Stack:** .NET MAUI 9 / C# / MVC · **Quality gate:** 268 passing xUnit tests.
+> **Release:** v11.0.0 · **Platform:** Android 8.0+ (API 26–35) ·
+> **Stack:** .NET MAUI 9 / C# / MVC · **Quality gate:** 400 passing xUnit tests.
 
 ---
 
@@ -44,14 +44,14 @@ Republic Act No. 10173 (Data Privacy Act of 2012). There is no proprietary backe
 data is transmitted to any first-party server.
 
 **Status — Production-ready.** Audited against the OWASP Mobile / Top-10 categories, covered by an
-automated **268-test** xUnit suite, and compiled to a signed, trimmed, ahead-of-time-compiled Release
+automated **400-test** xUnit suite, and compiled to a signed, trimmed, ahead-of-time-compiled Release
 APK for physical field testing.
 
 ---
 
 ## 2. Core Features
 
-### 2.1 Progressive 3-Stage Adaptive Alarm — with 5 high-intensity audio options
+### 2.1 Progressive 3-Stage Adaptive Alarm — with 5 bundled voices, custom sounds & per-stage selection
 
 Rather than a single binary alarm, Alarma escalates in three distance-aware stages so a drowsy
 commuter is woken with the least force necessary yet never sleeps through the stop. Trigger distances
@@ -78,12 +78,30 @@ handset:
 - **Bell** — a sharp mechanical school/fire-alarm ring.
 - **Air Horn** — a deep, piercing blast.
 
-**Overshoot recovery with Google Maps hand-off.** If the vehicle passes the destination, Alarma
-detects it from **consecutive increasing-distance fixes** (never a single noisy reading) and walks the
-rider through a guided recovery: a confirmed full-screen alert (destination + exact distance overshot)
-→ an offline *Area Safety* guidance overlay → an in-app rerouting screen with a mini-map and on-device,
-step-by-step return guidance, plus a one-tap hand-off to Google Maps via a pure local
-`google.navigation:q={lat},{lon}` Intent (**zero network requests**).
+**Bring-your-own custom alarm sound.** Beyond the five bundled voices, the rider can import their own
+audio file (MP3/OGG/WAV/M4A/AAC) through the native file picker. The import is validated — allowed type,
+a 10 MB size cap, and a usable playable duration — with inline grey-pill feedback on rejection, then
+copied into app-private storage and registered as a selectable **Custom** option. It routes through the
+same native alarm channel at full alarm volume, identically to a bundled voice. The selection survives
+backup/restore as a stable reference (the file is re-validated on restore), and a missing or deleted
+custom file falls back safely to the bundled default instead of going silent.
+
+**A distinct sound per escalation stage.** Stage 2 (Escalated) and the Emergency full-screen lockout can
+each be assigned their own sound — any bundled or custom voice, or *None* — independently. Stage 1
+(Gentle) is **vibration-only by design** — a single soft nudge with no forced audio — so it has no sound
+picker and never routes audio to the alarm channel. Stage behaviour is preserved: Stage 2 adds
+raised-volume audio, and the Emergency stage is max-volume and continuous until Slide-to-Stop; only
+*which* sound plays changes per stage. A stage with no explicit choice falls back to the single shared
+sound, so existing users see no change. Each per-stage selector has a live preview.
+
+**Overshoot recovery with Google Maps hand-off, and an adjustable trigger distance.** If the vehicle
+passes the destination, Alarma detects it from **consecutive increasing-distance fixes** (never a single
+noisy reading) and walks the rider through a guided recovery: a confirmed full-screen alert (destination
++ exact distance overshot) → an offline *Area Safety* guidance overlay → an in-app rerouting screen with
+a mini-map and on-device, step-by-step return guidance, plus a one-tap hand-off to Google Maps via a
+pure local `google.navigation:q={lat},{lon}` Intent (**zero network requests**). The distance past the
+stop before an overshoot latches is **user-configurable** (a 50–500 m Settings slider, default 250 m),
+clamped on input and on restore; the monotonic, outlier-resistant latch rule is unchanged.
 
 ### 2.2 Live Location Tracking
 
@@ -93,6 +111,13 @@ step-by-step return guidance, plus a one-tap hand-off to Google Maps via a pure 
 - Trip distance is accumulated as a true **Haversine path integral** between fixes, with a per-segment
   GPS-jitter gate (movement below the fix's own accuracy, floored at 8 m, is discarded) so a stationary
   phone's GPS wander never inflates distance.
+- **Crowded-place / urban-canyon GPS robustness.** In dense city cores — tall buildings, multipath, a
+  packed terminal — fixes arrive scattered and low-confidence. Three on-device, network-free defences keep
+  a noisy cluster from faking a stop: the per-fix accuracy drives an **accuracy-weighted position smoother**
+  (the tighter of the running estimate and the new fix wins); a fix worse than a confidence threshold may
+  update the on-screen distance but **cannot latch arrival, overshoot, or the Stage-3 lockout** (biasing
+  toward *wait for a confident fix* over a wrong trigger); and the jitter gate **widens with the reported
+  accuracy** so degraded fixes can't inflate the Haversine distance.
 - A live Leaflet map (CartoDB dark tiles under a strict Content-Security-Policy) shows a smoothly
   interpolated location pin and the destination marker.
 - A `PARTIAL_WAKE_LOCK` is held only while providers are registered and released on stop, preventing
@@ -135,19 +160,22 @@ location data and emergency contacts, the threat model assumes an attacker with 
 access to a lost, stolen, or rooted device. A consolidated control-to-OWASP mapping is in
 [Appendix A](#appendix-a--owasp-alignment).
 
-### 3.1 AES-256-GCM Encrypted `.alarma` Backups — portable, password-derived keys
+### 3.1 AES-256-GCM Encrypted `.alarma` Backups — static-key, portable envelope
 
 `Services/BackupService.cs` produces portable, authenticated-encrypted backups of user data.
 
 - **AES-256-GCM** authenticated encryption with a **fresh 96-bit nonce per export**.
-  File layout: `[1-byte version][16-byte salt][4-byte PBKDF2 iterations][12-byte nonce][16-byte GCM tag][ciphertext]`.
-- **Password-derived, portable key.** The 256-bit key is derived from a user-supplied password via
-  **PBKDF2-HMAC-SHA256** (210,000 iterations) using a random per-file salt. The salt and iteration count
-  travel inside the file, so the key is reproducible on any device from `(password + file)` alone — there
-  is **no stored key**. This fixes the prior design, where a random key in the **Android Keystore
-  (`SecureStorage`)** was wiped on uninstall and was unique per install, so backups read as "damaged"
-  after a reinstall or on a new phone. A backup exported on Phone A now restores on a fresh install of
-  Phone B given the same password; a wrong password fails the GCM tag and is rejected before any data is touched.
+  File layout: `[1-byte version][12-byte nonce][16-byte GCM tag][ciphertext]`.
+- **Static app-shipped key (v4 envelope).** The 256-bit key is a fixed value baked into the app (the
+  SHA-256 of a constant), identical on every install. This makes export and restore completely
+  seamless — no password to type, no per-device key to lose — so any `.alarma` file opens on any device
+  and survives an uninstall/reinstall. It replaces an earlier random Keystore key (`SecureStorage`) that
+  was wiped on uninstall and unique per install, so backups read as "damaged" after a reinstall or on a
+  new phone. This is a deliberate **portability/demo** trade-off, not a password-derived design.
+- **Not confidential against someone who has the app.** Because the key ships inside the app, anyone with
+  a copy of Alarma can decrypt a `.alarma` file — the envelope provides *integrity*, not secrecy of the
+  exported contents. Store exported `.alarma` files in a location you trust, the same as any other
+  personal export. (The on-device database in §3.2 is separately protected by a per-device Keystore key.)
 - **User-owned storage.** Exporting opens the native OS "Save As" dialog (`FileSaver`) so the user
   picks the destination folder — typically **Downloads** — and importing opens the native file browser
   (`FilePicker`) to select the `.alarma` file back. The encryption envelope is identical either way;
@@ -157,7 +185,8 @@ access to a lost, stolen, or rooted device. A consolidated control-to-OWASP mapp
   numbers are re-validated against the Philippine format, coordinates are bounded to the Philippine
   envelope, and quantity caps mirror the in-app limits.
 - **Integrity enforcement.** The GCM authentication tag is verified before any JSON is deserialized;
-  corrupted or modified files are rejected before a single plaintext byte is read.
+  a corrupted or modified file (or one in an unknown format version) is rejected before a single
+  plaintext byte is read.
 
 ### 3.2 Encrypted Local Database — SQLCipher (AES-256)
 
@@ -187,7 +216,7 @@ keys and no personal identifiers.
 
 ## 4. Testing & Quality Assurance
 
-Alarma ships with a robust, fully automated **xUnit** test suite — **268 passing tests** — that gates
+Alarma ships with a robust, fully automated **xUnit** test suite — **400 passing tests** — that gates
 every release.
 
 - **Hardware safely isolated with Moq.** Native MAUI/Android dependencies that a CI machine cannot
@@ -208,6 +237,16 @@ every release.
     validate-before-restore filters strip junk records.
   - **Bluetooth UI sync** — simulated hardware broadcasts drive the ViewModel's UI state
     (toggle/label and the *Earphones Connected/Disconnected* pill), with `PropertyChanged` verified.
+  - **Custom & per-stage alarm sounds** — the sound whitelist normalises bundled/`Custom`/`None`/unknown
+    keys (a deleted custom file falls back safely), custom-import validation enforces the allowed types,
+    size cap, and usable duration, and per-stage resolution proves the inherit-from-single-sound defaults.
+  - **Adjustable overshoot distance** — the 50–500 m clamp (input and restore), the trigger-threshold
+    arithmetic, and the unchanged monotonic, outlier-resistant latch under tight/wide buffers.
+  - **Crowded-place GPS robustness** — deterministic low-accuracy / scattered-fix sequences prove no false
+    arrival or overshoot latch, correct transitions once a confident fix lands, accuracy-weighted
+    smoothing, and that jitter never inflates the accumulated distance.
+  - **New-settings backup round-trip** — per-stage choices, the custom-sound reference, and the overshoot
+    distance survive serialization and are re-validated/clamped on restore (legacy backups still load).
   - Plus phone-number validation, coordinate bounding, alarm-sound whitelisting, lead-time clamping,
     timezone formatting, and geocode-cache LRU behaviour.
 - **Clean separation.** The suite (`AlarmaApp.Tests`) targets plain `net9.0` with no Android/MAUI
@@ -216,7 +255,7 @@ every release.
 
 ```bash
 dotnet test AlarmaApp.Tests/AlarmaApp.Tests.csproj
-# Passed!  - Failed: 0, Passed: 268, Skipped: 0
+# Passed!  - Failed: 0, Passed: 400, Skipped: 0
 ```
 
 ---
@@ -241,7 +280,7 @@ platform implementations under `Platforms/Android`, and dependency injection is 
 | Mapping | Leaflet.js with CartoDB dark tiles in a MAUI `WebView` under a strict CSP |
 | Geocoding | Three-tier forward search — Photon (primary) + Nominatim (street-level) over OSM, then the device's native `Geocoder` for OSM-unmapped subdivisions — plus a PH alias dictionary and a coordinate-label fallback |
 | Cryptography | `System.Security.Cryptography` — `AesGcm`, `RandomNumberGenerator` |
-| Testing | xUnit + **Moq** (hardware isolation), 268 tests on `net9.0` |
+| Testing | xUnit + **Moq** (hardware isolation), 400 tests on `net9.0` |
 | Iconography | Google Material Symbols font ligatures (`MaterialSymbolsOutlined.ttf`) |
 
 ### Target platform
@@ -252,7 +291,7 @@ platform implementations under `Platforms/Android`, and dependency injection is 
 | Minimum OS | Android 8.0 (API 26) |
 | Target OS | Android 15 (API 35) |
 | Application ID | `com.alarma.app` |
-| Release | v10.0.0 |
+| Release | v11.0.0 |
 | Out of scope | iOS, web, desktop |
 
 ### Release hardening pipeline
@@ -340,11 +379,16 @@ adb shell pm grant com.alarma.app android.permission.POST_NOTIFICATIONS
 
 # 2. Drive the full hands-free run (launch → search → select → start → 28 GPS fixes)
 python AutomationTools/simulate_commute.py
+
+# 3. Crowded-place / urban-canyon run — same corridor, scattered low-confidence fixes (Feature 4)
+python AutomationTools/simulate_commute.py --scenario crowded   # optional: --noise 60 --seed 1337
 ```
 
 GPS injection uses the emulator console bridge (`adb emu geo fix`); a physical handset needs a
 mock-location provider. Tap coordinates are calibrated for a 1080×2400 emulator and exposed as editable
-constants at the top of the script.
+constants at the top of the script. The `--scenario crowded` mode jitters every injected fix by up to a
+configurable radius (default 60 m, deterministic per `--seed`) to mimic dense-city multipath, so the
+on-device smoothing, confidence gating, and jitter-gated distance can be exercised end-to-end.
 
 ---
 
