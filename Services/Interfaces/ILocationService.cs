@@ -21,4 +21,9 @@ public interface ILocationService
 
     Task StartTrackingAsync(CancellationToken cancellationToken);
     Task StopTrackingAsync();
+
+    // Tell the tracking layer how often to poll GPS and whether to hold the CPU wake lock, based on how
+    // close the rider is to the stop. Far from the destination we poll slowly and let the CPU sleep; on
+    // approach we tighten to the baseline cadence and hold the lock so no fix near the stop is missed.
+    void ApplyGpsCadence(long intervalMillis, bool holdWakeLock);
 }

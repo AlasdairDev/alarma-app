@@ -2540,6 +2540,12 @@ public class HomeController : INotifyPropertyChanged
             MaxAlarmDistanceMeters);
         var adaptiveLeadThreshold = adaptiveLeadDistance + accuracyBuffer;
         _minDistanceToDestination = Math.Min(_minDistanceToDestination, distanceToDestination);
+
+        // Battery: poll GPS slowly when the stop is still far off, then tighten back to the 2 s baseline
+        // (and hold the wake lock) once we're within the speed-scaled alarm lead. The near-stop cadence is
+        // unchanged, so the stage thresholds and adaptive-lead timing behave exactly as before.
+        var cadence = AdaptiveGpsCadence.Select(distanceToDestination, adaptiveLeadDistance);
+        _locationService.ApplyGpsCadence(cadence.IntervalMillis, cadence.HoldWakeLock);
         // Every distance readout on the Trip Progress page is shown in kilometres with the explicit unit
         // (e.g. "0.34 km away", "12 km away") — never a bare number.
         var distanceLabel = FormatKilometres(distanceToDestination);

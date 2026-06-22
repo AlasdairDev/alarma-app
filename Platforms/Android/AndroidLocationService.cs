@@ -197,6 +197,13 @@ public class AndroidLocationService : ILocationService
         return await GetLastKnownLocationAsync();
     }
 
+    public void ApplyGpsCadence(long intervalMillis, bool holdWakeLock)
+    {
+        // The controller owns the distance-to-stop and the speed-scaled lead, so it decides the cadence;
+        // we just hand it down to the running foreground service.
+        LocationTrackingService.ApplyCadence(intervalMillis, holdWakeLock);
+    }
+
     private void OnLocationUpdated(object? sender, LocationSnapshot snapshot)
     {
         LocationUpdated?.Invoke(this, snapshot);
