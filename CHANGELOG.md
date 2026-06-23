@@ -3,11 +3,15 @@
 All notable changes to Alarma are recorded here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [11.0.0] - 2026-06-22 — Custom & per-stage alarm sounds, adjustable overshoot, crowded-GPS robustness
+## [11.0.0] - 2026-06-23 — Reliability, battery & wake-up-audibility hardening
 
-Four user-facing capabilities, all offline-first and routed through the existing MVC + DI architecture.
-The xUnit quality gate grows from **268 to 366 passing tests**; no existing test was weakened and no
-production code was changed merely to satisfy a test.
+Version 11 began as a feature release (custom & per-stage alarm sounds, an adjustable overshoot distance,
+and crowded-place GPS robustness) and was then hardened across the safety-critical paths: the SOS now
+reports what really happened, an active trip survives a process kill, GPS polling and the wake lock scale
+down to save battery, and the Emergency wake-up is guaranteed audible in the two night-commute cases that
+could previously silence it. Everything stays **offline-first, on-device only**, routed through the
+existing MVC + DI architecture. The xUnit quality gate grows from **268 to 461 passing tests**; no existing
+test was weakened and no production code was changed merely to satisfy a test.
 
 ### Added
 
@@ -35,6 +39,18 @@ production code was changed merely to satisfy a test.
   *wait for a confident fix*), and a jitter gate that widens with the reported accuracy so noise can't
   inflate the Haversine distance. `simulate_commute.py` gains a `--scenario crowded` mode that injects
   scattered, low-confidence fixes along the UST corridor for hands-free end-to-end exercise.
+- **Per-contact SOS delivery confirmation.** The SOS now listens to the radio's per-message "sent"
+  broadcast and reports a concrete outcome — *"sent to 2 of 2"*, a partial count, or a failure — instead
+  of assuming the queue-to-radio call succeeded. Any unconfirmed contact gets the messaging app opened
+  pre-filled as a one-tap retry. The send path and the 30 s cooldown / single-fire latch are unchanged.
+- **Active-trip auto-recovery across process death.** The live trip (destination, accumulated distance,
+  alarm stage, and arrival/overshoot latches) is persisted as it progresses and replayed on relaunch, so
+  a trip the OS task-kills resumes with its destination and alarm state intact. Latches are restored by
+  direct assignment, never by re-triggering, so an arrival or Emergency the rider already dismissed does
+  not blare again; a clean stop wipes the saved state so there is no ghost trip.
+- **Battery-adaptive GPS cadence.** GPS polls slowly when the stop is far off (10 s / 5 s bands) and
+  tightens to the original 2 s baseline on approach, with the near-stop cadence — and therefore all stage
+  timing and adaptive-lead math — unchanged.
 
 ### Changed
 
@@ -44,6 +60,34 @@ production code was changed merely to satisfy a test.
 - **Settings** gains a Custom Alarm Sound import/remove row, an *Alarm Sound Per Stage* section with
   preview-enabled pickers for Stage 2 and Emergency (Stage 1 is vibration-only and has no picker), and an
   *Overshoot* trigger-distance slider.
+- **`PARTIAL_WAKE_LOCK` scoping.** The tracking service no longer holds the wake lock for the entire trip;
+  it is acquired within the approach window (where a missed fix would cost the alarm) and released when
+  far away, with an absolute approach floor so a slow/stationary vehicle never under-polls near the stop.
+- **README §3.1 corrected** to describe the backup honestly as a **static-key v4 AES-256-GCM** envelope
+  intended for portability/demo (not password-derived), with a clear note that exported `.alarma` files
+  are not confidential against anyone who has the app.
+
+### Fixed
+
+- **SOS could report a false success.** The `SmsManager` "sent" `PendingIntent` was built but nothing
+  listened, so the rider saw *"SOS sent"* even when the radio rejected a message. Outcomes are now
+  per-contact, with a one-tap Messages retry for any contact that didn't make it.
+- **A task-killed trip went silent.** After an OEM kill the sticky service resumed tracking with no
+  destination and no alarm state, so the wake-up could never fire. The trip and alarm state machine are
+  now restored on relaunch and cleared on a normal stop.
+- **Battery drain on long commutes.** A fixed 2 s GPS poll and an always-held wake lock needlessly drained
+  budget phones across 1–2 hour trips; both now scale with distance to the stop.
+- **Emergency alarm could be silenced by unworn earbuds.** When earbuds were connected the alarm routed to
+  them exclusively, so a paired-but-pocketed earbud could swallow the wake-up. For the Emergency stage only,
+  the alarm now also drives the phone speaker; Stage 2 routing is unchanged.
+- **Emergency alarm could be muted by Do-Not-Disturb.** The full-screen lockout only overrides DND when
+  notification-policy access is granted, which was never solicited. The app now warns at trip start when
+  DND could mute the alarm and surfaces a prompt to grant access.
+- **Emergency might never fire in a dense terminal.** Where every final-approach fix stays low-confidence,
+  the confidence gate would correctly refuse to latch — so the wake-up could be skipped entirely. A bounded
+  last-resort latch now fires the Emergency alarm (flagged *approximate*) once the smoothed best estimate
+  has held inside the arrival ring across several fixes and a 30 s dwell, and it can never fire away from
+  the destination.
 
 ## [7.0.0] - 2026-06-19 — Final Panel Defense Release
 
