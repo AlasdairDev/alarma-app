@@ -9,8 +9,8 @@
     <RootNamespace>AlarmaApp</RootNamespace>
     <ApplicationTitle>Alarma</ApplicationTitle>
     <ApplicationId>com.alarma.app</ApplicationId>
-    <ApplicationDisplayVersion>10.0.0</ApplicationDisplayVersion>
-    <ApplicationVersion>11</ApplicationVersion>
+    <ApplicationDisplayVersion>11.0.0</ApplicationDisplayVersion>
+    <ApplicationVersion>12</ApplicationVersion>
     <SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android'">26.0</SupportedOSPlatformVersion>
     <AndroidMinSdkVersion>26</AndroidMinSdkVersion>
     <AndroidTargetSdkVersion>35</AndroidTargetSdkVersion>

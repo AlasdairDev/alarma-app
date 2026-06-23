@@ -46,6 +46,69 @@ public partial class SettingsView : ContentPage
         _controller.PreviewSelectedSound();
     }
 
+    // Per-stage pickers (Feature 2): preview the stage's resolved sound on change. The selection is
+    // persisted by each picker's two-way SelectedItem binding to Stage{N}SoundDisplay. Stage 1 is
+    // vibration-only by design, so only Stage 2 and Emergency have pickers here.
+    private void OnStage2SoundChanged(object? sender, EventArgs e)
+    {
+        if (!_pickerReady) return;
+        _controller.PreviewStageSound(Models.AlarmStage.Stage2);
+    }
+
+    private void OnStage3SoundChanged(object? sender, EventArgs e)
+    {
+        if (!_pickerReady) return;
+        _controller.PreviewStageSound(Models.AlarmStage.Stage3);
+    }
+
+    // Custom alarm sound import (Feature 1): open the native picker filtered to audio, hand the bytes to
+    // the controller (which validates type/size/duration and copies into app-private storage), then report
+    // the outcome inline via the grey pill — matching the Export/Import backup pattern.
+    private async void OnImportCustomSoundTapped(object? sender, TappedEventArgs e)
+    {
+        try
+        {
+            var audioType = new FilePickerFileType(
+                new Dictionary<DevicePlatform, IEnumerable<string>>
+                {
+                    [DevicePlatform.Android] = new[] { "audio/*" },
+                });
+            var picked = await FilePicker.Default.PickAsync(new PickOptions
+            {
+                PickerTitle = "Select an audio file for your alarm",
+                FileTypes = audioType,
+            });
+            if (picked is null) return; // user cancelled — abort quietly
+
+            long size = 0;
+            try { size = new FileInfo(picked.FullPath).Length; } catch { }
+
+            using var stream = await picked.OpenReadAsync();
+            if (size == 0)
+            {
+                try { size = stream.Length; } catch { }
+            }
+
+            var (_, message) = await _controller.ImportCustomSoundAsync(picked.FileName, stream, size);
+            await ShowToastAsync(message);
+        }
+        catch (Exception ex)
+        {
+            Services.BlackBoxLogger.RecordHandledException(ex, "[SettingsView.OnImportCustomSoundTapped]");
+            await ShowToastAsync("Could not import that file. Please try another.");
+        }
+        finally
+        {
+            await EnsureOnSettingsPageAsync();
+        }
+    }
+
+    private async void OnRemoveCustomSoundTapped(object? sender, TappedEventArgs e)
+    {
+        _controller.RemoveCustomSound();
+        await ShowToastAsync("Custom alarm sound removed.");
+    }
+
     // Guards against the revert below re-triggering this handler when we snap the switch back to the real
     // hardware state.
     private bool _suppressBluetoothToggle;
@@ -67,6 +130,16 @@ public partial class SettingsView : ContentPage
     private void OnBluetoothToggled(object? sender, ToggledEventArgs e)
     {
         if (_suppressBluetoothToggle) return;
+
+        // During the page's initial XAML inflation, the OneWay IsBluetoothOn binding sets the switch's
+        // IsToggled to the live adapter state. When the adapter is already ON that's a false→true change,
+        // so this handler fires — but the BluetoothSwitch x:Name field isn't wired up until inflation
+        // finishes, so it's still null here and the revert below (BluetoothSwitch.IsToggled = …) would
+        // throw a NullReferenceException and crash the whole page before Settings can open. There's no
+        // user intent on this pass anyway (it's just the binding mirroring the hardware), so bail out and
+        // let the OneWay binding show the correct state. Real user taps land after inflation, when the
+        // field is set.
+        if (BluetoothSwitch is null) return;
 
         var requested = e.Value;
         var hardware = _controller.IsBluetoothHardwareOn; // live adapter truth, read right now
@@ -93,6 +166,25 @@ public partial class SettingsView : ContentPage
         if (sender is Picker picker && picker.Handler?.PlatformView is Android.Widget.EditText editText)
             editText.Background = null;
 #endif
+    }
+
+    // Same underline strip for the overshoot Entry so it reads as the rounded pill, not a bare native field.
+    private void OnOvershootEntryHandlerChanged(object? sender, EventArgs e)
+    {
+#if ANDROID
+        if (sender is Entry entry && entry.Handler?.PlatformView is Android.Widget.EditText editText)
+            editText.Background = null;
+#endif
+    }
+
+    // Validate + commit the typed overshoot distance on Enter or focus-loss: the controller clamps an
+    // in-range/out-of-range number to 50–500 and reverts an empty/garbage entry to the last valid value,
+    // returning inline feedback we surface in the grey pill (empty message = nothing to report).
+    private void OnOvershootCommitted(object? sender, EventArgs e)
+    {
+        var message = _controller.CommitOvershootDistance();
+        if (!string.IsNullOrEmpty(message))
+            _ = ShowToastAsync(message);
     }
 
     // Export = "Save As". Seamless for the demo: no password, no dialog. We build the blob immediately on tap

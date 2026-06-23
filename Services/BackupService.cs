@@ -63,10 +63,17 @@ public class BackupService
     private const double PhLonMin = 116.9;
     private const double PhLonMax = 126.6;
 
-    // Allowed alarm sound values — mirrors HomeController._alarmSoundOptions exactly, so a restore never
-    // silently downgrades a saved choice.
+    // Allowed bundled alarm sound values — mirrors AlarmSoundCatalog.BundledSounds exactly, so a restore
+    // never silently downgrades a saved choice.
     private static readonly HashSet<string> ValidAlarmSounds =
         new(StringComparer.OrdinalIgnoreCase) { "Digital Clock", "Siren", "Buzzer", "Bell", "Air Horn" };
+    private const string CustomSoundKey = "Custom";
+    private const string NoneSoundKey = "None";
+
+    // Overshoot trigger distance band (Feature 3) — mirrors HomeController's clamp.
+    private const int DefaultOvershootDistanceMeters = 250;
+    private const int MinOvershootDistanceMeters = 50;
+    private const int MaxOvershootDistanceMeters = 500;
 
     private readonly DatabaseService _databaseService;
     private readonly PreferencesService _preferencesService;
@@ -89,7 +96,12 @@ public class BackupService
             new BackupPreferences(
                 _preferencesService.AlarmSound,
                 _preferencesService.AlarmLeadMinutes,
-                _preferencesService.VibrationOnly),
+                _preferencesService.VibrationOnly,
+                _preferencesService.Stage2Sound,
+                _preferencesService.Stage3Sound,
+                _preferencesService.CustomSoundPath,
+                _preferencesService.CustomSoundName,
+                _preferencesService.OvershootDistanceMeters),
             await _databaseService.GetEmergencyContactsAsync(),
             await _databaseService.GetSavedRoutesAsync(),
             await _databaseService.GetTripHistoryAsync(),
@@ -193,13 +205,62 @@ public class BackupService
 
         // Clamp and whitelist preferences before writing to storage so Preferences never hold
         // a raw unvalidated value, even transiently between restore and next HomeController init.
+
+        // Custom sound (Feature 1): the backup carries only a reference, not the audio bytes. Re-validate
+        // that the referenced file still exists on THIS device; if it's gone, drop the custom selection so
+        // every sound choice below safely falls back to a bundled voice.
+        var restoredCustomPath = payload.Preferences.CustomSoundPath;
+        var customAvailable = !string.IsNullOrWhiteSpace(restoredCustomPath)
+                              && File.Exists(restoredCustomPath);
+        _preferencesService.CustomSoundPath = customAvailable ? restoredCustomPath! : string.Empty;
+        _preferencesService.CustomSoundName = customAvailable
+            ? (payload.Preferences.CustomSoundName ?? string.Empty)
+            : string.Empty;
+
         var rawSound = payload.Preferences.AlarmSound;
-        _preferencesService.AlarmSound = ValidAlarmSounds.Contains(rawSound ?? string.Empty)
-            ? rawSound! : "Digital Clock";
+        _preferencesService.AlarmSound = NormalizeRestoredSound(rawSound, customAvailable) ?? "Digital Clock";
+
+        // Per-stage choices (Feature 2): "" (inherit) and "None" are valid; "Custom" survives only when
+        // the file is present; anything else falls back to inherit. Stage 1 is vibration-only by design,
+        // so there's nothing to restore for it — any legacy Stage1Sound in the backup is ignored.
+        _preferencesService.Stage2Sound = ValidateStageSound(payload.Preferences.Stage2Sound, customAvailable);
+        _preferencesService.Stage3Sound = ValidateStageSound(payload.Preferences.Stage3Sound, customAvailable);
+
+        // Overshoot distance (Feature 3): clamp to the same band the in-app control enforces. A 0 (e.g.
+        // an older backup with no value) snaps to the default rather than the floor.
+        var rawOvershoot = payload.Preferences.OvershootDistanceMeters <= 0
+            ? DefaultOvershootDistanceMeters
+            : payload.Preferences.OvershootDistanceMeters;
+        _preferencesService.OvershootDistanceMeters =
+            Math.Clamp(rawOvershoot, MinOvershootDistanceMeters, MaxOvershootDistanceMeters);
+
         _preferencesService.AlarmLeadMinutes =
             Math.Clamp(payload.Preferences.AlarmLeadMinutes, MinAlarmLeadMinutes, MaxAlarmLeadMinutes);
         _preferencesService.VibrationOnly = payload.Preferences.VibrationOnly;
         _preferencesService.LastBackupUtc = payload.ExportedAtUtc;
+    }
+
+    // The single global sound on restore: a bundled voice as-is, "Custom" only when its file is present,
+    // otherwise null (caller substitutes the default). Mirrors AlarmSoundCatalog.Normalize(allowNone:false).
+    private static string? NormalizeRestoredSound(string? raw, bool customAvailable)
+    {
+        if (string.IsNullOrWhiteSpace(raw)) return null;
+        var trimmed = raw.Trim();
+        if (trimmed.Equals(CustomSoundKey, StringComparison.OrdinalIgnoreCase))
+            return customAvailable ? CustomSoundKey : null;
+        return ValidAlarmSounds.Contains(trimmed) ? trimmed : null;
+    }
+
+    // A per-stage choice on restore: "" inherit (also the fallback for junk), "None" vibration-led,
+    // "Custom" only when the file exists, or a whitelisted bundled voice.
+    private static string ValidateStageSound(string? raw, bool customAvailable)
+    {
+        if (string.IsNullOrWhiteSpace(raw)) return string.Empty;
+        var trimmed = raw.Trim();
+        if (trimmed.Equals(NoneSoundKey, StringComparison.OrdinalIgnoreCase)) return NoneSoundKey;
+        if (trimmed.Equals(CustomSoundKey, StringComparison.OrdinalIgnoreCase))
+            return customAvailable ? CustomSoundKey : string.Empty;
+        return ValidAlarmSounds.Contains(trimmed) ? trimmed : string.Empty;
     }
 
     // Static-key format: [1 version][12 nonce][16 GCM tag][ciphertext]
