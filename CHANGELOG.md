@@ -3,6 +3,48 @@
 All notable changes to Alarma are recorded here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [11.0.0] - 2026-06-22 — Custom & per-stage alarm sounds, adjustable overshoot, crowded-GPS robustness
+
+Four user-facing capabilities, all offline-first and routed through the existing MVC + DI architecture.
+The xUnit quality gate grows from **268 to 366 passing tests**; no existing test was weakened and no
+production code was changed merely to satisfy a test.
+
+### Added
+
+- **Custom alarm sound (user-supplied).** Riders can import their own audio file (MP3/OGG/WAV/M4A/AAC)
+  via the native `FilePicker`. The import is validated — allowed type, a 10 MB size cap, and a usable
+  playable duration (probed with `MediaMetadataRetriever`) — with inline grey-pill feedback on rejection,
+  then copied into app-private storage and registered as a selectable **Custom** option alongside the five
+  bundled voices. It plays through the native alarm channel (`AudioUsageKind.Alarm` / `STREAM_ALARM`) at
+  full alarm volume, identically to a bundled sound. The new `AlarmSoundCatalog` centralises the whitelist
+  so a missing/deleted custom file falls back safely to the bundled default instead of crashing or going
+  silent, and the choice survives backup/restore as a stable reference that's re-validated on restore.
+- **Per-stage alarm sound.** Stage 2 (Escalated) and the Emergency lockout can each be assigned a distinct
+  sound — any bundled or custom voice, or *None* — independently, with a live preview per stage. Stage 1
+  (Gentle) is **vibration-only by design** (a single soft nudge, no forced audio), so it has no sound
+  picker and never routes audio to the alarm channel. Stage behaviour is preserved (Stage 2 raised-volume
+  audio, Emergency max-volume continuous); only *which* sound plays changes. A stage with no explicit
+  choice inherits the single shared sound, so existing users see no regression. Persisted and included in
+  backup/restore.
+- **Adjustable overshoot trigger distance.** A 50–500 m Settings slider (default 250 m, which reproduces
+  the prior 450 m behaviour) sets how far past the drop-off a confirmed overshoot latches. The value is
+  clamped on input and on backup-restore; the monotonic, consecutive-increasing-fix latch rule is unchanged.
+- **Crowded-place / urban-canyon GPS robustness.** A new `CrowdedGpsFilter` adds three network-free
+  defences against dense-city multipath: an accuracy-weighted position smoother, a confidence gate that
+  prevents a low-confidence fix from latching arrival / overshoot / the Stage-3 lockout (biasing toward
+  *wait for a confident fix*), and a jitter gate that widens with the reported accuracy so noise can't
+  inflate the Haversine distance. `simulate_commute.py` gains a `--scenario crowded` mode that injects
+  scattered, low-confidence fixes along the UST corridor for hands-free end-to-end exercise.
+
+### Changed
+
+- **Backup payload (`BackupPreferences`) extended** with per-stage sounds, the custom-sound reference, and
+  the overshoot distance — all optional members, so older `.alarma` files still restore. Restore
+  re-validates every new field (whitelist, custom-file existence, distance clamp) before touching storage.
+- **Settings** gains a Custom Alarm Sound import/remove row, an *Alarm Sound Per Stage* section with
+  preview-enabled pickers for Stage 2 and Emergency (Stage 1 is vibration-only and has no picker), and an
+  *Overshoot* trigger-distance slider.
+
 ## [7.0.0] - 2026-06-19 — Final Panel Defense Release
 
 The consolidated v7.0 build presented at the capstone panel defense. It brings the SOS, 911, Bluetooth,
