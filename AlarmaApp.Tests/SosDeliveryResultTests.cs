@@ -15,7 +15,7 @@ using Xunit;
 
 namespace AlarmaApp.Tests;
 
-// ── Mirrors of the production surface ────────────────────────────────────────
+// Mirrors of the production surface
 
 internal enum SosStatusSpec { Sent, Failed }
 
@@ -111,7 +111,7 @@ internal sealed class SosSentTallySpec
     }
 }
 
-// ── Tests ────────────────────────────────────────────────────────────────────
+// Tests
 
 public class SosDeliveryAggregationTests
 {

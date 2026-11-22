@@ -4,7 +4,7 @@ public partial class TermsAndPrivacyView : ContentPage
 {
     private bool _showingTc;
 
-    // ── Terms & Conditions (source: Alarma_TC_and_PrivacyPolicy.pdf) ──────────────
+    // Terms & Conditions (source: Alarma_TC_and_PrivacyPolicy.pdf)
     private static readonly (string Heading, string Body)[] TcSections =
     [
         ("Effective Date: May 25, 2026",
@@ -47,7 +47,7 @@ public partial class TermsAndPrivacyView : ContentPage
          "If you have any questions or concerns about these Terms and Conditions, please contact the Alarma development team through your institution or project supervisors at Polytechnic University of the Philippines, Sta. Mesa, Manila."),
     ];
 
-    // ── Privacy Policy (source: Alarma_TC_and_PrivacyPolicy.pdf) ─────────────────
+    // Privacy Policy (source: Alarma_TC_and_PrivacyPolicy.pdf)
     private static readonly (string Heading, string Body)[] PrivacySections =
     [
         ("Effective Date: May 25, 2026",

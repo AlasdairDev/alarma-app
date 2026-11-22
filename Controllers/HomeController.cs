@@ -576,7 +576,7 @@ public class HomeController : INotifyPropertyChanged
         }
     }
 
-    // ── Custom alarm sound (Feature 1) ───────────────────────────────────────
+    // Custom alarm sound (Feature 1)
     // True while an imported clip is configured AND still present on disk. A deleted file flips this
     // to false so the whitelist falls back to a bundled voice everywhere it's consulted.
     public bool HasCustomSound =>
@@ -592,7 +592,7 @@ public class HomeController : INotifyPropertyChanged
     public string CustomSoundStatusText =>
         HasCustomSound ? $"Custom: {CustomSoundName}" : "Import an audio file";
 
-    // ── Per-stage sound choices (Feature 2) ──────────────────────────────────
+    // Per-stage sound choices (Feature 2)
     // Each exposes a display value for the picker: "" stored → "Default". Setting persists the raw key.
     // Stage 1 has no picker — it's vibration-only by design — so only Stages 2/3 are exposed here.
     public string Stage2SoundDisplay
@@ -617,7 +617,7 @@ public class HomeController : INotifyPropertyChanged
         }
     }
 
-    // ── Overshoot trigger distance (Feature 3) ───────────────────────────────
+    // Overshoot trigger distance (Feature 3)
     // Clamped to [Min,Max] on set so a slider/stepper or a restore can never push it out of band.
     public int OvershootDistanceMeters
     {
@@ -2530,7 +2530,7 @@ public class HomeController : INotifyPropertyChanged
             return;
         }
 
-        // ── Crowded-place GPS robustness (Feature 4) ─────────────────────────────
+        // Crowded-place GPS robustness (Feature 4)
         // Blend this fix into an accuracy-weighted running estimate before any distance/stage decision,
         // so a cluster of noisy fixes in an urban canyon is pulled toward its weighted mean instead of
         // yanking the position (and the arrival/overshoot logic) around. The trip-distance jitter gate in
@@ -2582,7 +2582,7 @@ public class HomeController : INotifyPropertyChanged
         await _notificationService.UpdateTrackingNotificationAsync(
             $"{distanceLabel} to {DestinationShortNameText}{stageSuffix}");
 
-        // ── 3-stage progressive escalation ────────────────────────────────────────
+        // 3-stage progressive escalation
         // The trigger radius is the adaptive lead distance (speed × lead-time, floored). Stage 1 is the
         // gentle alert at that radius; Stage 2 is the louder alert once the rider is meaningfully closer;
         // the Emergency stage is the full-screen lockout at the actual drop-off.
@@ -2747,7 +2747,7 @@ public class HomeController : INotifyPropertyChanged
             }
         }
 
-        // ── Route-deviation detection (multi-leg-commute aware) ───────────────────
+        // Route-deviation detection (multi-leg-commute aware)
         // Dwell = stopped/waiting below walking pace (e.g. at a transfer terminal). On a dwell,
         // re-baseline the closest-approach anchor to the current position so the next leg/walk
         // after a transfer isn't measured against a stale "closest ever" point, and clear the

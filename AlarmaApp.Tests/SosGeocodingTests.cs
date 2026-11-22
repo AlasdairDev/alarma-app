@@ -25,7 +25,7 @@ using Xunit;
 
 namespace AlarmaApp.Tests;
 
-// ── Test doubles mirroring the production surface ────────────────────────────
+// Test doubles mirroring the production surface
 
 /// <summary>A minimal stand-in for Microsoft.Maui.Devices.Sensors.Placemark,
 /// carrying only the fields ReverseGeocodeAddressAsync actually reads.</summary>
@@ -112,7 +112,7 @@ public sealed class SosMessageFormatter
     }
 }
 
-// ── Tests ────────────────────────────────────────────────────────────────────
+// Tests
 
 public class SosMessageFormatterTests
 {

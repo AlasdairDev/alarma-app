@@ -25,7 +25,7 @@ using Xunit;
 
 namespace AlarmaApp.Tests;
 
-// ── Test doubles mirroring the production interfaces ──────────────────────────
+// Test doubles mirroring the production interfaces
 public interface ITestBluetoothMonitor
 {
     bool IsEnabled { get; }
@@ -131,7 +131,7 @@ public sealed class BluetoothSyncViewModel : INotifyPropertyChanged
     }
 }
 
-// ── Tests ────────────────────────────────────────────────────────────────────
+// Tests
 
 public class BluetoothUiSyncTests
 {

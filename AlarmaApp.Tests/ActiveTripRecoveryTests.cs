@@ -18,7 +18,7 @@ using Xunit;
 
 namespace AlarmaApp.Tests;
 
-// ── Mirror of AlarmaApp.Models.ActiveTripState ───────────────────────────────
+// Mirror of AlarmaApp.Models.ActiveTripState
 internal sealed class ActiveTripStateSpec
 {
     public const int CurrentSchema = 1;
@@ -36,7 +36,7 @@ internal sealed class ActiveTripStateSpec
     public bool OvershootConfirmed { get; set; }
 }
 
-// ── Mirror of AlarmaApp.Services.ActiveTripStateCodec ────────────────────────
+// Mirror of AlarmaApp.Services.ActiveTripStateCodec
 internal static class ActiveTripStateCodecSpec
 {
     private const double MaxDistanceMeters = 1_000_000;
@@ -74,7 +74,7 @@ internal static class RecoveryGate
     public static bool WouldStageRefire(ActiveTripStateSpec s, int stage) => stage > s.CurrentAlarmStage;
 }
 
-// ── Tests ────────────────────────────────────────────────────────────────────
+// Tests
 public class ActiveTripCodecRoundTripTests
 {
     private static ActiveTripStateSpec Sample(int stage, bool arrived = false, double distance = 1234.5) => new()

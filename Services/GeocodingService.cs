@@ -180,7 +180,7 @@ public class GeocodingService
         var expanded = ExpandAlias(query.Trim());
         var cacheKey = expanded.ToLowerInvariant();
 
-        // ── Cache intercept (offline-first) ───────────────────────────────────
+        // Cache intercept (offline-first)
         var cached = await _db.GetGeocodeCacheAsync(cacheKey);
         if (cached is not null)
         {
@@ -194,7 +194,7 @@ public class GeocodingService
             }
         }
 
-        // ── Online path ───────────────────────────────────────────────────────
+        // Online path
 
         // photon first - fuzzier + faster than nominatim
         var photon = await SearchPhotonAsync(expanded, cancellationToken);
@@ -254,7 +254,7 @@ public class GeocodingService
         }
     }
 
-    // ── Photon (primary) ──────────────────────────────────────────────────────
+    // Photon (primary)
 
     private async Task<List<GeocodingResult>> SearchPhotonAsync(
         string query, CancellationToken cancellationToken)
@@ -335,7 +335,7 @@ public class GeocodingService
         return string.Empty;
     }
 
-    // ── Nominatim (fallback / supplement) ────────────────────────────────────
+    // Nominatim (fallback / supplement)
 
     private async Task<List<GeocodingResult>> SearchNominatimAsync(
         string query, CancellationToken cancellationToken)
@@ -418,7 +418,7 @@ public class GeocodingService
         return p.Length <= 2 ? raw.Trim() : $"{p[0].Trim()}, {p[1].Trim()}";
     }
 
-    // ── Place type label ──────────────────────────────────────────────────────
+    // Place type label
 
     private static string? FormatPlaceType(string? osmClass, string? osmType)
     {
@@ -474,7 +474,7 @@ public class GeocodingService
         };
     }
 
-    // ── Helpers ───────────────────────────────────────────────────────────────
+    // Helpers
 
     private static string ExpandAlias(string q)
     {
@@ -572,7 +572,7 @@ public class GeocodingService
         double.TryParse(v, NumberStyles.Float, CultureInfo.InvariantCulture, out r)
         && double.IsFinite(r) && r is >= -180.0 and <= 180.0;
 
-    // ── JSON models: Photon ───────────────────────────────────────────────────
+    // JSON models: Photon
 
     private sealed record PhotonResponse(
         [property: JsonPropertyName("features")] List<PhotonFeature> Features);
@@ -598,7 +598,7 @@ public class GeocodingService
         [property: JsonPropertyName("osm_value")]    string? OsmValue,
         [property: JsonPropertyName("type")]         string? Type);
 
-    // ── JSON models: Nominatim ────────────────────────────────────────────────
+    // JSON models: Nominatim
 
     private sealed record NominatimAddress(
         [property: JsonPropertyName("amenity")]       string? Amenity,

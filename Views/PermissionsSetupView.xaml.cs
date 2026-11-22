@@ -71,7 +71,7 @@ public partial class PermissionsSetupView : ContentPage
         }
     }
 
-    // ── Switch Toggled handlers ───────────────────────────────────────────
+    // Switch Toggled handlers
 
     private async void OnNotificationSwitchToggled(object? sender, ToggledEventArgs e)
     {
@@ -149,7 +149,7 @@ public partial class PermissionsSetupView : ContentPage
         if (e.Value) _ = TriggerBatteryExemptionAsync();
     }
 
-    // ── Row tap handlers (row tap == same logic as the switch) ────────────
+    // Row tap handlers (row tap == same logic as the switch)
 
     private async void OnNotificationsTapped(object? sender, TappedEventArgs e)
     {

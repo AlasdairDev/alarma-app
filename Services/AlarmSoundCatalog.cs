@@ -24,7 +24,7 @@ public static class AlarmSoundCatalog
     private static readonly HashSet<string> BundledSet =
         new(BundledSounds, StringComparer.OrdinalIgnoreCase);
 
-    // ── Import validation knobs (Feature 1) ──────────────────────────────────
+    // Import validation knobs (Feature 1)
     // Audio-only file types the alarm loop can actually decode and ring on the alarm channel.
     public static readonly IReadOnlyList<string> AllowedExtensions =
         new[] { ".mp3", ".ogg", ".wav", ".m4a", ".aac" };

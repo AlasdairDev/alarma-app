@@ -158,7 +158,7 @@ public class DatabaseService
     public async Task<int> InsertAllAsync<T>(IEnumerable<T> items) where T : new() =>
         await (await GetConnectionAsync()).InsertAllAsync(items);
 
-    // ── Geocode cache (offline interceptor) ──────────────────────────────────
+    // Geocode cache (offline interceptor)
 
     public async Task<GeocodeCache?> GetGeocodeCacheAsync(string queryKey) =>
         await (await GetConnectionAsync())

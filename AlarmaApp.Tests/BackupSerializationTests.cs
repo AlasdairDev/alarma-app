@@ -26,7 +26,7 @@ using Xunit;
 
 namespace AlarmaApp.Tests;
 
-// ── Models mirroring the production backup payload shape ──────────────────────
+// Models mirroring the production backup payload shape
 public sealed record BackupContactT(string Name, string PhoneNumber, bool IsPrimary);
 public sealed record BackupRouteT(string DisplayName, double Latitude, double Longitude);
 public sealed record BackupPrefsT(string AlarmSound, int AlarmLeadMinutes, bool VibrationOnly);
@@ -144,7 +144,7 @@ public static class BackupValidator
               .ToList();
 }
 
-// ── Tests ────────────────────────────────────────────────────────────────────
+// Tests
 
 public class BackupSerializationTests
 {
